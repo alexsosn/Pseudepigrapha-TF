@@ -27,6 +27,38 @@ jobs:
         run: |
           git clone https://github.com/OnlineCriticalPseudepigrapha/Online-Critical-Pseudepigrapha.git /tmp/ocp
           git -C /tmp/ocp checkout 2d1d14d23434a784d377ff7f4409ccdb2d18aafb
+      - name: Prove passage API on pinned 1 Enoch
+        run: |
+          mkdir -p /tmp/1en-source
+          cp /tmp/ocp/static/docs/1En.xml /tmp/1en-source/1En.xml
+          pseudepigrapha-tf convert /tmp/1en-source \
+            --output /tmp/1en-tf \
+            --upstream-commit 2d1d14d23434a784d377ff7f4409ccdb2d18aafb
+          python - <<'PY'
+          from tf.fabric import Fabric
+          from pseudepigrapha_tf import Apparatus
+
+          TF = Fabric(locations=['/tmp/1en-tf'], modules=[''], silent='deep')
+          api = TF.load(
+              'reading_text ms_abbrev ms_language ms_name ms_show source_ref is_primary unit_id '
+              'reading_of variant_word_of witness manuscript_of',
+              silent='deep',
+          )
+          assert api is not None
+          passage = Apparatus(api).passage('1En', '1', '2')
+          assert passage['reference'] == ('1En', '1', '2')
+          assert passage['source_refs'] == ('1:2',)
+          assert {'p', 'Bertalotto'} <= set(passage['witnesses'])
+          assert passage['witnesses']['p']['complete'] is True
+          assert passage['witnesses']['Bertalotto']['complete'] is True
+          assert passage['witnesses']['p']['text']
+          assert passage['witnesses']['Bertalotto']['text']
+          assert all(
+              segment['status'] in {'reading', 'omission', 'unattested'}
+              for witness in passage['witnesses'].values()
+              for segment in witness['segments']
+          )
+          PY
       - name: Convert and audit complete OCP XML set
         run: |
           time pseudepigrapha-tf convert /tmp/ocp/static/docs \
