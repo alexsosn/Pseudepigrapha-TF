@@ -16,6 +16,9 @@ BASE_FEATURES = (
     "prefix_utf8 g_word_utf8 trailer_utf8 boundary_utf8 version_title"
 )
 PASSAGE_FEATURES = "ms_language ms_name ms_show unit_id reading_of variant_word_of witness manuscript_of"
+WORK_PASSAGE_FEATURES = (
+    f"{PASSAGE_FEATURES} ocp_book language author version_id is_metadata_only"
+)
 
 
 def _load(data, tmp_path, extra_features=""):
@@ -85,3 +88,52 @@ def test_passage_returns_all_witnesses_with_explicit_coverage_states(tmp_path):
     assert witnesses["C"]["complete"] is False
     assert witnesses["C"]["text"] is None
     assert witnesses["C"]["attested_text"] == ""
+
+
+def test_work_passage_returns_every_textual_version(tmp_path):
+    api = _load(
+        build_tf_data([parse_file(FIXTURES / "multiple_versions.xml")]),
+        tmp_path,
+        WORK_PASSAGE_FEATURES,
+    )
+    assert api is not None
+
+    result = Apparatus(api).work_passage("Multi", "1", "1")
+    assert result["work"] == "Multi"
+    assert result["reference"] == ("1", "1")
+    assert result["title"] == "Multi-version work"
+    assert set(result["versions"]) == {"Multi__Syriac", "Multi__Greek"}
+    assert result["metadata_only_versions"] == {}
+
+    syriac = result["versions"]["Multi__Syriac"]
+    assert syriac["title"] == "Syriac"
+    assert syriac["language"] == "Syriac"
+    assert syriac["status"] == "available"
+    assert syriac["passage"]["witnesses"]["S"]["text"] == "ܐ ܒ"
+
+    greek = result["versions"]["Multi__Greek"]
+    assert greek["title"] == "Greek"
+    assert greek["language"] == "Greek"
+    assert greek["status"] == "available"
+    assert greek["passage"]["witnesses"]["G"]["text"] == "α β"
+
+
+def test_work_passage_preserves_metadata_only_versions(tmp_path):
+    api = _load(
+        build_tf_data([parse_file(FIXTURES / "metadata_only_version.xml")]),
+        tmp_path,
+        WORK_PASSAGE_FEATURES,
+    )
+    assert api is not None
+
+    result = Apparatus(api).work_passage("Meta", "1", "1")
+    assert set(result["versions"]) == {"Meta__Greek"}
+    assert result["versions"]["Meta__Greek"]["status"] == "available"
+
+    assert set(result["metadata_only_versions"]) == {"Meta__Coptic"}
+    coptic = result["metadata_only_versions"]["Meta__Coptic"]
+    assert coptic["title"] == "Coptic"
+    assert coptic["language"] == "Coptic"
+    assert coptic["status"] == "metadata_only"
+    assert set(coptic["witnesses"]) == {"Coptic"}
+    assert coptic["witnesses"]["Coptic"]["name"] == "P. Köln Inv. Nr. 3221"
