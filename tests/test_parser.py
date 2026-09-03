@@ -35,3 +35,17 @@ def test_parser_preserves_ocp_metadata_and_mixed_content():
 def test_empty_source_is_explicit():
     with pytest.raises(EmptySourceError):
         parse_file(FIXTURES / "empty.xml")
+
+
+def test_legacy_book_chapter_verse_dialect_is_normalized_without_loss():
+    book = parse_file(FIXTURES / "legacy.xml")
+    version = book.versions[0]
+    assert version.title == "Latin"
+    assert version.language == "Latin"
+    assert [d.label for d in version.divisions] == ["Chapter", "Verse"]
+    assert version.resources[0].name == "Edition"
+    assert version.divs[0].number == "8b"
+    verse = version.divs[0].children[0]
+    assert verse.number == "20"
+    assert verse.units[0].unit_id == "405"
+    assert verse.units[0].linebreak == "following"

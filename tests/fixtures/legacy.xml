@@ -1,0 +1,11 @@
+<book filename="Legacy" title="Legacy work" language="Latin">
+  <resources><resource name="Edition"><info>Legacy edition</info><URL>https://example.test/legacy</URL></resource></resources>
+  <manuscripts><ms abbrev="A" language="Latin" show="yes"><name>A</name></ms></manuscripts>
+  <text>
+    <chapter number="8b">
+      <verse reference="20">
+        <unit id="405" linebreak="following"><reading option="0" mss="A ">Initium verbi</reading></unit>
+      </verse>
+    </chapter>
+  </text>
+</book>
