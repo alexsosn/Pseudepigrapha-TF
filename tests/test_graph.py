@@ -58,6 +58,15 @@ def test_bhsa_compatible_warp_and_lossless_apparatus_overlay():
     assert all(len(data.edge_features["oslots"][n]) <= 1 for n in variant_words)
 
 
+def test_non_slot_node_types_form_contiguous_ranges_for_text_fabric_indexes():
+    data = build_tf_data([parse_file(FIXTURES / "multiple_versions.xml")])
+    otype = data.node_features["otype"]
+    kinds = {kind for node, kind in otype.items() if node > data.max_slot}
+    for kind in kinds:
+        nodes = nodes_of_type(data, kind)
+        assert nodes == list(range(min(nodes), max(nodes) + 1)), kind
+
+
 def test_single_division_synthesizes_chapter_and_uses_source_div_as_verse():
     data = build_tf_data([parse_file(FIXTURES / "one_division.xml")])
     chapters = nodes_of_type(data, "chapter")
