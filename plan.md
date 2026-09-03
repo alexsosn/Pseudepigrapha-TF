@@ -28,7 +28,9 @@ Produce a reproducible converter for Online Critical Pseudepigrapha XML that use
 - [x] Semantic section validation scales linearly with slots/section edges.
 - [x] A researcher can retrieve one `book/chapter/verse` together with all units, readings, and declared witnesses through one high-level API call.
 - [x] Passage-level witness reconstruction distinguishes explicit omission from lack of attestation and does not silently turn incomplete evidence into continuous text.
-- [x] CI converts a pinned complete OCP checkout, validates the report, reloads the resulting TF dataset, and exercises the passage API on real `1En 1:2`.
+- [x] A researcher can retrieve one work-level reference across every textual OCP version with one call, while metadata-only versions remain explicitly visible.
+- [x] A textual version lacking the requested passage remains in the work-level result as `not_present` instead of disappearing or being treated as an omission.
+- [x] CI converts a pinned complete OCP checkout, validates the report, reloads the resulting TF dataset, and exercises both passage APIs on real OCP data.
 - [x] The converter is independently licensed and does not vendor OCP source data.
 
 ## TDD sequence
@@ -108,6 +110,21 @@ Implement `Apparatus.passage(book, chapter, verse)` and `witness_state(unit, man
 Only expose a witness-level continuous `text` when every unit is represented; otherwise return `text=None` plus `attested_text` and the per-unit segments. Do not infer lacunae or fragmentary status from absence unless OCP provides a structural signal for it.
 
 Exercise the same call against the pinned upstream `1En 1:2` in CI so the convenience API is tested on the actual research target rather than only synthetic data.
+
+### 11. Work-level multi-version retrieval
+
+Add failing real-Text-Fabric tests before implementation for a synthetic work with multiple textual versions and for a work containing a metadata-only sibling version.
+
+Implement `Apparatus.work_passage(work, chapter, verse)` so one call:
+
+- discovers every textual TF `book` belonging to the OCP work through `ocp_book`;
+- calls the same passage-level apparatus logic for each textual version;
+- keys textual results by stable TF version/book id rather than version title, avoiding collisions;
+- keeps textual versions that do not contain the requested section with `status="not_present"` and `passage=None`;
+- returns metadata-only upstream versions separately with their declared manuscripts and `status="metadata_only"`;
+- never turns missing version-level evidence into an omission or fabricated passage.
+
+Exercise `work_passage("1En", "1", "2")` and the real `TJob/Coptic` metadata-only case after the full pinned OCP conversion in CI.
 
 ## Out of scope for this PR
 
