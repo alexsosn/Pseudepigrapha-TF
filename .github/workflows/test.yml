@@ -5,9 +5,14 @@ on:
     branches: [main]
   pull_request:
 
+concurrency:
+  group: test-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 jobs:
   unit-and-upstream-integration:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -16,23 +21,58 @@ jobs:
           cache: pip
       - name: Install
         run: pip install -e '.[dev]'
-      - name: Unit tests
+      - name: Unit and Text-Fabric integration tests
         run: pytest
       - name: Clone pinned OCP source
         run: |
           git clone https://github.com/OnlineCriticalPseudepigrapha/Online-Critical-Pseudepigrapha.git /tmp/ocp
           git -C /tmp/ocp checkout 2d1d14d23434a784d377ff7f4409ccdb2d18aafb
-      - name: Convert complete OCP XML set
-        run: pseudepigrapha-tf convert /tmp/ocp/static/docs --output /tmp/pseudepigrapha-tf/0.1
-      - name: Reload generated Text-Fabric dataset
+      - name: Convert and audit complete OCP XML set
+        run: |
+          time pseudepigrapha-tf convert /tmp/ocp/static/docs \
+            --output /tmp/pseudepigrapha-tf/0.1 \
+            --upstream-commit 2d1d14d23434a784d377ff7f4409ccdb2d18aafb
+      - name: Validate semantic parity report
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          report = json.loads(Path('/tmp/pseudepigrapha-tf/0.1/conversion-report.json').read_text())
+          assert report['status'] == 'ok', report['failed_checks']
+          assert all(report['semantic_checks'].values())
+          assert report['provenance']['upstream_commit'] == '2d1d14d23434a784d377ff7f4409ccdb2d18aafb'
+          assert report['source']['readings'] == report['graph']['readings']
+          assert report['graph']['slots'] > 0
+          assert report['graph']['oslots_edges'] > 0
+          print(json.dumps({'source': report['source'], 'graph': report['graph']}, indent=2))
+          PY
+      - name: Reload generated Text-Fabric dataset and verify interface semantics
         run: |
           python - <<'PY'
           from tf.fabric import Fabric
 
           TF = Fabric(locations=['/tmp/pseudepigrapha-tf/0.1'], modules=[''], silent='deep')
-          api = TF.load('', silent='deep')
+          api = TF.load(
+              'reading_text ms_abbrev resource_name source_ref is_primary '
+              'prefix_utf8 g_word_utf8 trailer_utf8 boundary_utf8',
+              silent='deep',
+          )
           assert api is not None
           assert api.F.otype.maxSlot > 0
           assert api.F.otype.slotType == 'word'
           assert api.T.sectionTypes == ('book', 'chapter', 'verse')
+
+          alternative = next(
+              n for n in api.F.otype.s('reading')
+              if api.F.is_primary.v(n) != 1 and api.F.reading_text.v(n)
+          )
+          assert api.T.text(alternative) == api.F.reading_text.v(alternative)
+
+          manuscript = next(n for n in api.F.otype.s('manuscript') if api.F.ms_abbrev.v(n))
+          assert api.T.text(manuscript) == api.F.ms_abbrev.v(manuscript)
+
+          deep_unit = next(n for n in api.F.otype.s('unit') if api.F.source_ref.v(n) == '1:23:153:4')
+          section = api.T.sectionFromNode(deep_unit)
+          assert section[1:] == ('1:23:153', '4'), section
           PY
