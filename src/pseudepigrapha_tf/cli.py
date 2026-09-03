@@ -4,8 +4,8 @@ import argparse
 from pathlib import Path
 
 from . import __version__
-from .audit import build_conversion_report, write_conversion_report
-from .graph import build_tf_data
+from .conversion import build_tf_data
+from .semantic_audit import build_conversion_report, write_conversion_report
 from .source import detect_git_commit, load_source_directory
 from .writer import write_tf
 
