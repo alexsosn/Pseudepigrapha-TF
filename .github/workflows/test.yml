@@ -41,11 +41,12 @@ jobs:
           TF = Fabric(locations=['/tmp/1en-tf'], modules=[''], silent='deep')
           api = TF.load(
               'reading_text ms_abbrev ms_language ms_name ms_show source_ref is_primary unit_id '
-              'reading_of variant_word_of witness manuscript_of',
+              'ocp_book title language author reading_of variant_word_of witness manuscript_of',
               silent='deep',
           )
           assert api is not None
-          passage = Apparatus(api).passage('1En', '1', '2')
+          A = Apparatus(api)
+          passage = A.passage('1En', '1', '2')
           assert passage['reference'] == ('1En', '1', '2')
           assert passage['source_refs'] == ('1:2',)
           assert {'p', 'Bertalotto'} <= set(passage['witnesses'])
@@ -58,6 +59,14 @@ jobs:
               for witness in passage['witnesses'].values()
               for segment in witness['segments']
           )
+
+          work = A.work_passage('1En', '1', '2')
+          assert work['work'] == '1En'
+          assert work['reference'] == ('1', '2')
+          assert set(work['versions']) == {'1En'}
+          assert work['metadata_only_versions'] == {}
+          assert work['versions']['1En']['status'] == 'available'
+          assert work['versions']['1En']['passage']['source_refs'] == ('1:2',)
           PY
       - name: Convert and audit complete OCP XML set
         run: |
@@ -91,7 +100,7 @@ jobs:
           api = TF.load(
               'reading_text ms_abbrev ms_language ms_name ms_show resource_name source_ref is_primary '
               'unit_id prefix_utf8 g_word_utf8 trailer_utf8 boundary_utf8 '
-              'version_title version_id is_metadata_only ocp_book book '
+              'version_title version_id is_metadata_only ocp_book book title language author '
               'reading_of variant_word_of witness manuscript_of',
               silent='deep',
           )
@@ -124,7 +133,8 @@ jobs:
               for n in api.F.otype.s('book')
           )
 
-          enoch = Apparatus(api).passage('1En', '1', '2')
+          A = Apparatus(api)
+          enoch = A.passage('1En', '1', '2')
           assert enoch['reference'] == ('1En', '1', '2')
           assert enoch['source_refs'] == ('1:2',)
           assert {'p', 'Bertalotto'} <= set(enoch['witnesses'])
@@ -137,4 +147,15 @@ jobs:
               for witness in enoch['witnesses'].values()
               for segment in witness['segments']
           )
+
+          enoch_work = A.work_passage('1En', '1', '2')
+          assert set(enoch_work['versions']) == {'1En'}
+          assert enoch_work['versions']['1En']['status'] == 'available'
+          assert enoch_work['versions']['1En']['passage']['source_refs'] == ('1:2',)
+
+          tjob = A.work_passage('TJob', '1', '1')
+          assert 'TJob__Coptic' in tjob['metadata_only_versions']
+          assert tjob['metadata_only_versions']['TJob__Coptic']['status'] == 'metadata_only'
+          assert 'Coptic' in tjob['metadata_only_versions']['TJob__Coptic']['witnesses']
+          assert tjob['metadata_only_versions']['TJob__Coptic']['passage'] is None
           PY
