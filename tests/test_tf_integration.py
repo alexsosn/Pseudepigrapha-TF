@@ -11,18 +11,19 @@ from pseudepigrapha_tf.parser import parse_file
 from pseudepigrapha_tf.writer import write_tf
 
 FIXTURES = Path(__file__).parent / "fixtures"
+BASE_FEATURES = (
+    "reading_text ms_abbrev resource_name source_ref is_primary "
+    "prefix_utf8 g_word_utf8 trailer_utf8 boundary_utf8 version_title"
+)
+PASSAGE_FEATURES = "ms_language ms_name ms_show unit_id reading_of variant_word_of witness manuscript_of"
 
 
-def _load(data, tmp_path):
+def _load(data, tmp_path, extra_features=""):
     output = tmp_path / "tf"
     assert write_tf(data, output)
     TF = Fabric(locations=[str(output)], modules=[""], silent="deep")
-    return TF.load(
-        "reading_text ms_abbrev ms_language ms_name ms_show resource_name source_ref is_primary "
-        "unit_id prefix_utf8 g_word_utf8 trailer_utf8 boundary_utf8 version_title "
-        "reading_of variant_word_of witness manuscript_of",
-        silent="deep",
-    )
+    features = f"{BASE_FEATURES} {extra_features}".strip()
+    return TF.load(features, silent="deep")
 
 
 def test_node_type_default_formats_prevent_misleading_text(tmp_path):
@@ -53,7 +54,11 @@ def test_metadata_only_version_has_nonmisleading_default_text(tmp_path):
 
 
 def test_passage_returns_all_witnesses_with_explicit_coverage_states(tmp_path):
-    api = _load(build_tf_data([parse_file(FIXTURES / "sample.xml")]), tmp_path)
+    api = _load(
+        build_tf_data([parse_file(FIXTURES / "sample.xml")]),
+        tmp_path,
+        PASSAGE_FEATURES,
+    )
     assert api is not None
 
     passage = Apparatus(api).passage("Sample", "1", "2")
