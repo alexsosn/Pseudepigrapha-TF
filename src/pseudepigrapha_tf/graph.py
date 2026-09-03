@@ -4,7 +4,7 @@ import json
 from dataclasses import dataclass, field
 from typing import Iterable
 
-from .model import Book, Div, Reading, Token, Unit, Version
+from .model import Book, Div, DivisionSpec, Reading, Token, Unit, Version
 
 INT_FEATURES = {
     "chapter_index", "div_index", "div_level", "is_gap", "is_omission",
@@ -15,21 +15,25 @@ INT_FEATURES = {
 
 FEATURE_DESCRIPTIONS = {
     "book": "BHSA-compatible book section identifier; one OCP version is one TF book",
-    "chapter": "BHSA-compatible chapter section label",
-    "verse": "BHSA-compatible verse section label",
+    "chapter": "BHSA-compatible chapter section label; compound source parent path for deep OCP structures",
+    "verse": "BHSA-compatible verse section label; terminal source division",
     "g_word_utf8": "Unicode surface form, following the BHSA feature name",
-    "trailer_utf8": "Unicode material following a word, following the BHSA feature name",
-    "prefix_utf8": "Unicode material preceding a word",
+    "trailer_utf8": "Unicode material following a word inside its OCP reading",
+    "prefix_utf8": "Unicode material preceding a word inside its OCP reading",
+    "boundary_utf8": "deterministic separator inserted between OCP units from linebreak/boundary semantics",
     "ocp_book": "OCP book/@filename",
+    "source_file": "stable source path relative to the supplied OCP docs directory",
     "source_sha256": "SHA-256 digest of the source XML bytes",
+    "source_ref": "full OCP textual reference using all source division levels and declared delimiters",
+    "source_ref_parts": "JSON array containing every source division identifier in the reference",
     "reading_xml": "mixed XML content inside the OCP reading",
     "is_gap": "1 for an anchor slot created for an empty primary reading",
     "is_omission": "1 when an OCP reading has no textual content",
 }
 
 EDGE_DESCRIPTIONS = {
-    "oslots": "Text-Fabric warp edge to occupied word slots",
-    "parent": "source OCP div parent relation",
+    "oslots": "Text-Fabric warp edge to occupied/anchoring word slots",
+    "parent": "source OCP structural parent relation (div-to-div or unit-to-div)",
     "reading_of": "reading node to its OCP unit node",
     "variant_word_of": "variant_word node to its reading node",
     "witness": "reading node to manuscript nodes named by reading/@mss",
@@ -52,6 +56,10 @@ class TFData:
     @property
     def max_node(self) -> int:
         return max(self.node_features.get("otype", {}), default=0)
+
+    @property
+    def oslots_edge_count(self) -> int:
+        return sum(len(slots) for slots in self.edge_features.get("oslots", {}).values())
 
     def validate(self) -> list[str]:
         otype = self.node_features.get("otype", {})
@@ -105,6 +113,10 @@ class _Builder:
                 self.slot_features.setdefault(name, {})[node] = value
         return node
 
+    def set_slot_feature(self, node: int, name: str, value: str | int | None) -> None:
+        if value not in (None, ""):
+            self.slot_features.setdefault(name, {})[node] = value
+
     def node(self, key: str, kind: str, slots: Iterable[int], **features: str | int | None) -> str:
         if key in self.by_key:
             raise ValueError(f"duplicate graph object key: {key}")
@@ -117,7 +129,13 @@ class _Builder:
     def edge(self, feature: str, source: str, target: str) -> None:
         self.edges.append((feature, source, target))
 
-    def finalize(self) -> TFData:
+    def finalize(
+        self,
+        *,
+        upstream_repository: str,
+        upstream_commit: str,
+        converter_version: str,
+    ) -> TFData:
         max_slot = self.next_slot - 1
         node_features = {name: dict(values) for name, values in self.slot_features.items()}
         otype = {n: "word" for n in range(1, max_slot + 1)}
@@ -133,26 +151,46 @@ class _Builder:
         edges: dict[str, dict[int, set[int]]] = {"oslots": oslots}
         for feature, source, target in self.edges:
             edges.setdefault(feature, {}).setdefault(key_to_node[source], set()).add(key_to_node[target])
-        data = TFData(node_features, edges, _metadata(node_features, edges), self.warnings)
+        data = TFData(
+            node_features,
+            edges,
+            _metadata(
+                node_features,
+                edges,
+                upstream_repository=upstream_repository,
+                upstream_commit=upstream_commit,
+                converter_version=converter_version,
+            ),
+            self.warnings,
+        )
         if failures := data.validate():
             raise ValueError("invalid generated Text-Fabric graph: " + "; ".join(failures))
         return data
 
 
-def _metadata(node_features, edge_features):
+def _metadata(node_features, edge_features, *, upstream_repository: str, upstream_commit: str, converter_version: str):
+    generic = {
+        "dataset": "Pseudepigrapha-TF",
+        "datasetName": "Online Critical Pseudepigrapha Text-Fabric conversion",
+        "source": "Online Critical Pseudepigrapha",
+        "sourceUrl": upstream_repository,
+        "upstreamRepository": upstream_repository,
+        "version": "0.1",
+        "converterVersion": converter_version,
+        "writtenBy": "Pseudepigrapha-TF converter",
+    }
+    if upstream_commit:
+        generic["upstreamCommit"] = upstream_commit
     meta = {
-        "": {
-            "dataset": "Pseudepigrapha-TF",
-            "datasetName": "Online Critical Pseudepigrapha Text-Fabric conversion",
-            "source": "Online Critical Pseudepigrapha",
-            "sourceUrl": "https://github.com/OnlineCriticalPseudepigrapha/Online-Critical-Pseudepigrapha",
-            "version": "0.1",
-            "writtenBy": "Pseudepigrapha-TF converter",
-        },
+        "": generic,
         "otext": {
             "sectionTypes": "book,chapter,verse",
             "sectionFeatures": "book,chapter,verse",
-            "fmt:text-orig-full": "{g_word_utf8}{trailer_utf8}",
+            "fmt:text-orig-full": "{prefix_utf8}{g_word_utf8}{trailer_utf8}{boundary_utf8}",
+            "fmt:reading-default": "{reading_text}",
+            "fmt:variant_word-default": "{prefix_utf8}{g_word_utf8}{trailer_utf8}",
+            "fmt:manuscript-default": "{ms_abbrev}",
+            "fmt:resource-default": "{resource_name}",
         },
     }
     for feature in node_features:
@@ -169,9 +207,11 @@ def _slug(value: str) -> str:
     out, sep = [], False
     for char in value.strip():
         if char.isalnum():
-            out.append(char); sep = False
+            out.append(char)
+            sep = False
         elif not sep:
-            out.append("_"); sep = True
+            out.append("_")
+            sep = True
     return "".join(out).strip("_") or "version"
 
 
@@ -198,17 +238,73 @@ def _common(book: Book, version: Version) -> dict[str, str]:
     return {"ocp_book": book.filename, "version_title": version.title}
 
 
-def _surface(token: Token, book: Book, version: Version, unit: Unit, option: int):
+def _reference(path: tuple[str, ...], specs: tuple[DivisionSpec, ...]) -> str:
+    if not path:
+        return ""
+    parts: list[str] = []
+    for index, value in enumerate(path):
+        parts.append(value)
+        if index < len(path) - 1:
+            delimiter = specs[index].delimiter if index < len(specs) else "/"
+            parts.append(delimiter or "/")
+    return "".join(parts)
+
+
+def _reference_features(path: tuple[str, ...], specs: tuple[DivisionSpec, ...]) -> dict[str, str]:
     return {
-        "g_word_utf8": token.text, "trailer_utf8": token.trailer, "prefix_utf8": token.prefix,
-        "language": token.lang or version.language, "lex": token.lex, "morph": token.morph,
-        "style": token.style, "w_annotated": 1 if token.annotated else None,
-        "ocp_book": book.filename, "version_title": version.title,
-        "unit_id": unit.unit_id, "reading_option": option,
+        "source_ref": _reference(path, specs),
+        "source_ref_parts": json.dumps(path, ensure_ascii=False),
     }
 
 
-def _unit(builder: _Builder, book: Book, version: Version, vkey: str, unit: Unit, index: int, manuscripts: dict[str, str]) -> set[int]:
+def _surface(
+    token: Token,
+    book: Book,
+    version: Version,
+    unit: Unit,
+    option: int,
+    path: tuple[str, ...],
+    specs: tuple[DivisionSpec, ...],
+):
+    return {
+        "g_word_utf8": token.text,
+        "trailer_utf8": token.trailer,
+        "prefix_utf8": token.prefix,
+        "language": token.lang or version.language,
+        "lex": token.lex,
+        "morph": token.morph,
+        "style": token.style,
+        "w_annotated": 1 if token.annotated else None,
+        "ocp_book": book.filename,
+        "version_title": version.title,
+        "unit_id": unit.unit_id,
+        "reading_option": option,
+        **_reference_features(path, specs),
+    }
+
+
+def _boundary(linebreak: str) -> str:
+    normalized = (linebreak or "").strip().lower()
+    if normalized == "doublefollowing":
+        return "\n\n"
+    if normalized:
+        return "\n"
+    return ""
+
+
+def _unit(
+    builder: _Builder,
+    book: Book,
+    version: Version,
+    vkey: str,
+    unit: Unit,
+    index: int,
+    manuscripts: dict[str, str],
+    path: tuple[str, ...],
+    specs: tuple[DivisionSpec, ...],
+    parent_div: str,
+    unit_endings: list[tuple[int, str]],
+) -> set[int]:
     if not unit.readings:
         raise ValueError(f"{book.filename}/{version.title}: unit {unit.unit_id!r} has no readings")
     pidx = next((i for i, r in enumerate(unit.readings) if r.option == "0"), 0)
@@ -216,41 +312,92 @@ def _unit(builder: _Builder, book: Book, version: Version, vkey: str, unit: Unit
         builder.warnings.append(f"{book.filename}/{version.title} unit {unit.unit_id}: no option=0; using first reading as primary")
     primary = unit.readings[pidx]
     poption = _option(primary, pidx)
-    slots = {builder.slot(**_surface(t, book, version, unit, poption)) for t in primary.tokens}
-    if not slots:
-        slots = {builder.slot(is_gap=1, language=version.language, ocp_book=book.filename,
-                              version_title=version.title, unit_id=unit.unit_id, reading_option=poption)}
+    ordered_slots = [builder.slot(**_surface(t, book, version, unit, poption, path, specs)) for t in primary.tokens]
+    if not ordered_slots:
+        ordered_slots = [
+            builder.slot(
+                is_gap=1,
+                language=version.language,
+                ocp_book=book.filename,
+                version_title=version.title,
+                unit_id=unit.unit_id,
+                reading_option=poption,
+                **_reference_features(path, specs),
+            )
+        ]
+    slots = set(ordered_slots)
     ukey = f"{vkey}:unit:{index}"
-    builder.node(ukey, "unit", slots, **_common(book, version), unit_id=unit.unit_id,
-                 unit_index=index, group=unit.group, parallel=unit.parallel, unit_linebreak=unit.linebreak)
+    builder.node(
+        ukey,
+        "unit",
+        slots,
+        **_common(book, version),
+        **_reference_features(path, specs),
+        unit_id=unit.unit_id,
+        unit_index=index,
+        group=unit.group,
+        parallel=unit.parallel,
+        unit_linebreak=unit.linebreak,
+    )
+    builder.edge("parent", ukey, parent_div)
     for ridx, reading in enumerate(unit.readings, 1):
         option = _option(reading, ridx - 1)
         rkey = f"{ukey}:reading:{ridx}"
         primary_flag = ridx - 1 == pidx
-        builder.node(rkey, "reading", slots, **_common(book, version), unit_id=unit.unit_id,
-                     reading_option=option, reading_option_source=reading.option, reading_index=ridx,
-                     reading_text=reading.text, reading_xml=reading.content_xml,
-                     mss=reading.mss_raw.strip(), linebreak=reading.linebreak, indent=reading.indent,
-                     token_count=len(reading.tokens), is_omission=1 if not reading.text else None,
-                     is_primary=1 if primary_flag else None)
+        builder.node(
+            rkey,
+            "reading",
+            slots,
+            **_common(book, version),
+            **_reference_features(path, specs),
+            unit_id=unit.unit_id,
+            reading_option=option,
+            reading_option_source=reading.option,
+            reading_index=ridx,
+            reading_text=reading.text,
+            reading_xml=reading.content_xml,
+            mss=reading.mss_raw.strip(),
+            linebreak=reading.linebreak,
+            indent=reading.indent,
+            token_count=len(reading.tokens),
+            is_omission=1 if not reading.text else None,
+            is_primary=1 if primary_flag else None,
+        )
         builder.edge("reading_of", rkey, ukey)
         for abbrev in reading.witnesses:
             mkey = manuscripts.get(abbrev)
             if mkey is None:
                 mkey = f"{vkey}:ms:undefined:{_slug(abbrev)}"
                 if mkey not in builder.by_key:
-                    builder.node(mkey, "manuscript", (), **_common(book, version), ms_abbrev=abbrev, undefined_manuscript=1)
+                    builder.node(
+                        mkey,
+                        "manuscript",
+                        (),
+                        **_common(book, version),
+                        ms_abbrev=abbrev,
+                        undefined_manuscript=1,
+                    )
                     builder.warnings.append(f"{book.filename}/{version.title}: reading cites undeclared manuscript {abbrev!r}")
                 manuscripts[abbrev] = mkey
-            builder.by_key[mkey].slots.update(slots)
             builder.edge("witness", rkey, mkey)
         if not primary_flag:
+            anchor = {ordered_slots[0]}
             for pos, token in enumerate(reading.tokens, 1):
                 wkey = f"{rkey}:word:{pos}"
-                builder.node(wkey, "variant_word", slots, **_common(book, version),
-                             **{k: v for k, v in _surface(token, book, version, unit, option).items()
-                                if k not in {"ocp_book", "version_title"}}, variant_position=pos)
+                builder.node(
+                    wkey,
+                    "variant_word",
+                    anchor,
+                    **_common(book, version),
+                    **{
+                        k: v
+                        for k, v in _surface(token, book, version, unit, option, path, specs).items()
+                        if k not in {"ocp_book", "version_title"}
+                    },
+                    variant_position=pos,
+                )
                 builder.edge("variant_word_of", wkey, rkey)
+    unit_endings.append((ordered_slots[-1], primary.linebreak or unit.linebreak))
     return slots
 
 
@@ -263,15 +410,28 @@ def _version(builder: _Builder, book: Book, version: Version, book_id: str, book
             builder.warnings.append(f"{book.filename}/{version.title}: duplicate manuscript abbreviation {ms.abbrev!r}")
         else:
             manuscript_keys[ms.abbrev] = key
-        builder.node(key, "manuscript", (), **_common(book, version), ms_abbrev=ms.abbrev,
-                     ms_name=ms.name, ms_name_xml=ms.name_xml, ms_language=ms.language, ms_show=ms.show,
-                     bibliography=json.dumps(ms.bibliography, ensure_ascii=False),
-                     bibliography_xml=json.dumps(ms.bibliography_xml, ensure_ascii=False), manuscript_index=midx)
+        builder.node(
+            key,
+            "manuscript",
+            (),
+            **_common(book, version),
+            ms_abbrev=ms.abbrev,
+            ms_name=ms.name,
+            ms_name_xml=ms.name_xml,
+            ms_language=ms.language,
+            ms_show=ms.show,
+            bibliography=json.dumps(ms.bibliography, ensure_ascii=False),
+            bibliography_xml=json.dumps(ms.bibliography_xml, ensure_ascii=False),
+            manuscript_index=midx,
+        )
 
     unit_counter = chapter_counter = verse_counter = 0
     version_slots: set[int] = set()
     specs = version.divisions
     div_serial = 0
+    unit_endings: list[tuple[int, str]] = []
+    chapter_level = max(1, len(specs) - 1)
+    verse_level = max(1, len(specs))
 
     def visit(div: Div, level: int, sibling: int, path: tuple[str, ...], parent: str | None) -> set[int]:
         nonlocal unit_counter, chapter_counter, verse_counter, div_serial
@@ -286,49 +446,139 @@ def _version(builder: _Builder, book: Book, version: Version, book_id: str, book
                 slots.update(visit(item, level + 1, child_index, dpath, dkey))
             else:
                 unit_counter += 1
-                slots.update(_unit(builder, book, version, vkey, item, unit_counter, manuscript_keys))
+                slots.update(
+                    _unit(
+                        builder,
+                        book,
+                        version,
+                        vkey,
+                        item,
+                        unit_counter,
+                        manuscript_keys,
+                        dpath,
+                        specs,
+                        dkey,
+                        unit_endings,
+                    )
+                )
         label = specs[level - 1].label if level <= len(specs) else ""
-        builder.node(dkey, "div", slots, **_common(book, version), div_number=div.number,
-                     div_level=level, div_label=label, div_fragment=div.fragment,
-                     div_path="/".join(dpath), div_index=sibling)
+        builder.node(
+            dkey,
+            "div",
+            slots,
+            **_common(book, version),
+            **_reference_features(dpath, specs),
+            div_number=div.number,
+            div_level=level,
+            div_label=label,
+            div_fragment=div.fragment,
+            div_path="/".join(dpath),
+            div_index=sibling,
+        )
         if parent:
             builder.edge("parent", dkey, parent)
         if len(specs) == 1 and level == 1:
             verse_counter += 1
-            builder.node(f"{dkey}:verse", "verse", slots, **_common(book, version), verse=div.number, verse_index=verse_counter)
-        elif len(specs) >= 2 and level == 1:
+            builder.node(
+                f"{dkey}:verse",
+                "verse",
+                slots,
+                **_common(book, version),
+                **_reference_features(dpath, specs),
+                verse=div.number,
+                verse_index=verse_counter,
+            )
+        elif len(specs) >= 2 and level == chapter_level:
             chapter_counter += 1
-            builder.node(f"{dkey}:chapter", "chapter", slots, **_common(book, version), chapter=div.number, chapter_index=chapter_counter)
-        elif len(specs) >= 2 and level == 2:
+            builder.node(
+                f"{dkey}:chapter",
+                "chapter",
+                slots,
+                **_common(book, version),
+                **_reference_features(dpath, specs),
+                chapter=_reference(dpath, specs),
+                chapter_index=chapter_counter,
+            )
+        elif len(specs) >= 2 and level == verse_level:
             verse_counter += 1
-            builder.node(f"{dkey}:verse", "verse", slots, **_common(book, version), verse=div.number, verse_index=verse_counter)
+            builder.node(
+                f"{dkey}:verse",
+                "verse",
+                slots,
+                **_common(book, version),
+                **_reference_features(dpath, specs),
+                verse=div.number,
+                verse_index=verse_counter,
+            )
         return slots
 
     for top_index, div in enumerate(version.divs, 1):
         version_slots.update(visit(div, 1, top_index, (), None))
     if len(specs) == 1:
-        builder.node(f"{vkey}:synthetic-chapter", "chapter", version_slots, **_common(book, version), chapter="1", chapter_index=1)
+        builder.node(
+            f"{vkey}:synthetic-chapter",
+            "chapter",
+            version_slots,
+            **_common(book, version),
+            chapter="1",
+            chapter_index=1,
+        )
+
+    for index, (last_slot, linebreak) in enumerate(unit_endings):
+        boundary = _boundary(linebreak)
+        if not boundary and index < len(unit_endings) - 1:
+            boundary = " "
+        builder.set_slot_feature(last_slot, "boundary_utf8", boundary)
 
     bkey = f"{vkey}:book"
-    builder.node(bkey, "book", version_slots, book=book_id, ocp_book=book.filename, title=book.title,
-                 text_structure=book.text_structure, version_title=version.title, author=version.author,
-                 language=version.language, version_fragment=version.fragment, source_path=book.source_path,
-                 source_sha256=book.source_sha256,
-                 division_labels=json.dumps([d.label for d in specs], ensure_ascii=False),
-                 division_delimiters=json.dumps([d.delimiter for d in specs], ensure_ascii=False))
+    builder.node(
+        bkey,
+        "book",
+        version_slots,
+        book=book_id,
+        ocp_book=book.filename,
+        title=book.title,
+        text_structure=book.text_structure,
+        version_title=version.title,
+        author=version.author,
+        language=version.language,
+        version_fragment=version.fragment,
+        source_file=book.source_path,
+        source_sha256=book.source_sha256,
+        division_labels=json.dumps([d.label for d in specs], ensure_ascii=False),
+        division_delimiters=json.dumps([d.delimiter for d in specs], ensure_ascii=False),
+    )
     for key in manuscript_keys.values():
         if key in builder.by_key:
             builder.edge("manuscript_of", key, bkey)
     for ridx, resource in enumerate(version.resources, 1):
         rkey = f"{vkey}:resource:{ridx}"
-        builder.node(rkey, "resource", version_slots, **_common(book, version), resource_name=resource.name,
-                     resource_info=json.dumps(resource.info, ensure_ascii=False), resource_url=resource.url, resource_index=ridx)
+        builder.node(
+            rkey,
+            "resource",
+            (),
+            **_common(book, version),
+            resource_name=resource.name,
+            resource_info=json.dumps(resource.info, ensure_ascii=False),
+            resource_url=resource.url,
+            resource_index=ridx,
+        )
         builder.edge("resource_of", rkey, bkey)
 
 
-def build_tf_data(books: Iterable[Book]) -> TFData:
+def build_tf_data(
+    books: Iterable[Book],
+    *,
+    upstream_repository: str = "https://github.com/OnlineCriticalPseudepigrapha/Online-Critical-Pseudepigrapha",
+    upstream_commit: str = "",
+    converter_version: str = "0.1.0",
+) -> TFData:
     builder = _Builder()
     for bidx, book in enumerate(books, 1):
         for vidx, (version, book_id) in enumerate(zip(book.versions, _book_ids(book)), 1):
             _version(builder, book, version, book_id, bidx, vidx)
-    return builder.finalize()
+    return builder.finalize(
+        upstream_repository=upstream_repository,
+        upstream_commit=upstream_commit,
+        converter_version=converter_version,
+    )
