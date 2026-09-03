@@ -30,6 +30,7 @@ Full-corpus CI exposed one important exception: `Esdr.xml` uses a legacy direct 
 - `Eup.xml` includes four-level references such as `1:23:153:4` (`Book → Section → Chapter → Verse`).
 - Other fragmentary files use values such as `4b`, `heading`, `{heading}`, and `Heading`; source identifiers cannot safely be coerced to integers.
 - Some books contain multiple versions/languages under one OCP `book` (for example Testament of Adam and Eupolemus).
+- `TJob.xml` declares a Coptic version with division/manuscript metadata but an intentionally empty `<text></text>`. OCP's introduction states that the fragmentary Coptic evidence has not yet been included in the edition. This is valid upstream metadata, not malformed input.
 - Mixed `<w>` markup appears inside readings and must survive conversion.
 - Empty readings are meaningful omissions, not parser errors.
 - OCP uses `linebreak="following"` and `linebreak="doubleFollowing"`; the historical renderer emitted one or two breaks respectively.
@@ -47,17 +48,18 @@ Compatibility must not make the apparatus look like a single diplomatic text. OC
 | OCP source | Text-Fabric representation |
 | --- | --- |
 | token in primary reading | `word` slot |
-| `book` + one `version` | `book` section node |
+| textual `book` + one `version` | `book` section node |
+| declared version with no textual units | `version_metadata` node, never a fabricated `book` section |
 | one source level | synthetic chapter `1`; source level becomes `verse` |
 | two source levels | parent becomes `chapter`; terminal becomes `verse` |
 | three or more source levels | complete parent path becomes compound `chapter`; terminal level becomes `verse` |
-| source `div` at every level | `div` node with literal number/label/full reference |
+| source `div` at every textual level | `div` node with literal number/label/full reference |
 | `unit` | `unit` node over locus slots, explicitly parented to enclosing `div` |
 | every `reading` | `reading` node over the locus slots |
 | non-primary reading token | `variant_word` node linked to its reading and one technical locus anchor |
-| `ms` | `manuscript` node with no fictitious textual extent |
+| `ms` | `manuscript` node with one technical TF anchor and semantic witness/version edges |
 | `reading@mss` | `witness` edges from reading to manuscript |
-| `resource` | `resource` node linked to version/book, no fictitious textual extent |
+| `resource` | `resource` node linked to version/book with one technical TF anchor |
 | `<w>` attributes | `lex`, `morph`, `style`, effective `language`, literal `w_lang`, `w_annotated` |
 | source citation | `source_ref` plus JSON `source_ref_parts` |
 | source display boundary | `boundary_utf8` on the final primary slot of a unit |
@@ -78,7 +80,9 @@ Thus `1:23:153:4` becomes chapter `1:23:153`, verse `4`. Every source `div`, `un
 
 Section values remain strings. Numeric document-order ordinals are supplied separately as `chapter_index` and `verse_index`. Multi-version files receive unique TF `book` identifiers while `ocp_book` retains the original filename.
 
-## Apparatus policy
+A metadata-only upstream version is deliberately excluded from the section hierarchy. For example, `TJob/Coptic` is retained as `version_metadata` plus its manuscript metadata, but it contributes no fake Coptic word slot or `book/chapter/verse` address.
+
+## Apparatus and technical-anchor policy
 
 The primary reading supplies the contiguous slot stream. All readings get `reading` nodes. Alternative tokens remain non-slot `variant_word` nodes rather than entering the global slot stream, which would create a fictitious text containing mutually exclusive readings.
 
@@ -87,9 +91,10 @@ Alternative `reading` nodes still occupy the primary locus through `oslots` for 
 - `reading-default={reading_text}`;
 - `variant_word-default={prefix_utf8}{g_word_utf8}{trailer_utf8}`;
 - `manuscript-default={ms_abbrev}`;
-- `resource-default={resource_name}`.
+- `resource-default={resource_name}`;
+- `version_metadata-default={version_title}`.
 
-Manuscripts and resources intentionally have empty `oslots`; their semantic relations are `witness`, `manuscript_of`, and `resource_of`. Each `variant_word` uses only the first slot of the locus as a technical anchor instead of duplicating the entire locus. This removes false textual extent and avoids a large multiplicative `oslots` expansion.
+Text-Fabric 13.1 does not serialize non-slot nodes with empty `oslots` in this generated dataset. Metadata-like nodes therefore use **one technical anchor slot only**, never their full witnessed/resource/version extent. Type-specific formats prevent standard `T.text()` from rendering that technical anchor as if it were the node's own text. Each `variant_word` likewise uses one locus anchor rather than copying the whole primary locus. This reduces the earlier multiplicative `oslots` expansion to O(1) anchoring per metadata/variant node.
 
 The package adds an `Apparatus` helper API for routine reading/witness operations so researchers need not manually join every edge.
 
@@ -110,9 +115,9 @@ This prevents `T.text(book)` from silently producing `lastwordNextword` across X
 The conversion is semantic rather than byte-for-byte. It preserves:
 
 - stable source-relative file path, SHA-256, upstream repository/commit, converter version;
-- book/version metadata;
+- every declared book/version, including metadata-only versions;
 - division declarations including label, delimiter, and permitted PCDATA;
-- every structural division and full source reference;
+- every structural textual division and full source reference;
 - unit IDs, group, parallel, and linebreak metadata;
 - every reading, literal/numeric option, witnesses, indentation/linebreak flags, normalized text, and mixed XML;
 - manuscript names, bibliography, language/show flags;
@@ -127,7 +132,7 @@ A successful parse/write/reload is not evidence of losslessness. The converter t
 
 Corpus-wide checks compare raw XML with generated TF for:
 
-- source SHA-256s and versions;
+- source SHA-256s and every declared version, including metadata-only versions;
 - division declarations and all structural division records;
 - unit attributes and unit→div parent linkage;
 - reading option/witness/flag/text/mixed-XML payloads;
@@ -136,11 +141,11 @@ Corpus-wide checks compare raw XML with generated TF for:
 - annotated `<w>` records;
 - primary reconstruction from slots;
 - alternative reconstruction from `variant_word` nodes;
-- complete/unique BHSA section coverage.
+- complete/unique BHSA section coverage over the textual slot stream.
 
-The report also records slot/node/`oslots`/variant/witness counts. Conversion exits non-zero if any semantic check fails.
+The report also records slot/node/`oslots`/variant/witness counts. Conversion exits non-zero if any semantic check fails. Section coverage and address uniqueness are calculated with slot maps in linear time rather than scanning every section for every slot.
 
-CI additionally installs real Text-Fabric and verifies that `T.text()` uses the node-specific defaults and that deep `source_ref` values map to the intended three-level TF address. It then converts the pinned complete OCP source and reloads the result.
+CI additionally installs real Text-Fabric and verifies that `T.text()` uses the node-specific defaults, metadata-only versions do not masquerade as text, and deep `source_ref` values map to the intended three-level TF address. It then converts the pinned complete OCP source and reloads the result.
 
 ## Rejected designs
 
@@ -158,7 +163,11 @@ This was implemented initially and rejected after review because it crippled nor
 
 ### Give manuscripts/resources/full variant tokens broad `oslots`
 
-This made `T.text()` semantics misleading and created potentially dense graph expansion. Semantic edges plus sparse/empty technical anchoring are more faithful.
+This made `T.text()` semantics misleading and created dense graph expansion. Semantic edges plus one technical anchor per metadata/variant node are more faithful and scale linearly.
+
+### Turn an empty upstream version into a fake textual book
+
+`TJob/Coptic` declares valid metadata while explicitly containing no text. Synthesizing slots or sections would imply that OCP provides Coptic text when it does not. A `version_metadata` node preserves the declaration without making that claim.
 
 ### Coerce chapter and verse values to integers
 
