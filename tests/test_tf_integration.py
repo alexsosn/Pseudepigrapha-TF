@@ -17,7 +17,7 @@ BASE_FEATURES = (
 )
 PASSAGE_FEATURES = "ms_language ms_name ms_show unit_id reading_of variant_word_of witness manuscript_of"
 WORK_PASSAGE_FEATURES = (
-    f"{PASSAGE_FEATURES} ocp_book language author version_id is_metadata_only"
+    f"{PASSAGE_FEATURES} ocp_book title language author version_id is_metadata_only"
 )
 
 
