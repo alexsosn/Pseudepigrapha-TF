@@ -82,16 +82,40 @@ This makes standard `T.text()` calls unsurprising. Text-Fabric 13.1 requires eve
 For routine apparatus work, the package also provides helpers:
 
 ```python
-from pseudepigrapha_tf.apparatus import Apparatus
+from pseudepigrapha_tf import Apparatus
 
 A = Apparatus(api)
 A.unit_readings(unit)
 A.reading_text(reading)
 A.reading_tokens(reading)
 A.witness_reading(unit, manuscript)
+A.witness_state(unit, manuscript)
 A.witness_text(manuscript)
 A.apparatus(unit)
+A.passage("1En", "1", "2")
 ```
+
+### Passage-level apparatus
+
+`Apparatus.passage(book, chapter, verse)` is the high-level interface for retrieving a verse together with all of its critical evidence. For example:
+
+```python
+passage = A.passage("1En", "1", "2")
+
+passage["units"]
+passage["witnesses"]["p"]["text"]
+passage["witnesses"]["Bertalotto"]["segments"]
+```
+
+The result contains every apparatus `unit` in the verse, every reading at each unit, and every manuscript declared for the containing OCP version. Per-witness `segments` explicitly distinguish:
+
+- `reading`: the witness is assigned to a non-empty reading;
+- `omission`: the witness is explicitly assigned to an empty OCP reading;
+- `unattested`: no reading at that unit cites the witness.
+
+A witness-level `text` is returned only when the witness is represented at every unit in the verse (explicit omissions count as represented). If one or more units are `unattested`, `text` is `None`; `attested_text` still gives the concatenation of the readings that are actually present. This prevents missing evidence from being silently turned into either an omission or a continuous reconstructed text.
+
+The API does not infer `lacuna` or `fragment` merely from absence. If OCP encodes such information only in the reading content rather than as a structural flag, that source wording remains available in the reading instead of being reclassified by the converter.
 
 ## Preservation audit
 
@@ -116,7 +140,7 @@ The report says `status: "ok"` only when every semantic check passes. Section co
 pytest
 ```
 
-The synthetic suite covers parser, graph, apparatus helpers, semantic parity, legacy OCP, deep/non-numeric references, omissions, metadata-only versions, and reproducible paths. CI additionally installs real Text-Fabric, verifies node-type `T.text()` behavior and deep `T.sectionFromNode()` addresses, converts the pinned complete OCP checkout, validates the parity report, and reloads the full dataset.
+The synthetic suite covers parser, graph, apparatus helpers, passage-level witness coverage, semantic parity, legacy OCP, deep/non-numeric references, omissions, metadata-only versions, and reproducible paths. CI additionally installs real Text-Fabric, verifies node-type `T.text()` behavior and deep `T.sectionFromNode()` addresses, converts the pinned complete OCP checkout, validates the parity report, reloads the full dataset, and exercises `Apparatus.passage("1En", "1", "2")` against the real upstream 1 Enoch edition.
 
 ## Licensing
 
