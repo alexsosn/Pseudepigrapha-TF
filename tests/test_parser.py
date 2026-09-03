@@ -2,7 +2,7 @@ from pathlib import Path
 
 import pytest
 
-from pseudepigrapha_tf.parser import EmptySourceError, parse_file
+from pseudepigrapha_tf.parser import EmptySourceError, parse_bytes, parse_file
 
 FIXTURES = Path(__file__).parent / "fixtures"
 
@@ -49,3 +49,8 @@ def test_legacy_book_chapter_verse_dialect_is_normalized_without_loss():
     assert verse.number == "20"
     assert verse.units[0].unit_id == "405"
     assert verse.units[0].linebreak == "following"
+
+
+def test_division_pcdata_is_preserved():
+    book = parse_bytes(b'''<book filename="D" title="D"><version title="V" author="A" language="Greek"><divisions><division label="Chapter" delimiter=":" >semantic division note</division></divisions><manuscripts><ms abbrev="A" language="Greek" show="yes"><name>A</name></ms></manuscripts><text><div number="1"><unit id="1"><reading option="0" mss="A ">x</reading></unit></div></text></version></book>''')
+    assert book.versions[0].divisions[0].text == "semantic division note"
