@@ -53,12 +53,14 @@ jobs:
         run: |
           python - <<'PY'
           from tf.fabric import Fabric
+          from pseudepigrapha_tf import Apparatus
 
           TF = Fabric(locations=['/tmp/pseudepigrapha-tf/0.1'], modules=[''], silent='deep')
           api = TF.load(
-              'reading_text ms_abbrev resource_name source_ref is_primary '
-              'prefix_utf8 g_word_utf8 trailer_utf8 boundary_utf8 '
-              'version_title version_id is_metadata_only ocp_book book',
+              'reading_text ms_abbrev ms_language ms_name ms_show resource_name source_ref is_primary is_omission '
+              'unit_id prefix_utf8 g_word_utf8 trailer_utf8 boundary_utf8 '
+              'version_title version_id is_metadata_only ocp_book book '
+              'reading_of variant_word_of witness manuscript_of',
               silent='deep',
           )
           assert api is not None
@@ -88,5 +90,19 @@ jobs:
           assert not any(
               api.F.ocp_book.v(n) == 'TJob' and api.F.version_title.v(n) == 'Coptic'
               for n in api.F.otype.s('book')
+          )
+
+          enoch = Apparatus(api).passage('1En', '1', '2')
+          assert enoch['reference'] == ('1En', '1', '2')
+          assert enoch['source_refs'] == ('1:2',)
+          assert {'p', 'Bertalotto'} <= set(enoch['witnesses'])
+          assert enoch['witnesses']['p']['complete'] is True
+          assert enoch['witnesses']['Bertalotto']['complete'] is True
+          assert enoch['witnesses']['p']['text']
+          assert enoch['witnesses']['Bertalotto']['text']
+          assert all(
+              segment['status'] in {'reading', 'omission', 'unattested'}
+              for witness in enoch['witnesses'].values()
+              for segment in witness['segments']
           )
           PY
