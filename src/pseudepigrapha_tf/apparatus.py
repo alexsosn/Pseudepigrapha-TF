@@ -23,6 +23,23 @@ class Apparatus:
             raise ValueError(f"feature {name!r} must be loaded for this Apparatus operation")
         return feature
 
+    def _book_id(self, book_node: int) -> str:
+        """Resolve the canonical TF book/section id for a textual version.
+
+        Text-Fabric uses section features internally when compiling ``T`` and
+        does not guarantee that a loaded section feature is exposed as a normal
+        ``F.<name>`` feature on section nodes. Resolve through the canonical
+        section API instead of depending on that implementation detail.
+        """
+
+        slots = tuple(self.api.L.d(book_node, otype="word"))
+        if not slots:
+            raise ValueError(f"textual OCP version node {book_node} contains no word slots")
+        section = self.api.T.sectionFromNode(slots[0])
+        if not section or not section[0]:
+            raise ValueError(f"cannot resolve TF book section id for textual OCP version node {book_node}")
+        return str(section[0])
+
     def _declared_witnesses(self, owner: int) -> dict[str, dict[str, object]]:
         manuscript_of = getattr(self.api.E, "manuscript_of", None)
         if manuscript_of is None:
@@ -236,7 +253,7 @@ class Apparatus:
                     for node in self.api.F.otype.s("book")
                     if str(ocp_book.v(node) or "") == work
                 ),
-                key=lambda node: str(self._feature("book", node, "")),
+                key=self._book_id,
             )
         )
         metadata_nodes = tuple(
@@ -258,9 +275,7 @@ class Apparatus:
 
         versions: dict[str, dict[str, object]] = {}
         for book_node in textual_books:
-            version_id = str(self._feature("book", book_node, ""))
-            if not version_id:
-                raise ValueError(f"textual OCP version node {book_node} has no loaded TF book feature")
+            version_id = self._book_id(book_node)
             try:
                 passage = self.passage(version_id, chapter, verse)
             except KeyError:
