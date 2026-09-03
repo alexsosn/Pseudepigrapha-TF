@@ -66,27 +66,33 @@ class TFData:
         if not otype:
             return ["missing otype"]
         errors: list[str] = []
-        nodes = set(range(1, self.max_node + 1))
+
+        # These properties scan the complete otype feature. Compute each bound
+        # exactly once: using self.max_slot inside an edge generator turns this
+        # otherwise-linear validation into O(nodes * oslots_edges).
+        max_slot = self.max_slot
+        max_node = self.max_node
+        nodes = set(range(1, max_node + 1))
         if set(otype) != nodes:
             errors.append("otype node ids are not contiguous from 1")
-        if any(otype.get(n) != "word" for n in range(1, self.max_slot + 1)):
+        if any(otype.get(n) != "word" for n in range(1, max_slot + 1)):
             errors.append("word slots are not the first contiguous nodes")
-        if any(otype.get(n) == "word" for n in range(self.max_slot + 1, self.max_node + 1)):
+        if any(otype.get(n) == "word" for n in range(max_slot + 1, max_node + 1)):
             errors.append("word slot found after non-slot nodes")
 
         # Text-Fabric indexes each non-slot type through its min/max node range.
         # Nodes of the same type therefore have to form one contiguous block;
         # interleaving types can make TF interpret unrelated nodes as sections.
-        non_slot_types = {otype[n] for n in range(self.max_slot + 1, self.max_node + 1)}
+        non_slot_types = {otype[n] for n in range(max_slot + 1, max_node + 1)}
         for kind in sorted(non_slot_types):
-            typed = [n for n in range(self.max_slot + 1, self.max_node + 1) if otype[n] == kind]
+            typed = [n for n in range(max_slot + 1, max_node + 1) if otype[n] == kind]
             if typed and typed != list(range(typed[0], typed[-1] + 1)):
                 errors.append(f"non-slot node type {kind} does not occupy one contiguous node-id range")
 
         oslots = self.edge_features.get("oslots", {})
-        if set(oslots) != set(range(self.max_slot + 1, self.max_node + 1)):
+        if set(oslots) != set(range(max_slot + 1, max_node + 1)):
             errors.append("oslots does not map every non-slot node exactly once")
-        if any(not 1 <= s <= self.max_slot for slots in oslots.values() for s in slots):
+        if any(not 1 <= s <= max_slot for slots in oslots.values() for s in slots):
             errors.append("oslots points outside slot range")
         for feature, values in self.edge_features.items():
             if feature == "oslots":
