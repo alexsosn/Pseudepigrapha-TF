@@ -26,7 +26,9 @@ Produce a reproducible converter for Online Critical Pseudepigrapha XML that use
 - [x] Generated graph invariants are validated before writing.
 - [x] Independent corpus-wide raw-XML→TF semantic parity is required for a successful conversion.
 - [x] Semantic section validation scales linearly with slots/section edges.
-- [x] CI converts a pinned complete OCP checkout, validates the report, and reloads the resulting TF dataset.
+- [x] A researcher can retrieve one `book/chapter/verse` together with all units, readings, and declared witnesses through one high-level API call.
+- [x] Passage-level witness reconstruction distinguishes explicit omission from lack of attestation and does not silently turn incomplete evidence into continuous text.
+- [x] CI converts a pinned complete OCP checkout, validates the report, reloads the resulting TF dataset, and exercises the passage API on real `1En 1:2`.
 - [x] The converter is independently licensed and does not vendor OCP source data.
 
 ## TDD sequence
@@ -92,6 +94,20 @@ Applied cases:
 - `TJob/Coptic`: upstream declares Coptic division/manuscript metadata but `<text></text>` because the fragmentary Coptic evidence has not yet been included. Preserve it as `version_metadata`; do not synthesize a Coptic textual `book`.
 - Text-Fabric 13.1 serialization: metadata-like non-slot nodes require a nonempty technical `oslots` anchor. Use one slot only and node-type formats so the anchor is never presented as their text.
 - parity audit scaling: replace slot×section scans with linear slot-coverage maps.
+
+### 10. Passage-level apparatus ergonomics
+
+Use `1En 1:2` as the motivating research query. Add a failing real-Text-Fabric test first requiring one call to return the verse's units/readings and all manuscripts declared for its OCP version.
+
+Implement `Apparatus.passage(book, chapter, verse)` and `witness_state(unit, manuscript)` with three explicit coverage states:
+
+- `reading`: witness assigned to a non-empty reading;
+- `omission`: witness explicitly assigned to an empty reading;
+- `unattested`: witness absent from all readings at that unit.
+
+Only expose a witness-level continuous `text` when every unit is represented; otherwise return `text=None` plus `attested_text` and the per-unit segments. Do not infer lacunae or fragmentary status from absence unless OCP provides a structural signal for it.
+
+Exercise the same call against the pinned upstream `1En 1:2` in CI so the convenience API is tested on the actual research target rather than only synthetic data.
 
 ## Out of scope for this PR
 
