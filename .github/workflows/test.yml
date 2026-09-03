@@ -27,47 +27,6 @@ jobs:
         run: |
           git clone https://github.com/OnlineCriticalPseudepigrapha/Online-Critical-Pseudepigrapha.git /tmp/ocp
           git -C /tmp/ocp checkout 2d1d14d23434a784d377ff7f4409ccdb2d18aafb
-      - name: Prove passage API on pinned 1 Enoch
-        run: |
-          mkdir -p /tmp/1en-source
-          cp /tmp/ocp/static/docs/1En.xml /tmp/1en-source/1En.xml
-          pseudepigrapha-tf convert /tmp/1en-source \
-            --output /tmp/1en-tf \
-            --upstream-commit 2d1d14d23434a784d377ff7f4409ccdb2d18aafb
-          python - <<'PY'
-          from tf.fabric import Fabric
-          from pseudepigrapha_tf import Apparatus
-
-          TF = Fabric(locations=['/tmp/1en-tf'], modules=[''], silent='deep')
-          api = TF.load(
-              'reading_text ms_abbrev ms_language ms_name ms_show source_ref is_primary unit_id '
-              'ocp_book title language author reading_of variant_word_of witness manuscript_of',
-              silent='deep',
-          )
-          assert api is not None
-          A = Apparatus(api)
-          passage = A.passage('1En', '1', '2')
-          assert passage['reference'] == ('1En', '1', '2')
-          assert passage['source_refs'] == ('1:2',)
-          assert {'p', 'Bertalotto'} <= set(passage['witnesses'])
-          assert passage['witnesses']['p']['complete'] is True
-          assert passage['witnesses']['Bertalotto']['complete'] is True
-          assert passage['witnesses']['p']['text']
-          assert passage['witnesses']['Bertalotto']['text']
-          assert all(
-              segment['status'] in {'reading', 'omission', 'unattested'}
-              for witness in passage['witnesses'].values()
-              for segment in witness['segments']
-          )
-
-          work = A.work_passage('1En', '1', '2')
-          assert work['work'] == '1En'
-          assert work['reference'] == ('1', '2')
-          assert set(work['versions']) == {'1En'}
-          assert work['metadata_only_versions'] == {}
-          assert work['versions']['1En']['status'] == 'available'
-          assert work['versions']['1En']['passage']['source_refs'] == ('1:2',)
-          PY
       - name: Convert and audit complete OCP XML set
         run: |
           time pseudepigrapha-tf convert /tmp/ocp/static/docs \
@@ -134,8 +93,11 @@ jobs:
           )
 
           A = Apparatus(api)
-          enoch = A.passage('1En', '1', '2')
-          assert enoch['reference'] == ('1En', '1', '2')
+
+          # 1 Enoch has four top-level OCP textual versions. passage() addresses
+          # one version explicitly; work_passage() retrieves all of them.
+          enoch = A.passage('1En__Ethiopic', '1', '2')
+          assert enoch['reference'] == ('1En__Ethiopic', '1', '2')
           assert enoch['source_refs'] == ('1:2',)
           assert {'p', 'Bertalotto'} <= set(enoch['witnesses'])
           assert enoch['witnesses']['p']['complete'] is True
@@ -149,9 +111,27 @@ jobs:
           )
 
           enoch_work = A.work_passage('1En', '1', '2')
-          assert set(enoch_work['versions']) == {'1En'}
-          assert enoch_work['versions']['1En']['status'] == 'available'
-          assert enoch_work['versions']['1En']['passage']['source_refs'] == ('1:2',)
+          assert enoch_work['work'] == '1En'
+          assert enoch_work['title'] == '1 Enoch'
+          assert enoch_work['reference'] == ('1', '2')
+          assert set(enoch_work['versions']) == {
+              '1En__Ethiopic',
+              '1En__Qumran_Aramaic',
+              '1En__Latin_Fragments',
+              '1En__Greek',
+          }
+          assert enoch_work['metadata_only_versions'] == {}
+          assert {record['title'] for record in enoch_work['versions'].values()} == {
+              'Ethiopic', 'Qumran Aramaic', 'Latin Fragments', 'Greek'
+          }
+          assert all(
+              record['status'] in {'available', 'not_present'}
+              for record in enoch_work['versions'].values()
+          )
+          ethiopic = enoch_work['versions']['1En__Ethiopic']
+          assert ethiopic['status'] == 'available'
+          assert ethiopic['passage']['source_refs'] == ('1:2',)
+          assert {'p', 'Bertalotto'} <= set(ethiopic['passage']['witnesses'])
 
           tjob = A.work_passage('TJob', '1', '1')
           assert 'TJob__Coptic' in tjob['metadata_only_versions']
