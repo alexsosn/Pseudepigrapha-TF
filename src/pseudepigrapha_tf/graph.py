@@ -73,6 +73,16 @@ class TFData:
             errors.append("word slots are not the first contiguous nodes")
         if any(otype.get(n) == "word" for n in range(self.max_slot + 1, self.max_node + 1)):
             errors.append("word slot found after non-slot nodes")
+
+        # Text-Fabric indexes each non-slot type through its min/max node range.
+        # Nodes of the same type therefore have to form one contiguous block;
+        # interleaving types can make TF interpret unrelated nodes as sections.
+        non_slot_types = {otype[n] for n in range(self.max_slot + 1, self.max_node + 1)}
+        for kind in sorted(non_slot_types):
+            typed = [n for n in range(self.max_slot + 1, self.max_node + 1) if otype[n] == kind]
+            if typed and typed != list(range(typed[0], typed[-1] + 1)):
+                errors.append(f"non-slot node type {kind} does not occupy one contiguous node-id range")
+
         oslots = self.edge_features.get("oslots", {})
         if set(oslots) != set(range(self.max_slot + 1, self.max_node + 1)):
             errors.append("oslots does not map every non-slot node exactly once")
@@ -133,7 +143,16 @@ class _Builder:
         otype = {n: "word" for n in range(1, max_slot + 1)}
         key_to_node: dict[str, int] = {}
         oslots: dict[int, set[int]] = {}
-        for node_id, obj in enumerate(self.objects, max_slot + 1):
+
+        # Text-Fabric's derived indexes use the first/last node id of each
+        # non-slot otype as that type's support range. Preserve source creation
+        # order *within* a type, but group every type into one contiguous block.
+        # The first-seen kind order keeps numbering deterministic without making
+        # graph construction depend on alphabetical type names.
+        kinds = list(dict.fromkeys(obj.kind for obj in self.objects))
+        ordered_objects = [obj for kind in kinds for obj in self.objects if obj.kind == kind]
+
+        for node_id, obj in enumerate(ordered_objects, max_slot + 1):
             key_to_node[obj.key] = node_id
             otype[node_id] = obj.kind
             oslots[node_id] = set(obj.slots)
