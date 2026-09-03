@@ -36,11 +36,12 @@ def _section_coverage_ok(data: TFData) -> bool:
     """Verify exactly one book/chapter/verse per primary slot in linear time."""
 
     oslots = data.edge_features.get("oslots", {})
+    max_slot = data.max_slot
     for kind in ("book", "chapter", "verse"):
-        coverage = bytearray(data.max_slot + 1)
+        coverage = bytearray(max_slot + 1)
         for node in base._nodes(data, kind):
             for slot in oslots.get(node, set()):
-                if slot > data.max_slot:
+                if slot > max_slot:
                     return False
                 if coverage[slot] < 2:
                     coverage[slot] += 1
