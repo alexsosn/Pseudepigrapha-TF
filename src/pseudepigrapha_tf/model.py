@@ -19,6 +19,7 @@ class Token:
 class DivisionSpec:
     label: str
     delimiter: str = ""
+    text: str = ""
 
 
 @dataclass(frozen=True)
