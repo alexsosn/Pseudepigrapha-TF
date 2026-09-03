@@ -15,10 +15,9 @@ BASE_FEATURES = (
     "reading_text ms_abbrev resource_name source_ref is_primary "
     "prefix_utf8 g_word_utf8 trailer_utf8 boundary_utf8 version_title"
 )
-PASSAGE_FEATURES = "ms_language ms_name ms_show unit_id reading_of variant_word_of witness manuscript_of"
-WORK_PASSAGE_FEATURES = (
-    f"{PASSAGE_FEATURES} book ocp_book title language author version_id is_metadata_only"
-)
+PASSAGE_FEATURES = "ms_language ms_name ms_show unit_id reading_of witness manuscript_of"
+WORK_PASSAGE_FEATURES = f"{PASSAGE_FEATURES} book ocp_book title language author"
+METADATA_WORK_PASSAGE_FEATURES = f"{WORK_PASSAGE_FEATURES} version_id"
 
 
 def _load(data, tmp_path, extra_features=""):
@@ -127,7 +126,7 @@ def test_work_passage_preserves_metadata_only_versions(tmp_path):
     api = _load(
         build_tf_data([parse_file(FIXTURES / "metadata_only_version.xml")]),
         tmp_path,
-        WORK_PASSAGE_FEATURES,
+        METADATA_WORK_PASSAGE_FEATURES,
     )
     assert api is not None
 
