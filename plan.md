@@ -7,14 +7,15 @@ Produce a reproducible converter for Online Critical Pseudepigrapha XML that use
 ## Acceptance criteria
 
 - [x] `word` is the Text-Fabric slot type.
-- [x] Standard sections are `book`, `chapter`, `verse`.
+- [x] Standard textual sections are `book`, `chapter`, `verse`.
 - [x] Primary Unicode text uses BHSA-familiar word/trailer features plus explicit boundary reconstruction.
 - [x] Full OCP source citations are directly exposed on loci/readings/tokens.
 - [x] Three- and four-level OCP references map truthfully into the three-level TF section API.
 - [x] All source `div`, `unit`, `reading`, manuscript, resource, division-declaration, and `<w>` information required for scholarly reconstruction is retained.
+- [x] Declared upstream versions with no textual units remain representable without inventing TF text/sections.
 - [x] Alternative readings remain token-queryable without contaminating the primary slot stream.
 - [x] `T.text(reading)` cannot silently display the primary reading for an alternative.
-- [x] Manuscripts/resources do not claim fictitious textual extent.
+- [x] Manuscript/resource/metadata-version nodes use only O(1) technical anchoring and do not render that anchor as their own text.
 - [x] Empty readings/omissions and empty primary loci remain representable.
 - [x] Nonnumeric division values survive conversion.
 - [x] Multi-version OCP files have unambiguous TF section addresses.
@@ -24,6 +25,7 @@ Produce a reproducible converter for Online Critical Pseudepigrapha XML that use
 - [x] Unit tests use synthetic fixtures rather than copied OCP edition text.
 - [x] Generated graph invariants are validated before writing.
 - [x] Independent corpus-wide raw-XML→TF semantic parity is required for a successful conversion.
+- [x] Semantic section validation scales linearly with slots/section edges.
 - [x] CI converts a pinned complete OCP checkout, validates the report, and reloads the resulting TF dataset.
 - [x] The converter is independently licensed and does not vendor OCP source data.
 
@@ -43,7 +45,7 @@ Write failing tests for one-level and deep division schemes, nonnumeric values, 
 
 ### 4. Text-Fabric writer
 
-Write a writer contract around `Fabric.save`, then implement lazy Text-Fabric integration.
+Write a writer contract around `Fabric.save`, then implement lazy Text-Fabric integration. Ensure every feature referenced by an `fmt:*` template is serialized even when all values are empty in a particular corpus.
 
 ### 5. End-to-end source loader and CLI
 
@@ -58,7 +60,7 @@ Write failing tests before implementation for:
 - unit→div parent edges;
 - node-specific default text formats;
 - deterministic unit/line boundaries;
-- sparse `oslots` for manuscripts/resources/variant tokens;
+- O(1) technical `oslots` for manuscripts/resources/variant tokens;
 - stable source-relative paths and upstream provenance;
 - apparatus helper API.
 
@@ -80,6 +82,16 @@ Install the real Text-Fabric dependency in CI and assert:
 - full pinned OCP conversion passes the semantic report;
 - generated TF reloads successfully;
 - conversion stays within the CI runtime budget.
+
+### 9. Full-corpus edge cases discovered by the parity run
+
+When pinned-upstream CI exposes a valid source shape not covered by synthetic fixtures, add a failing fixture/test first and preserve the upstream semantics rather than weakening validation.
+
+Applied cases:
+
+- `TJob/Coptic`: upstream declares Coptic division/manuscript metadata but `<text></text>` because the fragmentary Coptic evidence has not yet been included. Preserve it as `version_metadata`; do not synthesize a Coptic textual `book`.
+- Text-Fabric 13.1 serialization: metadata-like non-slot nodes require a nonempty technical `oslots` anchor. Use one slot only and node-type formats so the anchor is never presented as their text.
+- parity audit scaling: replace slot×section scans with linear slot-coverage maps.
 
 ## Out of scope for this PR
 
