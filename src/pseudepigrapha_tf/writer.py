@@ -4,7 +4,7 @@ import re
 from pathlib import Path
 from typing import Callable, Protocol
 
-from .graph import TFData
+from .graph import INT_FEATURES, TFData
 
 
 class _FabricLike(Protocol):
@@ -33,6 +33,23 @@ def _node_features_with_format_dependencies(data: TFData) -> dict[str, dict[int,
     return node_features
 
 
+def _metadata_with_node_features(
+    data: TFData, node_features: dict[str, dict[int, str | int]]
+) -> dict[str, dict[str, str]]:
+    """Ensure every serialized node feature has valid TF feature metadata."""
+
+    metadata = {name: dict(values) for name, values in data.metadata.items()}
+    for feature in node_features:
+        metadata.setdefault(
+            feature,
+            {
+                "valueType": "int" if feature in INT_FEATURES else "str",
+                "description": f"OCP/TF feature {feature}",
+            },
+        )
+    return metadata
+
+
 def write_tf(
     data: TFData,
     output_dir: str | Path,
@@ -50,12 +67,14 @@ def write_tf(
         except ImportError as exc:  # pragma: no cover - environment-specific
             raise RuntimeError("Text-Fabric is required to write .tf files; install the project dependencies") from exc
         fabric_factory = Fabric
+    node_features = _node_features_with_format_dependencies(data)
+    metadata = _metadata_with_node_features(data, node_features)
     fabric = fabric_factory(locations=[], modules=[], silent="deep")
     return bool(
         fabric.save(
-            nodeFeatures=_node_features_with_format_dependencies(data),
+            nodeFeatures=node_features,
             edgeFeatures=data.edge_features,
-            metaData=data.metadata,
+            metaData=metadata,
             location=str(output),
             module="",
             silent="deep",
