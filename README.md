@@ -93,11 +93,12 @@ A.witness_state(unit, manuscript)
 A.witness_text(manuscript)
 A.apparatus(unit)
 A.passage("1En", "1", "2")
+A.work_passage("1En", "1", "2")
 ```
 
 ### Passage-level apparatus
 
-`Apparatus.passage(book, chapter, verse)` is the high-level interface for retrieving a verse together with all of its critical evidence. For example:
+`Apparatus.passage(book, chapter, verse)` is the high-level interface for retrieving a verse together with all of its critical evidence from one textual OCP version. For example:
 
 ```python
 passage = A.passage("1En", "1", "2")
@@ -116,6 +117,45 @@ The result contains every apparatus `unit` in the verse, every reading at each u
 A witness-level `text` is returned only when the witness is represented at every unit in the verse (explicit omissions count as represented). If one or more units are `unattested`, `text` is `None`; `attested_text` still gives the concatenation of the readings that are actually present. This prevents missing evidence from being silently turned into either an omission or a continuous reconstructed text.
 
 The API does not infer `lacuna` or `fragment` merely from absence. If OCP encodes such information only in the reading content rather than as a structural flag, that source wording remains available in the reading instead of being reclassified by the converter.
+
+### Work-level retrieval across all versions
+
+`Apparatus.work_passage(work, chapter, verse)` is the work-level interface for the common research query “give me this passage in every OCP version and witness”. It discovers all textual versions through the preserved `ocp_book` identity and then applies the same passage/apparatus logic to each one.
+
+For a multi-version work:
+
+```python
+result = A.work_passage("Multi", "1", "1")
+
+result["versions"]["Multi__Syriac"]["passage"]
+result["versions"]["Multi__Greek"]["passage"]
+```
+
+Textual versions are keyed by their stable TF book/version id rather than by human-readable title, so duplicate titles cannot overwrite one another. Each version record includes its title, language, author, declared witnesses, status, and passage result.
+
+The status is explicit:
+
+- `available`: that textual version contains the requested TF section;
+- `not_present`: the textual version exists, but that requested section does not;
+- `metadata_only`: the upstream version is declared by OCP but contains no textual units at all.
+
+Metadata-only versions are returned separately under `metadata_only_versions` with their declared witness metadata and `passage=None`. Thus a fragmentary or not-yet-transcribed version never disappears from the work-level result and is never converted into a fake empty passage.
+
+For example, on the pinned corpus a `TJob` query still exposes the Coptic version metadata even though OCP has `<text></text>` for that version:
+
+```python
+result = A.work_passage("TJob", "1", "1")
+result["metadata_only_versions"]["TJob__Coptic"]
+```
+
+For `1En`, which has one top-level OCP textual version whose Greek, Latin, Aramaic, and Ethiopic evidence is represented primarily through the witness apparatus, the same work-level call remains useful:
+
+```python
+result = A.work_passage("1En", "1", "2")
+result["versions"]["1En"]["passage"]["witnesses"]
+```
+
+When loading only selected TF features, `work_passage()` requires at least `ocp_book` plus the features/edges needed by `passage()` (`reading_text`, `ms_abbrev`, `unit_id`, `reading_of`, `variant_word_of`, `witness`, `manuscript_of`). Load `title`, `version_title`, `language`, `author`, `ms_language`, `ms_name`, and `ms_show` as well if those metadata fields are desired in the returned records.
 
 ## Preservation audit
 
@@ -140,7 +180,7 @@ The report says `status: "ok"` only when every semantic check passes. Section co
 pytest
 ```
 
-The synthetic suite covers parser, graph, apparatus helpers, passage-level witness coverage, semantic parity, legacy OCP, deep/non-numeric references, omissions, metadata-only versions, and reproducible paths. CI additionally installs real Text-Fabric, verifies node-type `T.text()` behavior and deep `T.sectionFromNode()` addresses, converts the pinned complete OCP checkout, validates the parity report, reloads the full dataset, and exercises `Apparatus.passage("1En", "1", "2")` against the real upstream 1 Enoch edition.
+The synthetic suite covers parser, graph, apparatus helpers, passage-level witness coverage, work-level multi-version retrieval, semantic parity, legacy OCP, deep/non-numeric references, omissions, metadata-only versions, and reproducible paths. CI additionally installs real Text-Fabric, verifies node-type `T.text()` behavior and deep `T.sectionFromNode()` addresses, converts the pinned complete OCP checkout, validates the parity report, reloads the full dataset, exercises `Apparatus.passage("1En", "1", "2")`, exercises `Apparatus.work_passage("1En", "1", "2")`, and verifies that real `TJob/Coptic` remains visible as metadata-only evidence.
 
 ## Licensing
 
