@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from pseudepigrapha_tf.graph import build_tf_data
+from pseudepigrapha_tf.conversion import build_tf_data
 from pseudepigrapha_tf.parser import parse_file
 
 FIXTURES = Path(__file__).parent / "fixtures"
