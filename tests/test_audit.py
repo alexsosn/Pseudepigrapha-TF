@@ -1,7 +1,7 @@
 from pathlib import Path
 
-from pseudepigrapha_tf.audit import build_conversion_report
-from pseudepigrapha_tf.graph import build_tf_data
+from pseudepigrapha_tf.conversion import build_tf_data
+from pseudepigrapha_tf.semantic_audit import build_conversion_report
 from pseudepigrapha_tf.source import load_source_directory
 
 FIXTURES = Path(__file__).parent / "fixtures"
