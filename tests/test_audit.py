@@ -1,7 +1,8 @@
 from pathlib import Path
 
 from pseudepigrapha_tf.conversion import build_tf_data
-from pseudepigrapha_tf.semantic_audit import build_conversion_report
+from pseudepigrapha_tf.graph import TFData
+from pseudepigrapha_tf.semantic_audit import _section_coverage_ok, build_conversion_report
 from pseudepigrapha_tf.source import load_source_directory
 
 FIXTURES = Path(__file__).parent / "fixtures"
@@ -27,6 +28,27 @@ def test_conversion_report_proves_semantic_parity_against_raw_xml(tmp_path):
     assert report["graph"]["oslots_edges"] == data.oslots_edge_count
     assert report["source"]["readings"] == len([n for n, kind in data.node_features["otype"].items() if kind == "reading"])
     assert report["provenance"]["upstream_commit"] == "abc123"
+
+
+def test_section_coverage_computes_slot_bound_once():
+    data = build_tf_data([load_source_directory(FIXTURES)[0][0]])
+
+    class CountingTFData(TFData):
+        max_slot_calls = 0
+
+        @property
+        def max_slot(self):
+            self.max_slot_calls += 1
+            return super().max_slot
+
+    counted = CountingTFData(
+        data.node_features,
+        data.edge_features,
+        data.metadata,
+        data.warnings,
+    )
+    assert _section_coverage_ok(counted) is True
+    assert counted.max_slot_calls == 1
 
 
 def test_conversion_report_includes_metadata_only_versions(tmp_path):
