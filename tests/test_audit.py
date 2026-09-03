@@ -2,7 +2,12 @@ from pathlib import Path
 
 from pseudepigrapha_tf.conversion import build_tf_data
 from pseudepigrapha_tf.graph import TFData
-from pseudepigrapha_tf.semantic_audit import _section_coverage_ok, build_conversion_report
+from pseudepigrapha_tf.parser import parse_file
+from pseudepigrapha_tf.semantic_audit import (
+    _section_address_collisions,
+    _section_coverage_ok,
+    build_conversion_report,
+)
 from pseudepigrapha_tf.source import load_source_directory
 
 FIXTURES = Path(__file__).parent / "fixtures"
@@ -31,7 +36,7 @@ def test_conversion_report_proves_semantic_parity_against_raw_xml(tmp_path):
 
 
 def test_section_coverage_computes_slot_bound_once():
-    data = build_tf_data([load_source_directory(FIXTURES)[0][0]])
+    data = build_tf_data([parse_file(FIXTURES / "sample.xml")])
 
     class CountingTFData(TFData):
         max_slot_calls = 0
@@ -49,6 +54,26 @@ def test_section_coverage_computes_slot_bound_once():
     )
     assert _section_coverage_ok(counted) is True
     assert counted.max_slot_calls == 1
+
+
+def test_section_address_collisions_report_nodes_and_source_refs():
+    data = build_tf_data([parse_file(FIXTURES / "three_divisions.xml")])
+    verses = [n for n, kind in data.node_features["otype"].items() if kind == "verse"]
+    assert len(verses) == 2
+    first, second = verses
+    first_address = data.node_features["verse"][first]
+    source_refs = [data.node_features["source_ref"][node] for node in verses]
+
+    data.node_features["verse"][second] = first_address
+    collisions = _section_address_collisions(data)
+
+    assert collisions == [
+        {
+            "address": ["Deep", "9.4b", first_address],
+            "nodes": [first, second],
+            "source_refs": source_refs,
+        }
+    ]
 
 
 def test_conversion_report_includes_metadata_only_versions(tmp_path):
