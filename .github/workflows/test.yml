@@ -42,7 +42,9 @@ jobs:
           assert report['status'] == 'ok', report['failed_checks']
           assert all(report['semantic_checks'].values())
           assert report['provenance']['upstream_commit'] == '2d1d14d23434a784d377ff7f4409ccdb2d18aafb'
+          assert report['source']['versions'] == report['graph']['versions']
           assert report['source']['readings'] == report['graph']['readings']
+          assert report['graph']['metadata_only_versions'] >= 1
           assert report['graph']['slots'] > 0
           assert report['graph']['oslots_edges'] > 0
           print(json.dumps({'source': report['source'], 'graph': report['graph']}, indent=2))
@@ -55,7 +57,8 @@ jobs:
           TF = Fabric(locations=['/tmp/pseudepigrapha-tf/0.1'], modules=[''], silent='deep')
           api = TF.load(
               'reading_text ms_abbrev resource_name source_ref is_primary '
-              'prefix_utf8 g_word_utf8 trailer_utf8 boundary_utf8',
+              'prefix_utf8 g_word_utf8 trailer_utf8 boundary_utf8 '
+              'version_title version_id is_metadata_only ocp_book book',
               silent='deep',
           )
           assert api is not None
@@ -75,4 +78,15 @@ jobs:
           deep_unit = next(n for n in api.F.otype.s('unit') if api.F.source_ref.v(n) == '1:23:153:4')
           section = api.T.sectionFromNode(deep_unit)
           assert section[1:] == ('1:23:153', '4'), section
+
+          coptic = next(
+              n for n in api.F.otype.s('version_metadata')
+              if api.F.ocp_book.v(n) == 'TJob' and api.F.version_title.v(n) == 'Coptic'
+          )
+          assert api.F.is_metadata_only.v(coptic) == 1
+          assert api.T.text(coptic) == 'Coptic'
+          assert not any(
+              api.F.ocp_book.v(n) == 'TJob' and api.F.version_title.v(n) == 'Coptic'
+              for n in api.F.otype.s('book')
+          )
           PY
