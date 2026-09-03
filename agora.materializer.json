@@ -1,0 +1,54 @@
+{
+  "schema_version": 1,
+  "plugin": {
+    "id": "pseudepigrapha-tf",
+    "name": "Pseudepigrapha-TF",
+    "version": "0.1.0",
+    "repository": "alexsosn/Pseudepigrapha-TF"
+  },
+  "materializers": [
+    {
+      "id": "ocp-text-fabric",
+      "description": "Convert Online Critical Pseudepigrapha XML source files into a local Text-Fabric corpus.",
+      "acquisition": [
+        {
+          "type": "git",
+          "url": "https://github.com/OnlineCriticalPseudepigrapha/Online-Critical-Pseudepigrapha.git",
+          "ref": "2d1d14d23434a784d377ff7f4409ccdb2d18aafb",
+          "subpath": "static/docs"
+        },
+        {
+          "type": "user-local",
+          "path_type": "directory",
+          "prompt": "Select the Online Critical Pseudepigrapha static/docs directory"
+        }
+      ],
+      "input": {
+        "type": "directory",
+        "required_globs": [
+          "*.xml"
+        ],
+        "allow_symlinks": false
+      },
+      "execution": {
+        "type": "python-module",
+        "module": "pseudepigrapha_tf.cli",
+        "args": [
+          "convert",
+          "{source}",
+          "--output",
+          "{output}"
+        ],
+        "network": "deny"
+      },
+      "output": {
+        "format": "text-fabric",
+        "required_paths": [
+          "otype.tf",
+          "oslots.tf",
+          "conversion-report.json"
+        ]
+      }
+    }
+  ]
+}
