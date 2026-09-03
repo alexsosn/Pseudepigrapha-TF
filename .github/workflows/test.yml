@@ -81,7 +81,7 @@ jobs:
           assert api is not None
           assert api.F.otype.maxSlot > 0
           assert api.F.otype.slotType == 'word'
-          assert api.T.sectionTypes == ('book', 'chapter', 'verse')
+          assert tuple(api.T.sectionTypes) == ('book', 'chapter', 'verse')
 
           alternative = next(
               n for n in api.F.otype.s('reading')
@@ -95,6 +95,14 @@ jobs:
           deep_unit = next(n for n in api.F.otype.s('unit') if api.F.source_ref.v(n) == '1:23:153:4')
           section = api.T.sectionFromNode(deep_unit)
           assert section[1:] == ('1:23:153', '4'), section
+
+          # OCP contains exact duplicate source citations. Both remain preserved,
+          # while the later occurrence receives only a technical TF-address suffix.
+          ezra_first = api.T.nodeFromSection(('4Ezra__Syriac', '10', '4'))
+          ezra_second = api.T.nodeFromSection(('4Ezra__Syriac', '10', '4~2'))
+          assert ezra_first is not None and ezra_second is not None and ezra_first != ezra_second
+          assert api.F.source_ref.v(ezra_first) == '10:4'
+          assert api.F.source_ref.v(ezra_second) == '10:4'
 
           coptic = next(
               n for n in api.F.otype.s('version_metadata')
