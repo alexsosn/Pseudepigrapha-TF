@@ -43,8 +43,22 @@ def test_node_type_default_formats_prevent_misleading_text(tmp_path):
 def test_deep_source_reference_has_truthful_three_level_tf_address(tmp_path):
     api = _load(build_tf_data([parse_file(FIXTURES / "three_divisions.xml")]), tmp_path)
     assert api is not None
+    assert tuple(api.T.sectionTypes) == ("book", "chapter", "verse")
     unit = next(node for node in api.F.otype.s("unit") if api.F.source_ref.v(node) == "9.4b.1")
     assert api.T.sectionFromNode(unit)[1:] == ("9.4b", "1")
+
+
+def test_duplicate_source_sections_remain_individually_addressable(tmp_path):
+    api = _load(build_tf_data([parse_file(FIXTURES / "duplicate_sections.xml")]), tmp_path)
+    assert api is not None
+
+    first = api.T.nodeFromSection(("Dup", "10", "4"))
+    second = api.T.nodeFromSection(("Dup", "10", "4~2"))
+    assert first is not None
+    assert second is not None
+    assert first != second
+    assert api.F.source_ref.v(first) == "10:4"
+    assert api.F.source_ref.v(second) == "10:4"
 
 
 def test_metadata_only_version_has_nonmisleading_default_text(tmp_path):
