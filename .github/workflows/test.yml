@@ -57,7 +57,7 @@ jobs:
 
           TF = Fabric(locations=['/tmp/pseudepigrapha-tf/0.1'], modules=[''], silent='deep')
           api = TF.load(
-              'reading_text ms_abbrev ms_language ms_name ms_show resource_name source_ref is_primary is_omission '
+              'reading_text ms_abbrev ms_language ms_name ms_show resource_name source_ref is_primary '
               'unit_id prefix_utf8 g_word_utf8 trailer_utf8 boundary_utf8 '
               'version_title version_id is_metadata_only ocp_book book '
               'reading_of variant_word_of witness manuscript_of',
