@@ -1,6 +1,8 @@
 """Online Critical Pseudepigrapha to Text-Fabric conversion."""
 
-from .apparatus import Apparatus
-
 __version__ = "0.1.0"
-__all__ = ["Apparatus", "__version__"]
+
+from .apparatus import Apparatus
+from .conversion import build_tf_data
+
+__all__ = ["Apparatus", "build_tf_data", "__version__"]
