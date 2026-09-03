@@ -1,0 +1,38 @@
+name: test
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  unit-and-upstream-integration:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+      - name: Install
+        run: pip install -e '.[dev]'
+      - name: Unit tests
+        run: pytest
+      - name: Clone pinned OCP source
+        run: |
+          git clone https://github.com/OnlineCriticalPseudepigrapha/Online-Critical-Pseudepigrapha.git /tmp/ocp
+          git -C /tmp/ocp checkout 2d1d14d23434a784d377ff7f4409ccdb2d18aafb
+      - name: Convert complete OCP XML set
+        run: pseudepigrapha-tf convert /tmp/ocp/static/docs --output /tmp/pseudepigrapha-tf/0.1
+      - name: Reload generated Text-Fabric dataset
+        run: |
+          python - <<'PY'
+          from tf.fabric import Fabric
+
+          TF = Fabric(locations=['/tmp/pseudepigrapha-tf/0.1'], modules=[''], silent='deep')
+          api = TF.load('', silent='deep')
+          assert api is not None
+          assert api.F.otype.maxSlot > 0
+          assert api.F.otype.slotType == 'word'
+          assert api.T.sectionTypes == ('book', 'chapter', 'verse')
+          PY

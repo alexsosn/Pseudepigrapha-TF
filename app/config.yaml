@@ -1,0 +1,4 @@
+apiVersion: 3
+provenanceSpec:
+  corpus: Online Critical Pseudepigrapha (Text-Fabric conversion)
+  version: 0.1
