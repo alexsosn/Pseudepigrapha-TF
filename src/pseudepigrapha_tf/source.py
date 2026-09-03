@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from .model import Book
-from .parser import EmptySourceError, parse_file
+from .parser import EmptySourceError, parse_bytes
 
 
 def load_source_directory(path: str | Path) -> tuple[list[Book], list[str]]:
@@ -14,7 +14,7 @@ def load_source_directory(path: str | Path) -> tuple[list[Book], list[str]]:
         if xml_path.name.startswith("."):
             continue
         try:
-            books.append(parse_file(xml_path))
+            books.append(parse_bytes(xml_path.read_bytes(), source_path=xml_path.name))
         except EmptySourceError:
             warnings.append(f"skipping empty XML source: {xml_path.name}")
     return books, warnings
