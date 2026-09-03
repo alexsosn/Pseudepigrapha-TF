@@ -50,8 +50,8 @@ def _section_coverage_ok(data: TFData) -> bool:
     return True
 
 
-def _section_addresses_unique(data: TFData) -> bool:
-    """Verify unique section addresses without repeated global section scans."""
+def _section_address_records(data: TFData) -> list[tuple[tuple[str, str, str], int, str]] | None:
+    """Resolve every verse to its TF address and exact upstream source ref."""
 
     oslots = data.edge_features.get("oslots", {})
     slot_book: dict[int, int] = {}
@@ -60,15 +60,15 @@ def _section_addresses_unique(data: TFData) -> bool:
     for node in base._nodes(data, "book"):
         for slot in oslots.get(node, set()):
             if slot in slot_book:
-                return False
+                return None
             slot_book[slot] = node
     for node in base._nodes(data, "chapter"):
         for slot in oslots.get(node, set()):
             if slot in slot_chapter:
-                return False
+                return None
             slot_chapter[slot] = node
 
-    seen: set[tuple[str, str, str]] = set()
+    records: list[tuple[tuple[str, str, str], int, str]] = []
     for verse in base._nodes(data, "verse"):
         slots = oslots.get(verse, set())
         if not slots:
@@ -76,7 +76,7 @@ def _section_addresses_unique(data: TFData) -> bool:
         book_nodes = {slot_book.get(slot) for slot in slots}
         chapter_nodes = {slot_chapter.get(slot) for slot in slots}
         if None in book_nodes or None in chapter_nodes or len(book_nodes) != 1 or len(chapter_nodes) != 1:
-            return False
+            return None
         book_node = next(iter(book_nodes))
         chapter_node = next(iter(chapter_nodes))
         address = (
@@ -84,6 +84,38 @@ def _section_addresses_unique(data: TFData) -> bool:
             str(base._feature(data, "chapter", chapter_node)),
             str(base._feature(data, "verse", verse)),
         )
+        records.append((address, verse, str(base._feature(data, "source_ref", verse))))
+    return records
+
+
+def _section_address_collisions(data: TFData) -> list[dict]:
+    """Return duplicate TF section addresses with enough provenance to debug them."""
+
+    records = _section_address_records(data)
+    if records is None:
+        return []
+    grouped: dict[tuple[str, str, str], list[tuple[int, str]]] = {}
+    for address, node, source_ref in records:
+        grouped.setdefault(address, []).append((node, source_ref))
+    return [
+        {
+            "address": list(address),
+            "nodes": [node for node, _ in entries],
+            "source_refs": [source_ref for _, source_ref in entries],
+        }
+        for address, entries in grouped.items()
+        if len(entries) > 1
+    ]
+
+
+def _section_addresses_unique(data: TFData) -> bool:
+    """Verify every textual section has a unique TF address."""
+
+    records = _section_address_records(data)
+    if records is None:
+        return False
+    seen: set[tuple[str, str, str]] = set()
+    for address, _, _ in records:
         if address in seen:
             return False
         seen.add(address)
@@ -102,6 +134,7 @@ def build_conversion_report(source_dir: str | Path, books: list[Book], data: TFD
     primary_ok, alternative_ok = base._reconstruction_checks(data)
     source_hashes = {record["file"]: record["sha256"] for record in raw["files"]}
     model_hashes = {book.source_path: book.source_sha256 for book in books}
+    section_address_collisions = _section_address_collisions(data)
 
     checks = {
         "source_hashes": source_hashes == model_hashes,
@@ -160,6 +193,9 @@ def build_conversion_report(source_dir: str | Path, books: list[Book], data: TFD
         "status": "ok" if not failed else "failed",
         "failed_checks": failed,
         "semantic_checks": checks,
+        "diagnostics": {
+            "duplicate_section_addresses": section_address_collisions,
+        },
         "source": source_counts,
         "graph": graph_counts,
         "source_sha256": source_hashes,
