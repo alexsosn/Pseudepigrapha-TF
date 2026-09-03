@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import tomllib
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -8,10 +9,11 @@ ROOT = Path(__file__).resolve().parents[1]
 
 def test_agora_materializer_manifest_declares_ocp_to_tf_contract():
     manifest = json.loads((ROOT / "agora.materializer.json").read_text(encoding="utf-8"))
+    project = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))["project"]
 
     assert manifest["schema_version"] == 1
     assert manifest["plugin"]["id"] == "pseudepigrapha-tf"
-    assert manifest["plugin"]["version"] == "0.1.0"
+    assert manifest["plugin"]["version"] == project["version"]
 
     materializer = manifest["materializers"][0]
     assert materializer["id"] == "ocp-text-fabric"
