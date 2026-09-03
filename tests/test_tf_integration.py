@@ -18,7 +18,7 @@ def _load(data, tmp_path):
     assert write_tf(data, output)
     TF = Fabric(locations=[str(output)], modules=[""], silent="deep")
     return TF.load(
-        "reading_text ms_abbrev ms_language ms_name ms_show resource_name source_ref is_primary is_omission "
+        "reading_text ms_abbrev ms_language ms_name ms_show resource_name source_ref is_primary "
         "unit_id prefix_utf8 g_word_utf8 trailer_utf8 boundary_utf8 version_title "
         "reading_of variant_word_of witness manuscript_of",
         silent="deep",
