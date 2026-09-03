@@ -17,6 +17,36 @@ class Apparatus:
         value = feature.v(node)
         return default if value is None else value
 
+    def _require_feature(self, name: str):
+        feature = getattr(self.api.F, name, None)
+        if feature is None:
+            raise ValueError(f"feature {name!r} must be loaded for this Apparatus operation")
+        return feature
+
+    def _declared_witnesses(self, owner: int) -> dict[str, dict[str, object]]:
+        manuscript_of = getattr(self.api.E, "manuscript_of", None)
+        if manuscript_of is None:
+            raise ValueError("manuscript_of edge feature must be loaded for this Apparatus operation")
+        nodes = tuple(
+            sorted(
+                manuscript_of.t(owner),
+                key=lambda node: (str(self._feature("ms_abbrev", node, "")), node),
+            )
+        )
+        witnesses: dict[str, dict[str, object]] = {}
+        for manuscript in nodes:
+            abbrev = str(self._feature("ms_abbrev", manuscript, manuscript))
+            if abbrev in witnesses:
+                raise ValueError(f"duplicate manuscript abbreviation for TF version owner {owner}: {abbrev!r}")
+            witnesses[abbrev] = {
+                "node": manuscript,
+                "abbrev": abbrev,
+                "language": self._feature("ms_language", manuscript, ""),
+                "name": self._feature("ms_name", manuscript, ""),
+                "show": self._feature("ms_show", manuscript, ""),
+            }
+        return witnesses
+
     def unit_readings(self, unit: int) -> tuple[int, ...]:
         return tuple(sorted(self.api.E.reading_of.t(unit)))
 
@@ -150,21 +180,10 @@ class Apparatus:
                 }
             )
 
-        manuscript_of = getattr(self.api.E, "manuscript_of", None)
-        if manuscript_of is None:
-            raise ValueError("passage() requires the manuscript_of edge feature to be loaded")
-        manuscripts = tuple(
-            sorted(
-                manuscript_of.t(book_node),
-                key=lambda node: (str(self._feature("ms_abbrev", node, "")), node),
-            )
-        )
-
+        manuscripts = self._declared_witnesses(book_node)
         witness_records: dict[str, dict[str, object]] = {}
-        for manuscript in manuscripts:
-            abbrev = str(self._feature("ms_abbrev", manuscript, manuscript))
-            if abbrev in witness_records:
-                raise ValueError(f"duplicate manuscript abbreviation in TF book {book!r}: {abbrev!r}")
+        for abbrev, manuscript_record in manuscripts.items():
+            manuscript = int(manuscript_record["node"])
             segments = tuple(self.witness_state(unit, manuscript) for unit in units)
             coverage = Counter(str(segment["status"]) for segment in segments)
             complete = coverage["unattested"] == 0
@@ -175,11 +194,7 @@ class Apparatus:
             ]
             attested_text = " ".join(chunks)
             witness_records[abbrev] = {
-                "node": manuscript,
-                "abbrev": abbrev,
-                "language": self._feature("ms_language", manuscript, ""),
-                "name": self._feature("ms_name", manuscript, ""),
-                "show": self._feature("ms_show", manuscript, ""),
+                **manuscript_record,
                 "segments": segments,
                 "coverage": dict(coverage),
                 "complete": complete,
@@ -193,4 +208,96 @@ class Apparatus:
             "source_refs": tuple(source_refs),
             "units": tuple(unit_records),
             "witnesses": witness_records,
+        }
+
+    def work_passage(self, work: str, chapter: str | int, verse: str | int) -> dict[str, object]:
+        """Return the requested passage across every OCP version of one work.
+
+        Textual versions are returned under ``versions`` and keyed by their
+        stable TF book id (for example ``Multi__Greek``). A textual version whose
+        requested section is absent remains in the result with
+        ``status='not_present'`` and ``passage=None`` rather than disappearing.
+
+        Upstream versions that contain metadata but no textual units are returned
+        separately under ``metadata_only_versions``. This preserves the semantic
+        distinction between "this version exists but OCP has no text for it" and
+        "this textual version simply does not attest the requested section".
+        """
+
+        ocp_book = self._require_feature("ocp_book")
+        work = str(work)
+        chapter = str(chapter)
+        verse = str(verse)
+
+        textual_books = tuple(
+            sorted(
+                (
+                    node
+                    for node in self.api.F.otype.s("book")
+                    if str(ocp_book.v(node) or "") == work
+                ),
+                key=lambda node: str(self._feature("book", node, "")),
+            )
+        )
+        metadata_nodes = tuple(
+            sorted(
+                (
+                    node
+                    for node in self.api.F.otype.s("version_metadata")
+                    if str(ocp_book.v(node) or "") == work
+                ),
+                key=lambda node: str(self._feature("version_id", node, "")),
+            )
+        )
+
+        if not textual_books and not metadata_nodes:
+            raise KeyError(f"OCP work not found in loaded Text-Fabric data: {work!r}")
+
+        owner_for_title = textual_books[0] if textual_books else metadata_nodes[0]
+        title = str(self._feature("title", owner_for_title, ""))
+
+        versions: dict[str, dict[str, object]] = {}
+        for book_node in textual_books:
+            version_id = str(self._feature("book", book_node, ""))
+            if not version_id:
+                raise ValueError(f"textual OCP version node {book_node} has no loaded TF book feature")
+            try:
+                passage = self.passage(version_id, chapter, verse)
+            except KeyError:
+                passage = None
+            versions[version_id] = {
+                "node": book_node,
+                "id": version_id,
+                "title": str(self._feature("version_title", book_node, "")),
+                "language": self._feature("language", book_node, ""),
+                "author": self._feature("author", book_node, ""),
+                "status": "available" if passage is not None else "not_present",
+                "witnesses": self._declared_witnesses(book_node),
+                "passage": passage,
+            }
+
+        metadata_only_versions: dict[str, dict[str, object]] = {}
+        for metadata_node in metadata_nodes:
+            version_id = str(self._feature("version_id", metadata_node, ""))
+            if not version_id:
+                raise ValueError(
+                    f"metadata-only OCP version node {metadata_node} has no loaded version_id feature"
+                )
+            metadata_only_versions[version_id] = {
+                "node": metadata_node,
+                "id": version_id,
+                "title": str(self._feature("version_title", metadata_node, "")),
+                "language": self._feature("language", metadata_node, ""),
+                "author": self._feature("author", metadata_node, ""),
+                "status": "metadata_only",
+                "witnesses": self._declared_witnesses(metadata_node),
+                "passage": None,
+            }
+
+        return {
+            "work": work,
+            "title": title,
+            "reference": (chapter, verse),
+            "versions": versions,
+            "metadata_only_versions": metadata_only_versions,
         }
