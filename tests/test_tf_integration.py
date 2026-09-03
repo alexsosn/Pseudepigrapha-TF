@@ -17,7 +17,7 @@ BASE_FEATURES = (
 )
 PASSAGE_FEATURES = "ms_language ms_name ms_show unit_id reading_of variant_word_of witness manuscript_of"
 WORK_PASSAGE_FEATURES = (
-    f"{PASSAGE_FEATURES} ocp_book title language author version_id is_metadata_only"
+    f"{PASSAGE_FEATURES} book ocp_book title language author version_id is_metadata_only"
 )
 
 
@@ -116,6 +116,11 @@ def test_work_passage_returns_every_textual_version(tmp_path):
     assert greek["language"] == "Greek"
     assert greek["status"] == "available"
     assert greek["passage"]["witnesses"]["G"]["text"] == "α β"
+
+    absent = Apparatus(api).work_passage("Multi", "99", "1")
+    assert set(absent["versions"]) == {"Multi__Syriac", "Multi__Greek"}
+    assert {version["status"] for version in absent["versions"].values()} == {"not_present"}
+    assert all(version["passage"] is None for version in absent["versions"].values())
 
 
 def test_work_passage_preserves_metadata_only_versions(tmp_path):
