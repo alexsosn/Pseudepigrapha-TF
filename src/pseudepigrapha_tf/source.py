@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import subprocess
 from pathlib import Path
 
 from .model import Book
@@ -18,3 +19,18 @@ def load_source_directory(path: str | Path) -> tuple[list[Book], list[str]]:
         except EmptySourceError:
             warnings.append(f"skipping empty XML source: {xml_path.name}")
     return books, warnings
+
+
+def detect_git_commit(path: str | Path) -> str:
+    """Return the Git commit containing *path*, or an empty string outside a Git checkout."""
+    try:
+        result = subprocess.run(
+            ["git", "-C", str(Path(path)), "rev-parse", "HEAD"],
+            check=True,
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+    except (OSError, subprocess.CalledProcessError, subprocess.TimeoutExpired):
+        return ""
+    return result.stdout.strip()
