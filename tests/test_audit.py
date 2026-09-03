@@ -69,11 +69,28 @@ def test_section_address_collisions_report_nodes_and_source_refs():
 
     assert collisions == [
         {
-            "address": ["Deep", "9.4b", first_address],
+            "address": ["Frag", "9.4b", first_address],
             "nodes": [first, second],
             "source_refs": source_refs,
         }
     ]
+
+
+def test_duplicate_upstream_sections_get_unique_tf_addresses_without_changing_source_refs():
+    data = build_tf_data([parse_file(FIXTURES / "duplicate_sections.xml")])
+    verses = [n for n, kind in data.node_features["otype"].items() if kind == "verse"]
+
+    assert [data.node_features["source_ref"][n] for n in verses] == [
+        "10:4",
+        "10:43",
+        "10:4",
+        "10:45",
+    ]
+    assert [data.node_features["verse"][n] for n in verses] == ["4", "43", "4~2", "45"]
+    assert data.node_features["section_occurrence"][verses[0]] == 1
+    assert data.node_features["section_occurrence"][verses[2]] == 2
+    assert _section_address_collisions(data) == []
+    assert any("duplicate source section '10:4'" in warning for warning in data.warnings)
 
 
 def test_conversion_report_includes_metadata_only_versions(tmp_path):
