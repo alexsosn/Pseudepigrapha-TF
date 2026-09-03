@@ -33,7 +33,9 @@ def test_writer_delegates_validated_features_to_text_fabric(tmp_path):
         "reading_text", "ms_abbrev", "resource_name",
     ):
         assert name in saved["nodeFeatures"]
+        assert saved["metaData"][name]["valueType"] in {"str", "int"}
     assert saved["edgeFeatures"] is data.edge_features
-    assert saved["metaData"] is data.metadata
+    assert saved["metaData"] is not data.metadata
+    assert saved["metaData"]["otext"] == data.metadata["otext"]
     assert saved["location"] == str(tmp_path / "tf")
     assert saved["module"] == ""
