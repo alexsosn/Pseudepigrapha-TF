@@ -65,6 +65,8 @@ TF address:     <book> / 1:23:153 / 4
 
 The full citation remains directly available as `source_ref="1:23:153:4"` on the source `div`, `unit`, `reading`, primary words, and variant words. Researchers do not have to reconstruct the citation by walking generic nodes.
 
+Pinned OCP also contains a few **exact duplicate source citations**: for example `4Ezra/Syriac 10:4`, `Jub/Greek 10:21`, and `SibOr/Greek 3:261`/`3:262` each occur twice in the source structure. The converter does not guess whether these are editorial typos, fragments, or another upstream convention, and it does not merge the corresponding source divisions. The first occurrence keeps the ordinary TF verse label; later occurrences receive only a deterministic technical suffix (`4~2`, `21~2`, and so on) and a `section_occurrence` feature. Their exact `source_ref` remains unchanged, so `4Ezra__Syriac / 10 / 4` and `4Ezra__Syriac / 10 / 4~2` are separately addressable TF sections whose `source_ref` is `10:4` in both cases. The `~N` suffix is therefore an interface disambiguator, **not an editorial correction to OCP numbering**.
+
 ### Apparatus text semantics
 
 Alternative readings occupy the primary locus for graph/search purposes, but `T.text(reading)` must not therefore print the primary reading. The corpus defines node-type default formats:
@@ -175,7 +177,7 @@ When loading only selected TF features, `work_passage()` requires at least `ocp_
 - resources;
 - every annotated `<w>` and its attributes;
 - primary and alternative token reconstruction;
-- complete and unique `book/chapter/verse` coverage for the textual slot stream;
+- complete and unique `book/chapter/verse` coverage for the textual slot stream, including deterministic disambiguation of repeated exact upstream citations without changing their `source_ref`;
 - graph size including `oslots` edge count.
 
 The report says `status: "ok"` only when every semantic check passes. Section coverage is computed in linear time so the audit itself does not reintroduce the dense-scaling problem eliminated from the graph.
@@ -186,7 +188,7 @@ The report says `status: "ok"` only when every semantic check passes. Section co
 pytest
 ```
 
-The synthetic suite covers parser, graph, apparatus helpers, passage-level witness coverage, work-level multi-version retrieval, semantic parity, legacy OCP, deep/non-numeric references, omissions, metadata-only versions, and reproducible paths. CI additionally installs real Text-Fabric, verifies node-type `T.text()` behavior and deep `T.sectionFromNode()` addresses, converts and audits the pinned complete OCP checkout, reloads the full dataset, exercises `Apparatus.passage("1En__Ethiopic", "1", "2")`, verifies that `Apparatus.work_passage("1En", "1", "2")` exposes all four real 1 Enoch versions, and verifies that real `TJob/Coptic` remains visible as metadata-only evidence.
+The synthetic suite covers parser, graph, apparatus helpers, passage-level witness coverage, work-level multi-version retrieval, semantic parity, legacy OCP, deep/non-numeric and duplicate references, omissions, metadata-only versions, and reproducible paths. CI additionally installs real Text-Fabric, verifies node-type `T.text()` behavior and deep/duplicate `T.sectionFromNode()`/`T.nodeFromSection()` addresses, converts and audits the pinned complete OCP checkout, reloads the full dataset, exercises `Apparatus.passage("1En__Ethiopic", "1", "2")`, verifies that `Apparatus.work_passage("1En", "1", "2")` exposes all four real 1 Enoch versions, and verifies that real `TJob/Coptic` remains visible as metadata-only evidence.
 
 ## Licensing
 
