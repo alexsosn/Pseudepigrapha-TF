@@ -94,6 +94,34 @@ def test_versions_get_unique_book_section_ids():
     assert [data.node_features["language"][n] for n in books] == ["Syriac", "Greek"]
 
 
+def test_metadata_only_version_is_preserved_without_inventing_text_sections():
+    data = build_tf_data([parse_file(FIXTURES / "metadata_only_version.xml")])
+
+    books = nodes_of_type(data, "book")
+    metadata_versions = nodes_of_type(data, "version_metadata")
+    assert len(books) == 1
+    assert len(metadata_versions) == 1
+    metadata_version = metadata_versions[0]
+    assert data.node_features["version_id"][metadata_version] == "Meta__Coptic"
+    assert data.node_features["version_title"][metadata_version] == "Coptic"
+    assert data.node_features["language"][metadata_version] == "Coptic"
+    assert data.node_features["is_metadata_only"][metadata_version] == 1
+    assert data.metadata["otext"]["fmt:version_metadata-default"] == "{version_title}"
+
+    # The empty upstream version contributes no fake Coptic book/chapter/verse.
+    assert [data.node_features["book"][n] for n in books] == ["Meta__Greek"]
+    assert len(nodes_of_type(data, "chapter")) == 1
+    assert len(nodes_of_type(data, "verse")) == 1
+
+    coptic_ms = next(
+        n for n in nodes_of_type(data, "manuscript")
+        if data.node_features["ms_abbrev"][n] == "Coptic"
+    )
+    assert data.edge_features["manuscript_of"][coptic_ms] == {metadata_version}
+    assert len(data.edge_features["oslots"][metadata_version]) == 1
+    assert len(data.edge_features["oslots"][coptic_ms]) == 1
+
+
 def test_surface_boundaries_are_explicit_and_deterministic():
     data = build_tf_data([parse_file(FIXTURES / "boundary.xml")])
     assert data.node_features["boundary_utf8"][1] == " "
