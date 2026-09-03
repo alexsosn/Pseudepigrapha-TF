@@ -2,122 +2,168 @@
 
 ## Scope
 
-This repository converts the XML editions in the Online Critical Pseudepigrapha (OCP) `static/docs` directory into Text-Fabric. The converter is designed against upstream commit `2d1d14d23434a784d377ff7f4409ccdb2d18aafb` (2026-08-27) and keeps the generated warp layer as close to BHSA conventions as the OCP data permits.
+This repository converts the XML editions in the Online Critical Pseudepigrapha (OCP) `static/docs` directory into Text-Fabric. The converter is designed and integration-tested against upstream commit `2d1d14d23434a784d377ff7f4409ccdb2d18aafb` (2026-08-27) and keeps the generated warp layer as close to BHSA conventions as OCP semantics permit.
 
-The converter repository contains code and synthetic fixtures only. It does not vendor OCP XML or generated Text-Fabric data; redistribution of the source editions should be handled separately from converter licensing.
+The converter repository contains code and synthetic fixtures only. It does not vendor OCP XML or generated Text-Fabric data; redistribution of source editions is intentionally separated from converter licensing.
 
 ## Source format
 
-OCP calls the editions TEI XML in current project documentation, but the corpus itself uses a small project-specific Grammateus vocabulary described by `static/docs/grammateus.dtd`:
+OCP documentation sometimes calls the editions TEI XML, but the pinned corpus primarily uses the project-specific Grammateus vocabulary described by `static/docs/grammateus.dtd`:
 
-- `book` contains one or more `version` elements.
-- Each `version` declares division labels, optional resources, manuscript metadata, and a text.
-- Text is a recursive hierarchy of `div` elements terminating in `unit` elements.
-- A `unit` contains one or more alternative `reading` elements.
-- A reading records `option`, a space-separated `mss` witness list, optional `linebreak`/`indent`, and mixed text with optional `<w>` annotations.
+- `book` contains one or more `version` elements;
+- each `version` declares division labels, optional resources, manuscript metadata, and text;
+- text is a recursive hierarchy of `div` elements terminating in `unit` elements;
+- a `unit` contains one or more alternative `reading` elements;
+- a reading records `option`, a space-separated `mss` witness list, optional `linebreak`/`indent`, and mixed text with optional `<w>` annotations;
 - `<w>` can carry `morph`, `lex`, `style`, and `lang`.
 
-This is an apparatus-oriented model: `unit` is the textual locus, while readings are mutually exclusive alternatives at that locus.
+`unit` is therefore the textual locus and readings are mutually exclusive alternatives at that locus.
+
+### Legacy dialect
+
+Full-corpus CI exposed one important exception: `Esdr.xml` uses a legacy direct `book/manuscripts/text/chapter/verse/unit/reading` dialect rather than `version/div`. It also puts `linebreak` on `unit`. The parser normalizes that source shape into the same intermediate model with synthetic `Chapter`/`Verse` division declarations while preserving the legacy unit-level linebreak.
 
 ## Observed edge cases
 
-The converter must follow the files rather than assumptions in the old application validator.
-
-- `3Macc.xml` is currently zero bytes and must be skipped explicitly rather than treated as valid XML.
-- `ArisEx.xml` has three division levels (`Book`, `Chapter`, `Line`), starts with `unit id="0"`, and contains a division numbered `heading`.
-- Other fragmentary files use labels such as `Heading` and section values such as `4b`, so source section identifiers cannot safely be coerced to integers.
-- Some files contain multiple versions/languages under the same OCP `book` (for example Testament of Adam).
+- `3Macc.xml` is zero bytes and must be skipped explicitly rather than treated as valid XML.
+- `ArisEx.xml` has three division levels (`Book`, `Chapter`, `Line`), starts with `unit id="0"`, and includes nonnumeric labels.
+- `Eup.xml` includes four-level references such as `1:23:153:4` (`Book → Section → Chapter → Verse`).
+- Other fragmentary files use values such as `4b`, `heading`, `{heading}`, and `Heading`; source identifiers cannot safely be coerced to integers.
+- Some books contain multiple versions/languages under one OCP `book` (for example Testament of Adam and Eupolemus).
 - Mixed `<w>` markup appears inside readings and must survive conversion.
 - Empty readings are meaningful omissions, not parser errors.
-- The current OCP browser chooses `reading option="0"` as the default reading, falling back to the first reading if option 0 is absent. That is the least arbitrary primary stream for a BHSA-shaped Text-Fabric corpus.
+- OCP uses `linebreak="following"` and `linebreak="doubleFollowing"`; the historical renderer emitted one or two breaks respectively.
+- OCP's default reader selects `reading option="0"`, falling back to the first reading if option 0 is absent.
+- The DTD permits PCDATA inside `<division>` declarations. The pinned corpus appears to use self-closing declarations, but the parser preserves declaration text rather than silently discarding a grammar-permitted field.
 
 ## BHSA compatibility target
 
-BHSA uses `word` as its slot type and exposes `book`, `chapter`, and `verse` as the section hierarchy. Its standard Unicode surface display is built from `g_word_utf8` plus `trailer_utf8`. Pseudepigrapha-TF therefore uses the same warp shape and surface feature names where the semantics genuinely correspond.
+BHSA uses `word` as slot type and `book`, `chapter`, `verse` as the standard section hierarchy. Pseudepigrapha-TF uses that warp shape and the familiar `g_word_utf8`/`trailer_utf8` feature names where the semantics correspond.
 
-Compatibility does not mean pretending that a critical apparatus is a single diplomatic text. OCP-specific structures are added as ordinary Text-Fabric nodes and edges around the BHSA-shaped slot stream.
+Compatibility must not make the apparatus look like a single diplomatic text. OCP-specific structures therefore remain ordinary Text-Fabric nodes/edges around a BHSA-shaped primary slot stream.
 
 ### Mapping
 
 | OCP source | Text-Fabric representation |
 | --- | --- |
-| token in primary (`option=0`) reading | `word` slot |
+| token in primary reading | `word` slot |
 | `book` + one `version` | `book` section node |
-| first source division level | `chapter` section node when there are ≥2 source levels |
-| second source division level | `verse` section node when there are ≥2 source levels |
-| one-level source division | synthetic chapter `1`; source division becomes `verse` |
-| source `div` at every level | additional `div` node with literal number/label/path |
-| `unit` | `unit` node over the locus slots |
-| every `reading` | `reading` node over the same locus slots |
-| tokens of non-primary readings | `variant_word` nodes linked to their reading |
-| `ms` | `manuscript` node |
+| one source level | synthetic chapter `1`; source level becomes `verse` |
+| two source levels | parent becomes `chapter`; terminal becomes `verse` |
+| three or more source levels | complete parent path becomes compound `chapter`; terminal level becomes `verse` |
+| source `div` at every level | `div` node with literal number/label/full reference |
+| `unit` | `unit` node over locus slots, explicitly parented to enclosing `div` |
+| every `reading` | `reading` node over the locus slots |
+| non-primary reading token | `variant_word` node linked to its reading and one technical locus anchor |
+| `ms` | `manuscript` node with no fictitious textual extent |
 | `reading@mss` | `witness` edges from reading to manuscript |
-| `resource` | `resource` node linked to its version/book |
-| `<w>` attributes | `lex`, `morph`, `style`, `language`, `w_annotated` features |
-| primary surface text | `g_word_utf8`, `trailer_utf8`, plus `prefix_utf8` when needed |
+| `resource` | `resource` node linked to version/book, no fictitious textual extent |
+| `<w>` attributes | `lex`, `morph`, `style`, effective `language`, literal `w_lang`, `w_annotated` |
+| source citation | `source_ref` plus JSON `source_ref_parts` |
+| source display boundary | `boundary_utf8` on the final primary slot of a unit |
 
 ## Section policy
 
-`book`, `chapter`, and `verse` exist primarily for the standard Text-Fabric section API and BHSA-like user expectations.
+Text-Fabric's standard section machinery supports at most `book/chapter/verse`; adding a fourth section type is not a valid solution for OCP's deeper citations.
 
-OCP section values are stored as strings because the source includes values such as `4b` and `heading`. Numeric ordinals are supplied separately as `chapter_index` and `verse_index`. Every original `div` remains available with `div_number`, `div_level`, `div_label`, `div_path`, and its `parent` edge, so the source hierarchy is not flattened away.
+The initial design projected source levels 1 and 2 into chapter/verse. Review showed that this made references such as `Eup 1:23:153:4` look like `1 / 23` in normal TF navigation, leaving `153:4` only in generic `div` nodes. That technically retained data but produced a misleading research interface.
 
-When an OCP file contains multiple versions, each version receives a unique TF `book` identifier such as `TAdam__Syriac` and `TAdam__Greek`. The original OCP filename remains in `ocp_book`. This keeps `(book, chapter, verse)` addresses unambiguous.
+The corrected policy is:
+
+- one source level: chapter `1`, terminal source division as verse;
+- two levels: direct parent/terminal mapping;
+- three or more levels: `chapter = full source path except terminal`, `verse = terminal`.
+
+Thus `1:23:153:4` becomes chapter `1:23:153`, verse `4`. Every source `div`, `unit`, `reading`, primary word, and variant word also exposes the exact full `source_ref`, so OCP citations require no graph archaeology.
+
+Section values remain strings. Numeric document-order ordinals are supplied separately as `chapter_index` and `verse_index`. Multi-version files receive unique TF `book` identifiers while `ocp_book` retains the original filename.
 
 ## Apparatus policy
 
-The primary reading supplies the contiguous slot stream. All readings, including the primary one, get `reading` nodes. Alternative tokens are represented as non-slot `variant_word` nodes rather than being inserted into the global slot stream.
+The primary reading supplies the contiguous slot stream. All readings get `reading` nodes. Alternative tokens remain non-slot `variant_word` nodes rather than entering the global slot stream, which would create a fictitious text containing mutually exclusive readings.
 
-This preserves several properties at once:
+Alternative `reading` nodes still occupy the primary locus through `oslots` for locality and graph queries. That creates an important Text-Fabric interface hazard: without a node-specific default, `T.text(alternative_reading)` descends to its contained primary slots and can display the **wrong textual content**. The corpus therefore defines:
 
-- normal TF text traversal remains linear;
-- variant readings remain token-queryable;
-- all alternatives share the same `unit` locus through `oslots`;
-- witness membership is explicit in graph edges;
-- original reading text and mixed XML are retained on the reading node;
-- empty readings remain explicit omissions.
+- `reading-default={reading_text}`;
+- `variant_word-default={prefix_utf8}{g_word_utf8}{trailer_utf8}`;
+- `manuscript-default={ms_abbrev}`;
+- `resource-default={resource_name}`.
 
-If the primary reading is empty, the converter creates a `word` anchor slot with `is_gap=1`. It carries no invented surface text; it exists so the unit and every alternative at that locus can be represented by valid TF slot mappings.
+Manuscripts and resources intentionally have empty `oslots`; their semantic relations are `witness`, `manuscript_of`, and `resource_of`. Each `variant_word` uses only the first slot of the locus as a technical anchor instead of duplicating the entire locus. This removes false textual extent and avoids a large multiplicative `oslots` expansion.
+
+The package adds an `Apparatus` helper API for routine reading/witness operations so researchers need not manually join every edge.
+
+If the primary reading is empty, the converter creates a surface-less `word` anchor with `is_gap=1`. This preserves an otherwise anchorless apparatus locus without inventing text.
+
+## Surface reconstruction
+
+XML indentation is not textual content. Ordinary whitespace inside token separators is canonicalized while the original mixed XML remains on `reading_xml`. Meaningful OCP unit/reading boundaries are made explicit in `boundary_utf8`:
+
+- `following` → one newline;
+- `doubleFollowing` → two newlines;
+- otherwise a space is inserted between adjacent units when no explicit break exists.
+
+This prevents `T.text(book)` from silently producing `lastwordNextword` across XML element boundaries.
 
 ## Information preservation
 
-The conversion aims to preserve OCP semantics rather than byte-for-byte XML serialization. It stores:
+The conversion is semantic rather than byte-for-byte. It preserves:
 
-- source path and SHA-256;
+- stable source-relative file path, SHA-256, upstream repository/commit, converter version;
 - book/version metadata;
-- division declarations and literal hierarchy;
-- unit IDs, group, and parallel metadata;
-- every reading, its option, witness string, indentation/linebreak flags, normalized text, and mixed XML;
+- division declarations including label, delimiter, and permitted PCDATA;
+- every structural division and full source reference;
+- unit IDs, group, parallel, and linebreak metadata;
+- every reading, literal/numeric option, witnesses, indentation/linebreak flags, normalized text, and mixed XML;
 - manuscript names, bibliography, language/show flags;
 - resources;
 - `<w>` lexical/morphological/style/language annotations.
 
 The original XML remains the authority for byte-level round trips.
 
-## Validation strategy
+## Semantic parity validation
 
-Unit tests use synthetic XML designed to cover the source grammar without copying OCP edition text. They assert parser preservation, Text-Fabric warp invariants, BHSA-style sections and surface features, variants, omissions, one- and three-level division schemes, nonnumeric section labels, multi-version books, source-directory handling, and the writer API.
+A successful parse/write/reload is not evidence of losslessness. The converter therefore creates `conversion-report.json` from an **independent reread of the raw XML**, not merely from the converter's intermediate model.
 
-CI additionally clones the pinned OCP upstream commit and converts the complete direct `static/docs/*.xml` set. It then reloads the emitted dataset with Text-Fabric. This catches source-shape regressions that synthetic fixtures cannot predict.
+Corpus-wide checks compare raw XML with generated TF for:
+
+- source SHA-256s and versions;
+- division declarations and all structural division records;
+- unit attributes and unit→div parent linkage;
+- reading option/witness/flag/text/mixed-XML payloads;
+- manuscript metadata/bibliography;
+- resources;
+- annotated `<w>` records;
+- primary reconstruction from slots;
+- alternative reconstruction from `variant_word` nodes;
+- complete/unique BHSA section coverage.
+
+The report also records slot/node/`oslots`/variant/witness counts. Conversion exits non-zero if any semantic check fails.
+
+CI additionally installs real Text-Fabric and verifies that `T.text()` uses the node-specific defaults and that deep `source_ref` values map to the intended three-level TF address. It then converts the pinned complete OCP source and reloads the result.
 
 ## Rejected designs
 
-### `unit` as the slot type
+### `unit` as slot type
 
-This maps the apparatus elegantly but loses BHSA compatibility for ordinary word queries, text formats, and section traversal. `word` slots are preferable for this project.
+This maps the apparatus elegantly but loses BHSA compatibility for ordinary word queries, text formats, and section traversal.
 
 ### Put every variant token in the slot stream
 
-That produces a sequence that no witness actually reads and makes standard TF traversal misleading. Alternative tokens are therefore non-slot `variant_word` nodes.
+That produces a sequence no witness actually reads and makes standard TF traversal misleading.
 
-### Discard deeper divisions to force `book/chapter/verse`
+### Project only the first two source levels
 
-Fragmentary works and source citations use deeper structures. The first two levels feed BHSA-style sections, while all source `div` nodes remain in the graph.
+This was implemented initially and rejected after review because it crippled normal citation/navigation for three- and four-level fragmentary sources.
+
+### Give manuscripts/resources/full variant tokens broad `oslots`
+
+This made `T.text()` semantics misleading and created potentially dense graph expansion. Semantic edges plus sparse/empty technical anchoring are more faithful.
 
 ### Coerce chapter and verse values to integers
 
-Real source values are not uniformly numeric. Literal strings plus ordinal index features preserve the data and still support ordering.
+Real source values are not uniformly numeric. Literal strings plus ordinal index features preserve the data and ordering.
 
 ## Distribution boundary
 
-The converter is MIT-licensed. OCP's current repository-level statements about the editions and older per-edition/copyright statements are not sufficiently consistent to make redistribution of a generated corpus an implementation assumption. For now, users run the converter against an OCP checkout. Publishing generated TF data can be revisited after the upstream rights position is clarified.
+The converter is MIT-licensed. OCP's current repository-level licensing statements and older edition-specific/copyright statements are not sufficiently consistent to make redistribution of a generated corpus an implementation assumption. For now, users run the converter against an OCP checkout. Publishing generated TF data can be revisited after the upstream rights position is clarified.
