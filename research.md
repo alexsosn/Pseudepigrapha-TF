@@ -31,6 +31,7 @@ Full-corpus CI exposed one important exception: `Esdr.xml` uses a legacy direct 
 - Other fragmentary files use values such as `4b`, `heading`, `{heading}`, and `Heading`; source identifiers cannot safely be coerced to integers.
 - Some books contain multiple versions/languages under one OCP `book` (for example Testament of Adam and Eupolemus).
 - `TJob.xml` declares a Coptic version with division/manuscript metadata but an intentionally empty `<text></text>`. OCP's introduction states that the fragmentary Coptic evidence has not yet been included in the edition. This is valid upstream metadata, not malformed input.
+- `1En.xml` has a single textual OCP version (`Ethiopic`) but the critical apparatus contains the edition's manuscript evidence; therefore “all versions of a verse” is operationally a verse → units → readings → witnesses query rather than a lookup of several TF `book` sections.
 - Mixed `<w>` markup appears inside readings and must survive conversion.
 - Empty readings are meaningful omissions, not parser errors.
 - OCP uses `linebreak="following"` and `linebreak="doubleFollowing"`; the historical renderer emitted one or two breaks respectively.
@@ -96,7 +97,15 @@ Alternative `reading` nodes still occupy the primary locus through `oslots` for 
 
 Text-Fabric 13.1 does not serialize non-slot nodes with empty `oslots` in this generated dataset. Metadata-like nodes therefore use **one technical anchor slot only**, never their full witnessed/resource/version extent. Type-specific formats prevent standard `T.text()` from rendering that technical anchor as if it were the node's own text. Each `variant_word` likewise uses one locus anchor rather than copying the whole primary locus. This reduces the earlier multiplicative `oslots` expansion to O(1) anchoring per metadata/variant node.
 
-The package adds an `Apparatus` helper API for routine reading/witness operations so researchers need not manually join every edge.
+The package adds an `Apparatus` helper API for routine reading/witness operations so researchers need not manually join every edge. `Apparatus.passage(book, chapter, verse)` is the passage-level research interface: it returns all units/readings in the verse and all manuscripts declared for the containing textual version.
+
+Passage reconstruction must preserve an epistemic distinction that a simple concatenation would erase:
+
+- a witness assigned to a non-empty reading is `reading`;
+- a witness assigned to an empty reading is an explicit `omission`;
+- a declared witness absent from every reading at that unit is `unattested`.
+
+A witness gets a continuous passage `text` only if every unit is represented (explicit omission counts as representation). If any unit is unattested, `text` is `None`; `attested_text` and the per-unit segments remain available. The converter does not infer lacuna/fragment status from absence because OCP does not provide a uniform structural flag for that distinction.
 
 If the primary reading is empty, the converter creates a surface-less `word` anchor with `is_gap=1`. This preserves an otherwise anchorless apparatus locus without inventing text.
 
@@ -145,7 +154,7 @@ Corpus-wide checks compare raw XML with generated TF for:
 
 The report also records slot/node/`oslots`/variant/witness counts. Conversion exits non-zero if any semantic check fails. Section coverage and address uniqueness are calculated with slot maps in linear time rather than scanning every section for every slot.
 
-CI additionally installs real Text-Fabric and verifies that `T.text()` uses the node-specific defaults, metadata-only versions do not masquerade as text, and deep `source_ref` values map to the intended three-level TF address. It then converts the pinned complete OCP source and reloads the result.
+CI additionally installs real Text-Fabric and verifies that `T.text()` uses the node-specific defaults, metadata-only versions do not masquerade as text, deep `source_ref` values map to the intended three-level TF address, and `Apparatus.passage("1En", "1", "2")` works on the pinned upstream 1 Enoch edition. It then converts the pinned complete OCP source and reloads the result.
 
 ## Rejected designs
 
