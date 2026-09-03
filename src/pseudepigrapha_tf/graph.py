@@ -426,6 +426,10 @@ def _add_version(builder: _Builder, book: Book, version: Version, book_id: str,
             boundary = " "
         builder.set_slot_feature(last_slot, "boundary_utf8", boundary)
 
+    if not version_slots:
+        raise ValueError(f"{book.filename}/{version.title}: version has no primary word/gap slots")
+    technical_anchor = {min(version_slots)}
+
     bkey = f"{vkey}:book"
     builder.node(
         bkey, "book", version_slots, book=book_id, ocp_book=book.filename, title=book.title,
@@ -436,13 +440,18 @@ def _add_version(builder: _Builder, book: Book, version: Version, book_id: str,
         division_delimiters=json.dumps([d.delimiter for d in specs], ensure_ascii=False),
         division_texts=json.dumps([d.text for d in specs], ensure_ascii=False),
     )
-    for key in manuscripts.values():
-        if key in builder.by_key:
-            builder.edge("manuscript_of", key, bkey)
+
+    # TF 13.1 serialization rejects empty oslots for non-slot nodes. Metadata-only
+    # nodes therefore receive one O(1) technical anchor, never a fabricated span.
+    for obj in builder.objects:
+        if obj.key.startswith(f"{vkey}:ms:"):
+            obj.slots.update(technical_anchor)
+            builder.edge("manuscript_of", obj.key, bkey)
+
     for ridx, resource in enumerate(version.resources, 1):
         rkey = f"{vkey}:resource:{ridx}"
         builder.node(
-            rkey, "resource", (), **_common(book, version), resource_name=resource.name,
+            rkey, "resource", technical_anchor, **_common(book, version), resource_name=resource.name,
             resource_info=json.dumps(resource.info, ensure_ascii=False), resource_url=resource.url,
             resource_index=ridx,
         )
