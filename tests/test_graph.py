@@ -49,9 +49,12 @@ def test_bhsa_compatible_warp_and_lossless_apparatus_overlay():
     omission_readings = [n for n in reading_nodes if data.node_features.get("is_omission", {}).get(n) == 1]
     assert len(omission_readings) == 1
 
+    # Text-Fabric serialization requires every non-slot node to have an oslots anchor.
+    # Metadata nodes therefore get exactly one technical anchor, never a fake textual span.
     ms_nodes = {data.node_features["ms_abbrev"][n]: n for n in nodes_of_type(data, "manuscript")}
-    assert data.edge_features["oslots"][ms_nodes["A"]] == set()
-    assert data.edge_features["oslots"][ms_nodes["C"]] == set()
+    assert all(len(data.edge_features["oslots"][n]) == 1 for n in ms_nodes.values())
+    resource_nodes = nodes_of_type(data, "resource")
+    assert all(len(data.edge_features["oslots"][n]) == 1 for n in resource_nodes)
     assert all(len(data.edge_features["oslots"][n]) <= 1 for n in variant_words)
 
 
