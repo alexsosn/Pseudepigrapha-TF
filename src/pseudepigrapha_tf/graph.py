@@ -222,7 +222,7 @@ def _unit(builder: _Builder, book: Book, version: Version, vkey: str, unit: Unit
                               version_title=version.title, unit_id=unit.unit_id, reading_option=poption)}
     ukey = f"{vkey}:unit:{index}"
     builder.node(ukey, "unit", slots, **_common(book, version), unit_id=unit.unit_id,
-                 unit_index=index, group=unit.group, parallel=unit.parallel)
+                 unit_index=index, group=unit.group, parallel=unit.parallel, unit_linebreak=unit.linebreak)
     for ridx, reading in enumerate(unit.readings, 1):
         option = _option(reading, ridx - 1)
         rkey = f"{ukey}:reading:{ridx}"

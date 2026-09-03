@@ -56,6 +56,7 @@ class Unit:
     unit_id: str
     group: str
     parallel: str
+    linebreak: str
     readings: tuple[Reading, ...]
 
 

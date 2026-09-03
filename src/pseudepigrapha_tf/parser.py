@@ -103,6 +103,7 @@ def _parse_unit(element: ET.Element) -> Unit:
         unit_id=element.get("id", ""),
         group=element.get("group", "0"),
         parallel=element.get("parallel", ""),
+        linebreak=element.get("linebreak", ""),
         readings=tuple(_parse_reading(r) for r in element.findall("reading")),
     )
 
@@ -114,20 +115,14 @@ def _parse_div(element: ET.Element) -> Div:
             items.append(_parse_div(child))
         elif child.tag == "unit":
             items.append(_parse_unit(child))
-    return Div(
-        number=element.get("number", ""),
-        fragment=element.get("fragment", ""),
-        items=tuple(items),
-    )
+    return Div(number=element.get("number", ""), fragment=element.get("fragment", ""), items=tuple(items))
 
 
 def _parse_manuscript(element: ET.Element) -> Manuscript:
     name_el = element.find("name")
     bibliography = element.findall("bibliography")
     return Manuscript(
-        abbrev=element.get("abbrev", ""),
-        language=element.get("language", ""),
-        show=element.get("show", ""),
+        abbrev=element.get("abbrev", ""), language=element.get("language", ""), show=element.get("show", ""),
         name=_plain_text(name_el) if name_el is not None else "",
         name_xml=_inner_xml(name_el) if name_el is not None else "",
         bibliography=tuple(_plain_text(b) for b in bibliography),
@@ -137,8 +132,7 @@ def _parse_manuscript(element: ET.Element) -> Manuscript:
 
 def _parse_resource(element: ET.Element) -> Resource:
     return Resource(
-        name=element.get("name", ""),
-        info=tuple(_plain_text(i) for i in element.findall("info")),
+        name=element.get("name", ""), info=tuple(_plain_text(i) for i in element.findall("info")),
         url=_plain_text(element.find("URL")) if element.find("URL") is not None else "",
     )
 
@@ -153,17 +147,42 @@ def _parse_version(element: ET.Element) -> Version:
     for resources_el in element.findall("resources"):
         resources.extend(_parse_resource(r) for r in resources_el.findall("resource"))
     return Version(
-        title=element.get("title", ""),
-        author=element.get("author", ""),
-        language=element.get("language", ""),
+        title=element.get("title", ""), author=element.get("author", ""), language=element.get("language", ""),
         fragment=element.get("fragment", ""),
-        divisions=tuple(
-            DivisionSpec(d.get("label", ""), d.get("delimiter", ""))
-            for d in divisions_el.findall("division")
-        ),
+        divisions=tuple(DivisionSpec(d.get("label", ""), d.get("delimiter", "")) for d in divisions_el.findall("division")),
         resources=tuple(resources),
         manuscripts=tuple(_parse_manuscript(ms) for ms in manuscripts_el.findall("ms")),
         divs=tuple(_parse_div(d) for d in text_el.findall("div")),
+    )
+
+
+def _parse_legacy_version(root: ET.Element) -> Version:
+    manuscripts_el = root.find("manuscripts")
+    text_el = root.find("text")
+    if manuscripts_el is None or text_el is None:
+        raise InvalidSourceError("legacy book is missing manuscripts or text")
+    resources: list[Resource] = []
+    for resources_el in root.findall("resources"):
+        resources.extend(_parse_resource(r) for r in resources_el.findall("resource"))
+    chapter_divs: list[Div] = []
+    for chapter in text_el.findall("chapter"):
+        verse_divs = [
+            Div(
+                number=verse.get("reference", ""), fragment=verse.get("fragment", ""),
+                items=tuple(_parse_unit(u) for u in verse.findall("unit")),
+            )
+            for verse in chapter.findall("verse")
+        ]
+        chapter_divs.append(
+            Div(number=chapter.get("number", ""), fragment=chapter.get("fragment", ""), items=tuple(verse_divs))
+        )
+    language = root.get("language", "")
+    return Version(
+        title=language or "Default", author="", language=language, fragment="",
+        divisions=(DivisionSpec("Chapter", ":"), DivisionSpec("Verse", "")),
+        resources=tuple(resources),
+        manuscripts=tuple(_parse_manuscript(ms) for ms in manuscripts_el.findall("ms")),
+        divs=tuple(chapter_divs),
     )
 
 
@@ -177,15 +196,13 @@ def parse_bytes(data: bytes, *, source_path: str = "") -> Book:
     if root.tag != "book":
         raise InvalidSourceError(f"expected <book> root in {source_path or '<memory>'}, found <{root.tag}>")
     versions = tuple(_parse_version(v) for v in root.findall("version"))
+    if not versions and root.find("text/chapter") is not None:
+        versions = (_parse_legacy_version(root),)
     if not versions:
-        raise InvalidSourceError(f"book has no <version>: {source_path or '<memory>'}")
+        raise InvalidSourceError(f"book has no supported text structure: {source_path or '<memory>'}")
     return Book(
-        filename=root.get("filename", ""),
-        title=root.get("title", ""),
-        text_structure=root.get("textStructure", ""),
-        versions=versions,
-        source_path=source_path,
-        source_sha256=hashlib.sha256(data).hexdigest(),
+        filename=root.get("filename", ""), title=root.get("title", ""), text_structure=root.get("textStructure", ""),
+        versions=versions, source_path=source_path, source_sha256=hashlib.sha256(data).hexdigest(),
     )
 
 
