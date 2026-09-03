@@ -1,0 +1,7 @@
+<book filename="Frag" title="Fragment" textStructure="fragmentary">
+  <version title="Praep. Evang. (Frag. 1)" author="Eusebius" language="Greek" fragment="1">
+    <divisions><division label="Book" delimiter="."/><division label="Chapter" delimiter="."/><division label="Line"/></divisions>
+    <manuscripts><ms abbrev="E" language="Greek" show="yes"><name>E</name></ms></manuscripts>
+    <text><div number="9"><div number="4b"><div number="heading"><unit id="0"><reading option="0" mss="E ">heading</reading></unit></div><div number="1"><unit id="1"><reading option="0" mss="E ">body</reading></unit></div></div></div></text>
+  </version>
+</book>

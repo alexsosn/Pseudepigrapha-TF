@@ -1,0 +1,4 @@
+<book filename="Multi" title="Multi-version work">
+  <version title="Syriac" author="Anonymous" language="Syriac"><divisions><division label="Chapter"/><division label="Verse"/></divisions><manuscripts><ms abbrev="S" language="Syriac" show="yes"><name>S</name></ms></manuscripts><text><div number="1"><div number="1"><unit id="1"><reading option="0" mss="S ">ܐ ܒ</reading></unit></div></div></text></version>
+  <version title="Greek" author="Anonymous" language="Greek"><divisions><division label="Chapter"/><division label="Verse"/></divisions><manuscripts><ms abbrev="G" language="Greek" show="yes"><name>G</name></ms></manuscripts><text><div number="1"><div number="1"><unit id="1"><reading option="0" mss="G ">α β</reading></unit></div></div></text></version>
+</book>
