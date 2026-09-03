@@ -45,9 +45,12 @@ The main Text-Fabric shape follows BHSA where OCP semantics permit it:
 | apparatus alternative | `reading` node |
 | alternative-reading token | `variant_word` node |
 | witness | `manuscript` node; `witness` edge from reading |
+| upstream version with no textual units | `version_metadata` node; never a fabricated TF `book` section |
 | OCP `<w>` annotation | `lex`, `morph`, `style`, effective `language`, literal `w_lang` |
 
 The primary slot stream is OCP `reading option="0"`, matching OCP's default-selection rule. If option 0 is absent, the converter uses the first reading and emits a warning. Empty primary readings receive a surface-less `is_gap=1` anchor slot so apparatus nodes still have a valid locus.
+
+OCP can also declare a version whose metadata exists but whose text has not yet been included. The pinned corpus does this for `TJob/Coptic`. Such a version is preserved as `version_metadata` with its version/manuscript/resource metadata, but contributes no `book/chapter/verse` section and no invented text.
 
 ### Sections and deep references
 
@@ -67,13 +70,14 @@ The full citation remains directly available as `source_ref="1:23:153:4"` on the
 Alternative readings occupy the primary locus for graph/search purposes, but `T.text(reading)` must not therefore print the primary reading. The corpus defines node-type default formats:
 
 ```text
-reading-default      -> reading_text
-variant_word-default -> the variant token itself
-manuscript-default   -> manuscript abbreviation
-resource-default     -> resource name
+reading-default          -> reading_text
+variant_word-default     -> the variant token itself
+manuscript-default       -> manuscript abbreviation
+resource-default         -> resource name
+version_metadata-default -> version title
 ```
 
-This makes standard `T.text()` calls unsurprising. Manuscript and resource nodes intentionally have no fictitious textual extent, and each `variant_word` uses only one technical locus anchor rather than copying the entire primary locus.
+This makes standard `T.text()` calls unsurprising. Text-Fabric 13.1 requires every non-slot node to serialize with an `oslots` anchor, so manuscripts, resources, metadata-only versions, and variant tokens use a **single O(1) technical anchor** rather than a fabricated textual span. Their node-type formats prevent that anchor from being rendered as their text.
 
 For routine apparatus work, the package also provides helpers:
 
@@ -93,7 +97,7 @@ A.apparatus(unit)
 
 `conversion-report.json` is built by rereading the raw XML independently of the converter's parsed model and comparing it with the generated TF graph. It checks:
 
-- source file SHA-256s and version metadata;
+- source file SHA-256s and every declared version, including metadata-only versions;
 - division declarations and every structural division/reference;
 - unit attributes and explicit unit→div parent linkage;
 - every reading's option, witnesses, flags, normalized text, and mixed XML;
@@ -101,10 +105,10 @@ A.apparatus(unit)
 - resources;
 - every annotated `<w>` and its attributes;
 - primary and alternative token reconstruction;
-- complete and unique `book/chapter/verse` coverage;
+- complete and unique `book/chapter/verse` coverage for the textual slot stream;
 - graph size including `oslots` edge count.
 
-The report says `status: "ok"` only when every semantic check passes.
+The report says `status: "ok"` only when every semantic check passes. Section coverage is computed in linear time so the audit itself does not reintroduce the dense-scaling problem eliminated from the graph.
 
 ## Test
 
@@ -112,7 +116,7 @@ The report says `status: "ok"` only when every semantic check passes.
 pytest
 ```
 
-The synthetic suite covers parser, graph, apparatus helpers, semantic parity, legacy OCP, deep/non-numeric references, omissions, and reproducible paths. CI additionally installs real Text-Fabric, verifies node-type `T.text()` behavior and deep `T.sectionFromNode()` addresses, converts the pinned complete OCP checkout, validates the parity report, and reloads the full dataset.
+The synthetic suite covers parser, graph, apparatus helpers, semantic parity, legacy OCP, deep/non-numeric references, omissions, metadata-only versions, and reproducible paths. CI additionally installs real Text-Fabric, verifies node-type `T.text()` behavior and deep `T.sectionFromNode()` addresses, converts the pinned complete OCP checkout, validates the parity report, and reloads the full dataset.
 
 ## Licensing
 
