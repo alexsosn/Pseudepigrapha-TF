@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<book filename="AltOmission" title="Alternative omission fixture" textStructure="criticalApparatus">
+  <version title="Greek" author="Anonymous" language="Greek">
+    <divisions>
+      <division label="Chapter" delimiter=":"/>
+      <division label="Verse"/>
+    </divisions>
+    <manuscripts>
+      <ms abbrev="A" language="Greek" show="yes"><name>Witness A</name></ms>
+      <ms abbrev="B" language="Greek" show="yes"><name>Witness B</name></ms>
+    </manuscripts>
+    <text>
+      <div number="1">
+        <div number="1">
+          <unit id="1">
+            <reading option="0" mss="A ">alpha</reading>
+            <reading option="1" mss="B "></reading>
+          </unit>
+        </div>
+      </div>
+    </text>
+  </version>
+</book>
