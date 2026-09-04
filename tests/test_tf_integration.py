@@ -164,10 +164,11 @@ def test_work_passage_preserves_metadata_only_versions(tmp_path):
 def test_passage_distinguishes_declared_and_citation_only_witnesses(tmp_path):
     data = build_tf_data([parse_file(FIXTURES / "undeclared_witness.xml")])
     assert any("reading cites undeclared manuscript 'X'" in warning for warning in data.warnings)
-    api = _load(data, tmp_path, PASSAGE_FEATURES)
+    api = _load(data, tmp_path, WORK_PASSAGE_FEATURES)
     assert api is not None
 
-    passage = Apparatus(api).passage("Undeclared", "1", "1")
+    A = Apparatus(api)
+    passage = A.passage("Undeclared", "1", "1")
     witnesses = passage["witnesses"]
 
     assert set(witnesses) == {"A", "X"}
@@ -175,3 +176,9 @@ def test_passage_distinguishes_declared_and_citation_only_witnesses(tmp_path):
     assert witnesses["X"]["declared"] is False
     assert witnesses["X"]["segments"][0]["status"] == "reading"
     assert witnesses["X"]["text"] == "alpha"
+
+    work = A.work_passage("Undeclared", "1", "1")
+    version = work["versions"]["Undeclared"]
+    assert set(version["witnesses"]) == {"A", "X"}
+    assert version["witnesses"]["X"]["declared"] is False
+    assert version["passage"]["witnesses"]["X"]["text"] == "alpha"
