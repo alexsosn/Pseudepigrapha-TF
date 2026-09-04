@@ -88,7 +88,7 @@ def test_empty_source_division_reloads_without_fabricated_section(tmp_path):
     )
     assert api.F.div_fragment.v(empty_div) == "empty-upstream"
     assert api.F.is_empty_div.v(empty_div) == 1
-    assert len(api.E.oslots.f(empty_div)) == 1
+    assert len(api.L.d(empty_div, otype="word")) == 1
 
 
 def test_passage_returns_all_witnesses_with_explicit_coverage_states(tmp_path):
