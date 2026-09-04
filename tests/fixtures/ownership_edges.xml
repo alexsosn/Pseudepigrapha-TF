@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<book filename="Ownership" title="Ownership edge fixture" textStructure="criticalApparatus">
+  <version title="Greek" author="Editor A" language="Greek">
+    <divisions>
+      <division label="Chapter" delimiter=":"/>
+      <division label="Verse"/>
+    </divisions>
+    <resources>
+      <resource name="Edition A"><info>Edition for first Greek version</info></resource>
+    </resources>
+    <manuscripts>
+      <ms abbrev="A" language="Greek" show="yes"><name>Witness A</name></ms>
+    </manuscripts>
+    <text>
+      <div number="1"><div number="1"><unit id="1"><reading option="0" mss="A X ">alpha</reading></unit></div></div>
+    </text>
+  </version>
+  <version title="Greek" author="Editor B" language="Greek">
+    <divisions>
+      <division label="Chapter" delimiter=":"/>
+      <division label="Verse"/>
+    </divisions>
+    <resources>
+      <resource name="Edition B"><info>Edition for second Greek version</info></resource>
+    </resources>
+    <manuscripts>
+      <ms abbrev="B" language="Greek" show="yes"><name>Witness B</name></ms>
+    </manuscripts>
+    <text>
+      <div number="1"><div number="1"><unit id="1"><reading option="0" mss="B ">beta</reading></unit></div></div>
+    </text>
+  </version>
+  <version title="Coptic" author="Editor C" language="Coptic">
+    <divisions>
+      <division label="Chapter" delimiter=":"/>
+      <division label="Verse"/>
+    </divisions>
+    <resources>
+      <resource name="Edition C"><info>Metadata-only Coptic edition</info></resource>
+    </resources>
+    <manuscripts>
+      <ms abbrev="C" language="Coptic" show="yes"><name>Witness C</name></ms>
+    </manuscripts>
+    <text></text>
+  </version>
+</book>
