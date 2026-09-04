@@ -37,7 +37,9 @@
           "convert",
           "{source}",
           "--output",
-          "{output}"
+          "{output}",
+          "--upstream-commit",
+          "{source_revision}"
         ],
         "network": "deny"
       },
