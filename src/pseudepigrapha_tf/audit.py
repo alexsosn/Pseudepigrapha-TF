@@ -120,12 +120,23 @@ def _raw_inventory(source_dir: Path) -> dict:
             continue
         root = ET.fromstring(data)
         ocp_book = root.get("filename", "")
-        inventory["files"].append({"file": path.name, "sha256": hashlib.sha256(data).hexdigest()})
+        source_sha256 = hashlib.sha256(data).hexdigest()
+        inventory["files"].append({"file": path.name, "sha256": source_sha256})
         versions = root.findall("version")
         if versions:
             for version in versions:
                 version_title = version.get("title", "")
-                inventory["versions"].append({"ocp_book": ocp_book, "version_title": version_title})
+                inventory["versions"].append({
+                    "ocp_book": ocp_book,
+                    "title": root.get("title", ""),
+                    "text_structure": root.get("textStructure", ""),
+                    "version_title": version_title,
+                    "author": version.get("author", ""),
+                    "language": version.get("language", ""),
+                    "fragment": version.get("fragment", ""),
+                    "source_file": path.name,
+                    "source_sha256": source_sha256,
+                })
                 divisions = version.find("divisions")
                 specs = tuple(
                     DivisionSpec(d.get("label", ""), d.get("delimiter", ""), _plain_text(d))
@@ -144,7 +155,17 @@ def _raw_inventory(source_dir: Path) -> dict:
                         walk_div(div, ocp_book, version_title, specs, ())
         else:
             version_title = root.get("language", "") or "Default"
-            inventory["versions"].append({"ocp_book": ocp_book, "version_title": version_title})
+            inventory["versions"].append({
+                "ocp_book": ocp_book,
+                "title": root.get("title", ""),
+                "text_structure": root.get("textStructure", ""),
+                "version_title": version_title,
+                "author": "",
+                "language": root.get("language", ""),
+                "fragment": "",
+                "source_file": path.name,
+                "source_sha256": source_sha256,
+            })
             specs = (DivisionSpec("Chapter", ":"), DivisionSpec("Verse", ""))
             for index, spec in enumerate(specs, 1):
                 inventory["division_specs"].append({
@@ -192,7 +213,17 @@ def _graph_inventory(data: TFData) -> dict:
     for node in _nodes(data, "book"):
         ocp_book = _feature(data, "ocp_book", node)
         version_title = _feature(data, "version_title", node)
-        inventory["versions"].append({"ocp_book": ocp_book, "version_title": version_title})
+        inventory["versions"].append({
+            "ocp_book": ocp_book,
+            "title": _feature(data, "title", node),
+            "text_structure": _feature(data, "text_structure", node),
+            "version_title": version_title,
+            "author": _feature(data, "author", node),
+            "language": _feature(data, "language", node),
+            "fragment": _feature(data, "version_fragment", node),
+            "source_file": _feature(data, "source_file", node),
+            "source_sha256": _feature(data, "source_sha256", node),
+        })
         labels = json.loads(_feature(data, "division_labels", node, "[]"))
         delimiters = json.loads(_feature(data, "division_delimiters", node, "[]"))
         texts = json.loads(_feature(data, "division_texts", node, "[]"))
