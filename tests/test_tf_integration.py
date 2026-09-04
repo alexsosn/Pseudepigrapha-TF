@@ -43,6 +43,54 @@ def test_node_type_default_formats_prevent_misleading_text(tmp_path):
     assert api.T.text(manuscript) == "A"
 
 
+def test_reading_tokens_use_real_tf_token_nodes_and_hide_gap_anchor(tmp_path):
+    api = _load(
+        build_tf_data([parse_file(FIXTURES / "sample.xml")]),
+        tmp_path,
+        "variant_word_of",
+    )
+    assert api is not None
+    A = Apparatus(api)
+
+    heading = [
+        node for node in api.F.otype.s("reading")
+        if api.F.source_ref.v(node) == "1:Heading"
+    ]
+    primary = next(node for node in heading if api.F.is_primary.v(node) == 1)
+    alternative = next(node for node in heading if api.F.is_primary.v(node) != 1)
+
+    primary_tokens = A.reading_tokens(primary)
+    assert [api.F.otype.v(node) for node in primary_tokens] == ["word", "word"]
+    assert [api.F.g_word_utf8.v(node) for node in primary_tokens] == ["λόγος", "θεοῦ"]
+
+    alternative_tokens = A.reading_tokens(alternative)
+    assert [api.F.otype.v(node) for node in alternative_tokens] == ["variant_word", "variant_word"]
+    assert [api.F.g_word_utf8.v(node) for node in alternative_tokens] == ["λόγος", "κυρίου"]
+
+    primary_omission = next(
+        node for node in api.F.otype.s("reading")
+        if api.F.source_ref.v(node) == "1:2" and api.F.is_primary.v(node) == 1
+    )
+    assert A.reading_text(primary_omission) == ""
+    assert A.reading_tokens(primary_omission) == ()
+
+
+def test_reading_tokens_return_no_shared_locus_for_nonprimary_omission(tmp_path):
+    api = _load(
+        build_tf_data([parse_file(FIXTURES / "alternative_omission.xml")]),
+        tmp_path,
+        "variant_word_of",
+    )
+    assert api is not None
+    A = Apparatus(api)
+    omission = next(
+        node for node in api.F.otype.s("reading")
+        if api.F.is_primary.v(node) != 1
+    )
+    assert A.reading_text(omission) == ""
+    assert A.reading_tokens(omission) == ()
+
+
 def test_deep_source_reference_has_truthful_three_level_tf_address(tmp_path):
     api = _load(build_tf_data([parse_file(FIXTURES / "three_divisions.xml")]), tmp_path)
     assert api is not None
