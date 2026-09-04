@@ -40,6 +40,7 @@ The main Text-Fabric shape follows BHSA where OCP semantics permit it:
 | standard sections | `book`, `chapter`, `verse` |
 | primary Unicode display | `prefix_utf8` + `g_word_utf8` + `trailer_utf8` + `boundary_utf8` |
 | exact source citation | `source_ref` plus JSON `source_ref_parts` |
+| exact upstream-version identity | `version_id` on version-owned non-slot nodes; stable even when sibling versions have the same title |
 | source hierarchy | `div` nodes, literal labels/numbers, `parent` edges |
 | empty source `div` inside a textual version | preserved `div` with `is_empty_div=1` and one technical anchor; no fabricated text section |
 | textual locus | `unit` node, explicitly parented to its source `div` |
@@ -54,6 +55,8 @@ The primary slot stream is OCP `reading option="0"`, matching OCP's default-sele
 The OCP DTD also permits a `div` with no child `div` or `unit`. When such an empty structure occurs inside an otherwise textual version, the converter preserves its exact `source_ref`, fragment metadata, and `parent` relation as a `div` with `is_empty_div=1`. Text-Fabric 13.1 requires every non-slot node to have `oslots`, so the node receives one technical anchor from the nearest non-empty structural ancestor (or the version as a fallback). That anchor does not assert textual containment: the converter creates no gap slot and no `chapter`/`verse` section for the empty source division.
 
 OCP can also declare a version whose metadata exists but whose text has not yet been included. The pinned corpus does this for `TJob/Coptic`. Such a version is preserved as `version_metadata` with its version/manuscript/resource metadata, but contributes no `book/chapter/verse` section and no invented text.
+
+`version_id` identifies the exact OCP version represented by each version-owned non-slot graph node. For a one-version work it is normally the work id; for multi-version works it is the stable TF version id, with deterministic suffixes when human-readable version titles repeat. This lets provenance and ownership checks distinguish, for example, two sibling versions both titled `Greek` without treating the title as a unique key.
 
 ### Sections and deep references
 
@@ -176,14 +179,17 @@ When loading only selected TF features, `work_passage()` requires at least `ocp_
 - division declarations and every structural division/reference;
 - unit attributes and explicit unit→div parent linkage;
 - every reading's option, witnesses, flags, normalized text, and mixed XML;
+- `reading_of` cardinality, target type, exact version ownership, source locus, and unit identity;
 - manuscript metadata and bibliography;
-- resources;
+- `manuscript_of` cardinality, target type, and exact version ownership, including citation-only and metadata-only witnesses;
+- resources and `resource_of` cardinality, target type, and exact version ownership, including metadata-only resources;
+- duplicate human-readable version titles remain distinguishable through `version_id` during ownership validation;
 - every annotated `<w>` and its attributes;
 - primary and alternative token reconstruction;
 - complete and unique `book/chapter/verse` coverage for the textual slot stream, including deterministic disambiguation of repeated exact upstream citations without changing their `source_ref`;
 - graph size including `oslots` edge count.
 
-The report says `status: "ok"` only when every semantic check passes. Section coverage is computed in linear time so the audit itself does not reintroduce the dense-scaling problem eliminated from the graph.
+The report says `status: "ok"` only when every semantic check passes. Section coverage and ownership checks are computed in linear time so the audit itself does not reintroduce the dense-scaling problem eliminated from the graph.
 
 ## Test
 
@@ -191,7 +197,7 @@ The report says `status: "ok"` only when every semantic check passes. Section co
 pytest
 ```
 
-The synthetic suite covers parser, graph, apparatus helpers, passage-level witness coverage and declaration provenance, work-level multi-version retrieval, semantic parity, legacy OCP, deep/non-numeric and duplicate references, omissions, empty source divisions, metadata-only versions, and reproducible paths. CI additionally installs real Text-Fabric, verifies node-type `T.text()` behavior and deep/duplicate `T.sectionFromNode()`/`T.nodeFromSection()` addresses, converts and audits the pinned complete OCP checkout, reloads the full dataset, exercises `Apparatus.passage("1En__Ethiopic", "1", "2")`, verifies witness declaration provenance, verifies that `Apparatus.work_passage("1En", "1", "2")` exposes all four real 1 Enoch versions, and verifies that real `TJob/Coptic` remains visible as metadata-only evidence.
+The synthetic suite covers parser, graph, apparatus helpers, passage-level witness coverage and declaration provenance, work-level multi-version retrieval, semantic parity, ownership-edge corruption, legacy OCP, deep/non-numeric and duplicate references, omissions, empty source divisions, metadata-only versions, and reproducible paths. CI additionally installs real Text-Fabric, verifies node-type `T.text()` behavior and deep/duplicate `T.sectionFromNode()`/`T.nodeFromSection()` addresses, converts and audits the pinned complete OCP checkout, reloads the full dataset, exercises `Apparatus.passage("1En__Ethiopic", "1", "2")`, verifies witness declaration provenance, verifies that `Apparatus.work_passage("1En", "1", "2")` exposes all four real 1 Enoch versions, and verifies that real `TJob/Coptic` remains visible as metadata-only evidence.
 
 ## Licensing
 

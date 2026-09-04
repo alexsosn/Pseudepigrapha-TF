@@ -44,6 +44,41 @@ def _metadata_version_inventory(data: TFData) -> tuple[list[dict], list[dict]]:
     return versions, division_specs
 
 
+def _ownership_edge_ok(
+    data: TFData,
+    *,
+    source_type: str,
+    edge_name: str,
+    target_types: frozenset[str],
+    identity_features: tuple[str, ...],
+) -> bool:
+    """Validate exact one-owner edges against independently stamped identity."""
+
+    otype = data.node_features.get("otype", {})
+    edge = data.edge_features.get(edge_name, {})
+    version_ids = data.node_features.get("version_id", {})
+
+    for source in base._nodes(data, source_type):
+        targets = edge.get(source, set())
+        if len(targets) != 1:
+            return False
+        target = next(iter(targets))
+        if otype.get(target) not in target_types:
+            return False
+        # version_id is generated from source version order/title before the
+        # ownership edges are audited. Requiring it prevents same-title sibling
+        # versions from becoming indistinguishable during a plausible retarget.
+        source_version = version_ids.get(source, "")
+        if not source_version or source_version != version_ids.get(target, ""):
+            return False
+        for feature in identity_features:
+            source_value = data.node_features.get(feature, {}).get(source, "")
+            target_value = data.node_features.get(feature, {}).get(target, "")
+            if source_value != target_value:
+                return False
+    return True
+
+
 def _section_coverage_ok(data: TFData) -> bool:
     """Verify exactly one book/chapter/verse per primary slot in linear time."""
 
@@ -161,6 +196,27 @@ def build_conversion_report(source_dir: str | Path, books: list[Book], data: TFD
         "primary_reconstruction": primary_ok,
         "alternative_reconstruction": alternative_ok,
         "unit_parent_linkage": base._parent_linkage_ok(data),
+        "reading_ownership": _ownership_edge_ok(
+            data,
+            source_type="reading",
+            edge_name="reading_of",
+            target_types=frozenset({"unit"}),
+            identity_features=("ocp_book", "version_title", "source_ref", "unit_id"),
+        ),
+        "manuscript_ownership": _ownership_edge_ok(
+            data,
+            source_type="manuscript",
+            edge_name="manuscript_of",
+            target_types=frozenset({"book", "version_metadata"}),
+            identity_features=("ocp_book", "version_title"),
+        ),
+        "resource_ownership": _ownership_edge_ok(
+            data,
+            source_type="resource",
+            edge_name="resource_of",
+            target_types=frozenset({"book", "version_metadata"}),
+            identity_features=("ocp_book", "version_title"),
+        ),
         "section_coverage": _section_coverage_ok(data),
         "section_addresses_unique": _section_addresses_unique(data),
     }
