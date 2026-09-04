@@ -75,11 +75,40 @@ class Apparatus:
         return self.api.F.reading_text.v(reading) or ""
 
     def reading_tokens(self, reading: int) -> tuple[int, ...]:
-        variants = tuple(sorted(self.api.E.variant_word_of.t(reading)))
-        if variants:
-            return variants
-        oslots = getattr(self.api.E, "oslots", None)
-        return tuple(oslots.f(reading)) if oslots is not None else ()
+        """Return the actual token nodes of one reading, never its technical locus.
+
+        Primary textual readings return their Text-Fabric ``word`` slots.
+        Non-primary textual readings return their ``variant_word`` nodes.
+        Explicit omissions return no token nodes, including when Text-Fabric
+        gives the reading a technical/shared ``oslots`` locus.
+        """
+
+        reading_text = self._require_feature("reading_text")
+        is_primary = self._require_feature("is_primary")
+        text = reading_text.v(reading) or ""
+        if not text:
+            return ()
+
+        if is_primary.v(reading) == 1:
+            oslots = getattr(self.api.E, "oslots", None)
+            slots = getattr(oslots, "s", None) if oslots is not None else None
+            if slots is None:
+                raise ValueError(
+                    "Text-Fabric oslots slot lookup must be available for primary reading_tokens()"
+                )
+            return tuple(slots(reading))
+
+        variant_word_of = getattr(self.api.E, "variant_word_of", None)
+        if variant_word_of is None:
+            raise ValueError(
+                "edge feature 'variant_word_of' must be loaded for non-primary reading_tokens()"
+            )
+        variants = tuple(sorted(variant_word_of.t(reading)))
+        if not variants:
+            raise ValueError(
+                f"non-primary reading {reading} has text but no variant_word tokens"
+            )
+        return variants
 
     def witness_reading(self, unit: int, manuscript: int) -> int | None:
         matches = [
