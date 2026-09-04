@@ -160,6 +160,22 @@ def test_metadata_only_version_is_preserved_without_inventing_text_sections():
     assert len(data.edge_features["oslots"][coptic_ms]) == 1
 
 
+def test_empty_source_division_is_preserved_without_fabricating_a_text_section():
+    data = build_tf_data([parse_file(FIXTURES / "empty_division.xml")])
+
+    source_divs = nodes_of_type(data, "div")
+    empty_div = next(n for n in source_divs if data.node_features["source_ref"][n] == "1:2")
+    assert data.node_features["div_fragment"][empty_div] == "empty-upstream"
+    assert data.node_features["is_empty_div"][empty_div] == 1
+    assert len(data.edge_features["oslots"][empty_div]) == 1
+
+    # The empty source structure remains queryable, but it does not claim a
+    # textual verse and does not create a gap/word slot.
+    assert [data.node_features["verse"][n] for n in nodes_of_type(data, "verse")] == ["1"]
+    assert data.max_slot == 1
+    assert data.node_features.get("is_gap", {}) == {}
+
+
 def test_surface_boundaries_are_explicit_and_deterministic():
     data = build_tf_data([parse_file(FIXTURES / "boundary.xml")])
     assert data.node_features["boundary_utf8"][1] == " "
