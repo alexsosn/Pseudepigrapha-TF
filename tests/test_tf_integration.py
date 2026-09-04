@@ -155,3 +155,19 @@ def test_work_passage_preserves_metadata_only_versions(tmp_path):
     assert coptic["status"] == "metadata_only"
     assert set(coptic["witnesses"]) == {"Coptic"}
     assert coptic["witnesses"]["Coptic"]["name"] == "P. Köln Inv. Nr. 3221"
+
+
+def test_passage_distinguishes_declared_and_citation_only_witnesses(tmp_path):
+    data = build_tf_data([parse_file(FIXTURES / "undeclared_witness.xml")])
+    assert any("reading cites undeclared manuscript 'X'" in warning for warning in data.warnings)
+    api = _load(data, tmp_path, f"{PASSAGE_FEATURES} undefined_manuscript")
+    assert api is not None
+
+    passage = Apparatus(api).passage("Undeclared", "1", "1")
+    witnesses = passage["witnesses"]
+
+    assert set(witnesses) == {"A", "X"}
+    assert witnesses["A"]["declared"] is True
+    assert witnesses["X"]["declared"] is False
+    assert witnesses["X"]["segments"][0]["status"] == "reading"
+    assert witnesses["X"]["text"] == "alpha"
