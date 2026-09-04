@@ -40,10 +40,13 @@ class Apparatus:
             raise ValueError(f"cannot resolve TF book section id for textual OCP version node {book_node}")
         return str(section[0])
 
-    def _declared_witnesses(self, owner: int) -> dict[str, dict[str, object]]:
+    def _witnesses(self, owner: int) -> dict[str, dict[str, object]]:
+        """Return all linked witnesses with explicit upstream declaration provenance."""
+
         manuscript_of = getattr(self.api.E, "manuscript_of", None)
         if manuscript_of is None:
             raise ValueError("manuscript_of edge feature must be loaded for this Apparatus operation")
+        undefined_manuscript = self._require_feature("undefined_manuscript")
         nodes = tuple(
             sorted(
                 manuscript_of.t(owner),
@@ -58,6 +61,7 @@ class Apparatus:
             witnesses[abbrev] = {
                 "node": manuscript,
                 "abbrev": abbrev,
+                "declared": undefined_manuscript.v(manuscript) != 1,
                 "language": self._feature("ms_language", manuscript, ""),
                 "name": self._feature("ms_name", manuscript, ""),
                 "show": self._feature("ms_show", manuscript, ""),
@@ -197,7 +201,7 @@ class Apparatus:
                 }
             )
 
-        manuscripts = self._declared_witnesses(book_node)
+        manuscripts = self._witnesses(book_node)
         witness_records: dict[str, dict[str, object]] = {}
         for abbrev, manuscript_record in manuscripts.items():
             manuscript = int(manuscript_record["node"])
@@ -287,7 +291,7 @@ class Apparatus:
                 "language": self._feature("language", book_node, ""),
                 "author": self._feature("author", book_node, ""),
                 "status": "available" if passage is not None else "not_present",
-                "witnesses": self._declared_witnesses(book_node),
+                "witnesses": self._witnesses(book_node),
                 "passage": passage,
             }
 
@@ -305,7 +309,7 @@ class Apparatus:
                 "language": self._feature("language", metadata_node, ""),
                 "author": self._feature("author", metadata_node, ""),
                 "status": "metadata_only",
-                "witnesses": self._declared_witnesses(metadata_node),
+                "witnesses": self._witnesses(metadata_node),
                 "passage": None,
             }
 

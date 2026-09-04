@@ -12,16 +12,22 @@ class _FabricLike(Protocol):
 
 
 _FORMAT_FEATURE = re.compile(r"\{([^}:]+)(?::[^}]*)?\}")
+_ALWAYS_SERIALIZED_NODE_FEATURES = frozenset({"undefined_manuscript"})
 
 
 def _node_features_with_format_dependencies(data: TFData) -> dict[str, dict[int, str | int]]:
-    """Return node features including empty maps required by declared TF formats.
+    """Return node features including empty maps required by TF/API contracts.
 
     Text-Fabric 13.1 compiles every ``fmt:*`` template during load and expects
     each referenced feature to have a corresponding ``.tf`` file, even if the
     particular corpus has no non-empty values for that feature. ``Fabric.save``
     only writes files for keys present in ``nodeFeatures``, so ensure those keys
     exist here rather than weakening the graph model with fake values.
+
+    The high-level Apparatus API also needs ``undefined_manuscript`` to exist in
+    every serialized corpus so it can distinguish an explicitly synthesized
+    citation-only witness from a declared upstream manuscript without guessing
+    when the corpus happens to contain no synthesized witnesses.
     """
 
     node_features = {name: dict(values) for name, values in data.node_features.items()}
@@ -30,6 +36,8 @@ def _node_features_with_format_dependencies(data: TFData) -> dict[str, dict[int,
             continue
         for feature in _FORMAT_FEATURE.findall(template):
             node_features.setdefault(feature, {})
+    for feature in _ALWAYS_SERIALIZED_NODE_FEATURES:
+        node_features.setdefault(feature, {})
     return node_features
 
 

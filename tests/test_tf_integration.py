@@ -15,7 +15,10 @@ BASE_FEATURES = (
     "reading_text ms_abbrev resource_name source_ref is_primary "
     "prefix_utf8 g_word_utf8 trailer_utf8 boundary_utf8 version_title"
 )
-PASSAGE_FEATURES = "ms_language ms_name ms_show unit_id reading_of witness manuscript_of"
+PASSAGE_FEATURES = (
+    "ms_language ms_name ms_show undefined_manuscript unit_id "
+    "reading_of witness manuscript_of"
+)
 WORK_PASSAGE_FEATURES = f"{PASSAGE_FEATURES} book ocp_book title language author"
 METADATA_WORK_PASSAGE_FEATURES = f"{WORK_PASSAGE_FEATURES} version_id"
 
@@ -86,6 +89,7 @@ def test_passage_returns_all_witnesses_with_explicit_coverage_states(tmp_path):
     witnesses = passage["witnesses"]
     assert set(witnesses) == {"A", "B", "C"}
 
+    assert witnesses["A"]["declared"] is True
     assert witnesses["A"]["segments"] == (
         {"unit": "1", "unit_node": passage["units"][0]["node"], "status": "omission", "reading": passage["units"][0]["readings"][0]["node"], "text": ""},
     )
@@ -155,3 +159,26 @@ def test_work_passage_preserves_metadata_only_versions(tmp_path):
     assert coptic["status"] == "metadata_only"
     assert set(coptic["witnesses"]) == {"Coptic"}
     assert coptic["witnesses"]["Coptic"]["name"] == "P. Köln Inv. Nr. 3221"
+
+
+def test_passage_distinguishes_declared_and_citation_only_witnesses(tmp_path):
+    data = build_tf_data([parse_file(FIXTURES / "undeclared_witness.xml")])
+    assert any("reading cites undeclared manuscript 'X'" in warning for warning in data.warnings)
+    api = _load(data, tmp_path, WORK_PASSAGE_FEATURES)
+    assert api is not None
+
+    A = Apparatus(api)
+    passage = A.passage("Undeclared", "1", "1")
+    witnesses = passage["witnesses"]
+
+    assert set(witnesses) == {"A", "X"}
+    assert witnesses["A"]["declared"] is True
+    assert witnesses["X"]["declared"] is False
+    assert witnesses["X"]["segments"][0]["status"] == "reading"
+    assert witnesses["X"]["text"] == "alpha"
+
+    work = A.work_passage("Undeclared", "1", "1")
+    version = work["versions"]["Undeclared"]
+    assert set(version["witnesses"]) == {"A", "X"}
+    assert version["witnesses"]["X"]["declared"] is False
+    assert version["passage"]["witnesses"]["X"]["text"] == "alpha"

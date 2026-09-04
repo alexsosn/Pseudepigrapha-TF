@@ -44,7 +44,7 @@ The main Text-Fabric shape follows BHSA where OCP semantics permit it:
 | textual locus | `unit` node, explicitly parented to its source `div` |
 | apparatus alternative | `reading` node |
 | alternative-reading token | `variant_word` node |
-| witness | `manuscript` node; `witness` edge from reading |
+| witness | `manuscript` node; `witness` edge from reading; citation-only witnesses have `undefined_manuscript=1` |
 | upstream version with no textual units | `version_metadata` node; never a fabricated TF `book` section |
 | OCP `<w>` annotation | `lex`, `morph`, `style`, effective `language`, literal `w_lang` |
 
@@ -110,7 +110,7 @@ passage["witnesses"]["p"]["text"]
 passage["witnesses"]["Bertalotto"]["segments"]
 ```
 
-The result contains every apparatus `unit` in the verse, every reading at each unit, and every manuscript declared for the containing OCP version. Per-witness `segments` explicitly distinguish:
+The result contains every apparatus `unit` in the verse, every reading at each unit, and every witness linked to the containing OCP version. This includes abbreviations that occur in reading citations even when OCP did not declare a corresponding `<ms>` entry: the converter preserves them as citation-only manuscript nodes instead of dropping the evidence. Every witness record has a boolean `declared` field: `True` for an upstream-declared manuscript and `False` for a citation-only synthesized witness. Per-witness `segments` explicitly distinguish:
 
 - `reading`: the witness is assigned to a non-empty reading;
 - `omission`: the witness is explicitly assigned to an empty OCP reading;
@@ -133,7 +133,7 @@ result["versions"]["Multi__Syriac"]["passage"]
 result["versions"]["Multi__Greek"]["passage"]
 ```
 
-Textual versions are keyed by their stable TF book/version id rather than by human-readable title, so duplicate titles cannot overwrite one another. Each version record includes its title, language, author, declared witnesses, status, and passage result.
+Textual versions are keyed by their stable TF book/version id rather than by human-readable title, so duplicate titles cannot overwrite one another. Each version record includes its title, language, author, all linked witnesses with their `declared` provenance, status, and passage result.
 
 The status is explicit:
 
@@ -141,7 +141,7 @@ The status is explicit:
 - `not_present`: the textual version exists, but that requested section does not;
 - `metadata_only`: the upstream version is declared by OCP but contains no textual units at all.
 
-Metadata-only versions are returned separately under `metadata_only_versions` with their declared witness metadata and `passage=None`. Thus a fragmentary or not-yet-transcribed version never disappears from the work-level result and is never converted into a fake empty passage.
+Metadata-only versions are returned separately under `metadata_only_versions` with their witness metadata and `passage=None`. Thus a fragmentary or not-yet-transcribed version never disappears from the work-level result and is never converted into a fake empty passage.
 
 `chapter` and `verse` are the normalized TF section address, applied independently to each textual OCP version. This is deliberately **not** an automatic alignment claim: fragmentary works can use different division schemes in different versions. Exact upstream addresses remain available in each returned passage's `source_refs`, while a version without the requested normalized section is reported as `not_present` instead of being forced into a false correspondence.
 
@@ -163,7 +163,7 @@ result["versions"]["1En__Latin_Fragments"]["status"]
 result["versions"]["1En__Greek"]["status"]
 ```
 
-When loading only selected TF features, `work_passage()` requires at least `ocp_book` plus the features/edges needed by `passage()` (`reading_text`, `ms_abbrev`, `unit_id`, `reading_of`, `witness`, `manuscript_of`). Load `title`, `version_title`, `language`, `author`, `ms_language`, `ms_name`, and `ms_show` as well if those metadata fields are desired in the returned records. If the loaded corpus contains metadata-only versions, load `version_id` as well so those versions can be keyed unambiguously.
+When loading only selected TF features, `work_passage()` requires at least `ocp_book` plus the features/edges needed by `passage()` (`reading_text`, `ms_abbrev`, `undefined_manuscript`, `unit_id`, `reading_of`, `witness`, `manuscript_of`). `undefined_manuscript` is always serialized, including as an empty feature when every witness is declared, so this requirement is stable across generated corpora. Load `title`, `version_title`, `language`, `author`, `ms_language`, `ms_name`, and `ms_show` as well if those metadata fields are desired in the returned records. If the loaded corpus contains metadata-only versions, load `version_id` as well so those versions can be keyed unambiguously.
 
 ## Preservation audit
 
@@ -188,7 +188,7 @@ The report says `status: "ok"` only when every semantic check passes. Section co
 pytest
 ```
 
-The synthetic suite covers parser, graph, apparatus helpers, passage-level witness coverage, work-level multi-version retrieval, semantic parity, legacy OCP, deep/non-numeric and duplicate references, omissions, metadata-only versions, and reproducible paths. CI additionally installs real Text-Fabric, verifies node-type `T.text()` behavior and deep/duplicate `T.sectionFromNode()`/`T.nodeFromSection()` addresses, converts and audits the pinned complete OCP checkout, reloads the full dataset, exercises `Apparatus.passage("1En__Ethiopic", "1", "2")`, verifies that `Apparatus.work_passage("1En", "1", "2")` exposes all four real 1 Enoch versions, and verifies that real `TJob/Coptic` remains visible as metadata-only evidence.
+The synthetic suite covers parser, graph, apparatus helpers, passage-level witness coverage and declaration provenance, work-level multi-version retrieval, semantic parity, legacy OCP, deep/non-numeric and duplicate references, omissions, metadata-only versions, and reproducible paths. CI additionally installs real Text-Fabric, verifies node-type `T.text()` behavior and deep/duplicate `T.sectionFromNode()`/`T.nodeFromSection()` addresses, converts and audits the pinned complete OCP checkout, reloads the full dataset, exercises `Apparatus.passage("1En__Ethiopic", "1", "2")`, verifies witness declaration provenance, verifies that `Apparatus.work_passage("1En", "1", "2")` exposes all four real 1 Enoch versions, and verifies that real `TJob/Coptic` remains visible as metadata-only evidence.
 
 ## Licensing
 

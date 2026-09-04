@@ -30,10 +30,11 @@ def test_writer_delegates_validated_features_to_text_fabric(tmp_path):
         assert saved["nodeFeatures"][name] == values
     for name in (
         "prefix_utf8", "g_word_utf8", "trailer_utf8", "boundary_utf8",
-        "reading_text", "ms_abbrev", "resource_name",
+        "reading_text", "ms_abbrev", "resource_name", "undefined_manuscript",
     ):
         assert name in saved["nodeFeatures"]
         assert saved["metaData"][name]["valueType"] in {"str", "int"}
+    assert saved["metaData"]["undefined_manuscript"]["valueType"] == "int"
     assert saved["edgeFeatures"] is data.edge_features
     assert saved["metaData"] is not data.metadata
     assert saved["metaData"]["otext"] == data.metadata["otext"]

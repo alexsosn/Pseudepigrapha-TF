@@ -72,7 +72,7 @@ jobs:
 
           TF = Fabric(locations=['/tmp/pseudepigrapha-tf/0.1'], modules=[''], silent='deep')
           api = TF.load(
-              'reading_text ms_abbrev ms_language ms_name ms_show resource_name source_ref is_primary '
+              'reading_text ms_abbrev ms_language ms_name ms_show undefined_manuscript resource_name source_ref is_primary '
               'unit_id prefix_utf8 g_word_utf8 trailer_utf8 boundary_utf8 '
               'version_title version_id is_metadata_only ocp_book title language author '
               'reading_of witness manuscript_of',
@@ -123,10 +123,13 @@ jobs:
           assert enoch['reference'] == ('1En__Ethiopic', '1', '2')
           assert enoch['source_refs'] == ('1:2',)
           assert {'p', 'Bertalotto'} <= set(enoch['witnesses'])
+          assert enoch['witnesses']['p']['declared'] is True
+          assert enoch['witnesses']['Bertalotto']['declared'] is True
           assert enoch['witnesses']['p']['complete'] is True
           assert enoch['witnesses']['Bertalotto']['complete'] is True
           assert enoch['witnesses']['p']['text']
           assert enoch['witnesses']['Bertalotto']['text']
+          assert all(isinstance(witness['declared'], bool) for witness in enoch['witnesses'].values())
           assert all(
               segment['status'] in {'reading', 'omission', 'unattested'}
               for witness in enoch['witnesses'].values()
@@ -160,5 +163,6 @@ jobs:
           assert 'TJob__Coptic' in tjob['metadata_only_versions']
           assert tjob['metadata_only_versions']['TJob__Coptic']['status'] == 'metadata_only'
           assert 'Coptic' in tjob['metadata_only_versions']['TJob__Coptic']['witnesses']
+          assert tjob['metadata_only_versions']['TJob__Coptic']['witnesses']['Coptic']['declared'] is True
           assert tjob['metadata_only_versions']['TJob__Coptic']['passage'] is None
           PY
