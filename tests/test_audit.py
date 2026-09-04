@@ -1,5 +1,7 @@
 from pathlib import Path
 
+import pytest
+
 from pseudepigrapha_tf.conversion import build_tf_data
 from pseudepigrapha_tf.graph import TFData
 from pseudepigrapha_tf.parser import parse_file
@@ -117,3 +119,27 @@ def test_conversion_report_detects_silent_reading_corruption(tmp_path):
     report = build_conversion_report(tmp_path, books, data)
     assert report["status"] == "failed"
     assert report["semantic_checks"]["reading_payloads"] is False
+
+
+@pytest.mark.parametrize(
+    ("feature", "corrupted"),
+    (
+        ("title", "CORRUPTED TITLE"),
+        ("text_structure", "CORRUPTED STRUCTURE"),
+        ("author", "CORRUPTED AUTHOR"),
+        ("language", "CORRUPTED LANGUAGE"),
+        ("version_fragment", "CORRUPTED FRAGMENT"),
+        ("source_file", "wrong-source.xml"),
+        ("source_sha256", "0" * 64),
+    ),
+)
+def test_conversion_report_detects_silent_version_metadata_corruption(tmp_path, feature, corrupted):
+    books = _corpus(tmp_path)
+    data = build_tf_data(books)
+    book = next(n for n, kind in data.node_features["otype"].items() if kind == "book")
+    data.node_features.setdefault(feature, {})[book] = corrupted
+
+    report = build_conversion_report(tmp_path, books, data)
+
+    assert report["status"] == "failed"
+    assert report["semantic_checks"]["versions"] is False
