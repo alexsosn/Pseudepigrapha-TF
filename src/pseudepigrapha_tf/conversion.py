@@ -35,6 +35,13 @@ def _version_has_units(version: Version) -> bool:
     return any(_div_has_units(div) for div in version.divs)
 
 
+def _stamp_version_identity(builder: _Builder, start: int, version_id: str) -> None:
+    """Stamp source-derived version identity on nodes created for one version."""
+
+    for obj in builder.objects[start:]:
+        obj.features["version_id"] = version_id
+
+
 def _add_metadata_version(
     builder: _Builder,
     book: Book,
@@ -52,6 +59,7 @@ def _add_metadata_version(
     instead of descending to the anchor text.
     """
 
+    start = len(builder.objects)
     vkey = f"book:{book_index}:version:{version_index}"
     technical_anchor = {anchor}
     specs = version.divisions
@@ -150,6 +158,8 @@ def _add_metadata_version(
         )
         builder.edge("resource_of", rkey, target)
 
+    _stamp_version_identity(builder, start, version_id)
+
 
 def build_tf_data(
     books: Iterable[Book],
@@ -174,7 +184,9 @@ def build_tf_data(
         for vidx, (version, version_id) in enumerate(zip(book.versions, version_ids), 1):
             if _version_has_units(version):
                 first_slot = builder.next_slot
+                start = len(builder.objects)
                 _add_version(builder, book, version, version_id, bidx, vidx)
+                _stamp_version_identity(builder, start, version_id)
                 if book_anchor is None and builder.next_slot > first_slot:
                     book_anchor = first_slot
             else:
@@ -225,6 +237,6 @@ def build_tf_data(
         )
     if "version_id" in data.metadata:
         data.metadata["version_id"]["description"] = (
-            "stable identifier for an upstream version represented without a TF book section"
+            "stable converter identifier for the exact upstream version owning this node"
         )
     return data
