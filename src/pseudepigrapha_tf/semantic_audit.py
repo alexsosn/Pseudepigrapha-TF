@@ -14,7 +14,19 @@ def _metadata_version_inventory(data: TFData) -> tuple[list[dict], list[dict]]:
     for node in base._nodes(data, "version_metadata"):
         ocp_book = base._feature(data, "ocp_book", node)
         version_title = base._feature(data, "version_title", node)
-        versions.append({"ocp_book": ocp_book, "version_title": version_title})
+        versions.append(
+            {
+                "ocp_book": ocp_book,
+                "title": base._feature(data, "title", node),
+                "text_structure": base._feature(data, "text_structure", node),
+                "version_title": version_title,
+                "author": base._feature(data, "author", node),
+                "language": base._feature(data, "language", node),
+                "fragment": base._feature(data, "version_fragment", node),
+                "source_file": base._feature(data, "source_file", node),
+                "source_sha256": base._feature(data, "source_sha256", node),
+            }
+        )
         labels = json.loads(base._feature(data, "division_labels", node, "[]"))
         delimiters = json.loads(base._feature(data, "division_delimiters", node, "[]"))
         texts = json.loads(base._feature(data, "division_texts", node, "[]"))
