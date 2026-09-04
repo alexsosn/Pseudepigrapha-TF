@@ -28,7 +28,7 @@ FEATURE_DESCRIPTIONS = {
     "reading_xml": "mixed XML content inside the OCP reading",
     "reading_option_source": "literal OCP reading/@option before numeric normalization",
     "w_lang": "literal OCP <w>/@lang when present",
-    "is_empty_div": "1 for a source div with no textual unit anywhere below it; oslots is a technical anchor only",
+    "is_empty_div": "1 for an empty source div preserved inside a textual OCP version; oslots is a technical anchor only",
     "is_gap": "1 for an anchor slot created for an empty primary reading",
     "is_omission": "1 when an OCP reading has no textual content",
 }
@@ -485,22 +485,30 @@ def _add_version(builder: _Builder, book: Book, version: Version, book_id: str,
 
     if not version_slots:
         raise ValueError(f"{book.filename}/{version.title}: version has no primary word/gap slots")
-    technical_anchor = {min(version_slots)}
+    version_anchor = min(version_slots)
+    technical_anchor = {version_anchor}
 
     # Text-Fabric 13.1 rejects empty oslots. Empty source divs therefore receive
     # one technical anchor but remain marked is_empty_div=1 and never become TF
-    # text sections. Prefer the nearest nonempty structural ancestor so generic
-    # TF locality is distorted as little as possible; fall back to the version.
-    for dkey, parent in empty_div_parents.items():
-        anchor: int | None = None
-        ancestor = parent
-        while ancestor is not None:
-            ancestor_slots = builder.by_key[ancestor].slots
-            if ancestor_slots:
-                anchor = min(ancestor_slots)
-                break
-            ancestor = empty_div_parents.get(ancestor)
-        builder.by_key[dkey].slots.add(anchor if anchor is not None else min(version_slots))
+    # text sections. Memoize the nearest nonempty structural ancestor so deeply
+    # nested empty source trees remain linear rather than repeatedly walking up.
+    anchor_cache: dict[str, int] = {}
+
+    def resolve_div_anchor(dkey: str) -> int:
+        cached = anchor_cache.get(dkey)
+        if cached is not None:
+            return cached
+        slots = builder.by_key[dkey].slots
+        if slots:
+            anchor = min(slots)
+        else:
+            parent = empty_div_parents.get(dkey)
+            anchor = version_anchor if parent is None else resolve_div_anchor(parent)
+        anchor_cache[dkey] = anchor
+        return anchor
+
+    for dkey in empty_div_parents:
+        builder.by_key[dkey].slots.add(resolve_div_anchor(dkey))
 
     bkey = f"{vkey}:book"
     builder.node(
