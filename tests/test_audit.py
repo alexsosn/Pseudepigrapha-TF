@@ -13,6 +13,15 @@ from pseudepigrapha_tf.semantic_audit import (
 from pseudepigrapha_tf.source import load_source_directory
 
 FIXTURES = Path(__file__).parent / "fixtures"
+VERSION_METADATA_CORRUPTIONS = (
+    ("title", "CORRUPTED TITLE"),
+    ("text_structure", "CORRUPTED STRUCTURE"),
+    ("author", "CORRUPTED AUTHOR"),
+    ("language", "CORRUPTED LANGUAGE"),
+    ("version_fragment", "CORRUPTED FRAGMENT"),
+    ("source_file", "wrong-source.xml"),
+    ("source_sha256", "0" * 64),
+)
 
 
 def _corpus(tmp_path):
@@ -121,23 +130,29 @@ def test_conversion_report_detects_silent_reading_corruption(tmp_path):
     assert report["semantic_checks"]["reading_payloads"] is False
 
 
-@pytest.mark.parametrize(
-    ("feature", "corrupted"),
-    (
-        ("title", "CORRUPTED TITLE"),
-        ("text_structure", "CORRUPTED STRUCTURE"),
-        ("author", "CORRUPTED AUTHOR"),
-        ("language", "CORRUPTED LANGUAGE"),
-        ("version_fragment", "CORRUPTED FRAGMENT"),
-        ("source_file", "wrong-source.xml"),
-        ("source_sha256", "0" * 64),
-    ),
-)
+@pytest.mark.parametrize(("feature", "corrupted"), VERSION_METADATA_CORRUPTIONS)
 def test_conversion_report_detects_silent_version_metadata_corruption(tmp_path, feature, corrupted):
     books = _corpus(tmp_path)
     data = build_tf_data(books)
     book = next(n for n, kind in data.node_features["otype"].items() if kind == "book")
     data.node_features.setdefault(feature, {})[book] = corrupted
+
+    report = build_conversion_report(tmp_path, books, data)
+
+    assert report["status"] == "failed"
+    assert report["semantic_checks"]["versions"] is False
+
+
+@pytest.mark.parametrize(("feature", "corrupted"), VERSION_METADATA_CORRUPTIONS)
+def test_conversion_report_detects_metadata_only_version_metadata_corruption(tmp_path, feature, corrupted):
+    source = FIXTURES / "metadata_only_version.xml"
+    (tmp_path / source.name).write_text(source.read_text(encoding="utf-8"), encoding="utf-8")
+    books, warnings = load_source_directory(tmp_path)
+    assert warnings == []
+
+    data = build_tf_data(books)
+    metadata = next(n for n, kind in data.node_features["otype"].items() if kind == "version_metadata")
+    data.node_features.setdefault(feature, {})[metadata] = corrupted
 
     report = build_conversion_report(tmp_path, books, data)
 
