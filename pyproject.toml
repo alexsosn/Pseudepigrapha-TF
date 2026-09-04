@@ -1,0 +1,23 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "pseudepigrapha-tf"
+version = "0.1.0"
+description = "Convert Online Critical Pseudepigrapha XML editions to Text-Fabric"
+readme = "README.md"
+requires-python = ">=3.10"
+license = {text = "MIT"}
+authors = [{name = "Pseudepigrapha-TF contributors"}]
+dependencies = ["text-fabric>=13.1,<14"]
+
+[project.optional-dependencies]
+dev = ["pytest>=8"]
+
+[project.scripts]
+pseudepigrapha-tf = "pseudepigrapha_tf.cli:main"
+
+[tool.pytest.ini_options]
+addopts = "-q"
+testpaths = ["tests"]

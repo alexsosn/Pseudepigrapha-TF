@@ -1,0 +1,7 @@
+<book filename="One" title="One-level work">
+  <version title="Greek" author="Anonymous" language="Greek">
+    <divisions><division label="Paragraph" delimiter="."/></divisions>
+    <manuscripts><ms abbrev="A" language="Greek" show="yes"><name>A</name></ms></manuscripts>
+    <text><div number="7"><unit id="1"><reading option="0" mss="A ">abc def</reading></unit></div></text>
+  </version>
+</book>

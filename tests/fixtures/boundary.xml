@@ -1,0 +1,10 @@
+<book filename="Boundary" title="Boundary work">
+  <version title="Greek" author="Anonymous" language="Greek">
+    <divisions><division label="Chapter" delimiter=":"/><division label="Verse"/></divisions>
+    <manuscripts><ms abbrev="A" language="Greek" show="yes"><name>A</name></ms></manuscripts>
+    <text><div number="1"><div number="1">
+      <unit id="1"><reading option="0" mss="A ">alpha</reading></unit>
+      <unit id="2"><reading option="0" mss="A ">beta</reading></unit>
+    </div></div></text>
+  </version>
+</book>

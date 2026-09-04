@@ -1,0 +1,164 @@
+name: test
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: test-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  PYTHONUNBUFFERED: '1'
+
+jobs:
+  unit-and-tf:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+      - name: Install
+        run: pip install -e '.[dev]'
+      - name: Unit and Text-Fabric integration tests
+        run: pytest
+
+  pinned-upstream-integration:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+      - name: Install
+        run: pip install -e '.[dev]'
+      - name: Clone pinned OCP source
+        run: |
+          git clone https://github.com/OnlineCriticalPseudepigrapha/Online-Critical-Pseudepigrapha.git /tmp/ocp
+          git -C /tmp/ocp checkout 2d1d14d23434a784d377ff7f4409ccdb2d18aafb
+      - name: Convert and audit complete OCP XML set
+        run: |
+          time pseudepigrapha-tf convert /tmp/ocp/static/docs \
+            --output /tmp/pseudepigrapha-tf/0.1 \
+            --upstream-commit 2d1d14d23434a784d377ff7f4409ccdb2d18aafb
+      - name: Validate semantic parity report
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          report = json.loads(Path('/tmp/pseudepigrapha-tf/0.1/conversion-report.json').read_text())
+          assert report['status'] == 'ok', report['failed_checks']
+          assert all(report['semantic_checks'].values())
+          assert report['provenance']['upstream_commit'] == '2d1d14d23434a784d377ff7f4409ccdb2d18aafb'
+          assert report['source']['versions'] == report['graph']['versions']
+          assert report['source']['readings'] == report['graph']['readings']
+          assert report['graph']['metadata_only_versions'] >= 1
+          assert report['graph']['slots'] > 0
+          assert report['graph']['oslots_edges'] > 0
+          print(json.dumps({'source': report['source'], 'graph': report['graph']}, indent=2))
+          PY
+      - name: Reload generated Text-Fabric dataset and verify interface semantics
+        run: |
+          python - <<'PY'
+          from tf.fabric import Fabric
+          from pseudepigrapha_tf import Apparatus
+
+          TF = Fabric(locations=['/tmp/pseudepigrapha-tf/0.1'], modules=[''], silent='deep')
+          api = TF.load(
+              'reading_text ms_abbrev ms_language ms_name ms_show resource_name source_ref is_primary '
+              'unit_id prefix_utf8 g_word_utf8 trailer_utf8 boundary_utf8 '
+              'version_title version_id is_metadata_only ocp_book title language author '
+              'reading_of witness manuscript_of',
+              silent='deep',
+          )
+          assert api is not None
+          assert api.F.otype.maxSlot > 0
+          assert api.F.otype.slotType == 'word'
+          assert tuple(api.T.sectionTypes) == ('book', 'chapter', 'verse')
+
+          alternative = next(
+              n for n in api.F.otype.s('reading')
+              if api.F.is_primary.v(n) != 1 and api.F.reading_text.v(n)
+          )
+          assert api.T.text(alternative) == api.F.reading_text.v(alternative)
+
+          manuscript = next(n for n in api.F.otype.s('manuscript') if api.F.ms_abbrev.v(n))
+          assert api.T.text(manuscript) == api.F.ms_abbrev.v(manuscript)
+
+          deep_unit = next(n for n in api.F.otype.s('unit') if api.F.source_ref.v(n) == '1:23:153:4')
+          section = api.T.sectionFromNode(deep_unit)
+          assert section[1:] == ('1:23:153', '4'), section
+
+          # OCP contains exact duplicate source citations. Both remain preserved,
+          # while the later occurrence receives only a technical TF-address suffix.
+          ezra_first = api.T.nodeFromSection(('4Ezra__Syriac', '10', '4'))
+          ezra_second = api.T.nodeFromSection(('4Ezra__Syriac', '10', '4~2'))
+          assert ezra_first is not None and ezra_second is not None and ezra_first != ezra_second
+          assert api.F.source_ref.v(ezra_first) == '10:4'
+          assert api.F.source_ref.v(ezra_second) == '10:4'
+
+          coptic = next(
+              n for n in api.F.otype.s('version_metadata')
+              if api.F.ocp_book.v(n) == 'TJob' and api.F.version_title.v(n) == 'Coptic'
+          )
+          assert api.F.is_metadata_only.v(coptic) == 1
+          assert api.T.text(coptic) == 'Coptic'
+          assert not any(
+              api.F.ocp_book.v(n) == 'TJob' and api.F.version_title.v(n) == 'Coptic'
+              for n in api.F.otype.s('book')
+          )
+
+          A = Apparatus(api)
+
+          # 1 Enoch has four top-level OCP textual versions. passage() addresses
+          # one version explicitly; work_passage() retrieves all of them.
+          enoch = A.passage('1En__Ethiopic', '1', '2')
+          assert enoch['reference'] == ('1En__Ethiopic', '1', '2')
+          assert enoch['source_refs'] == ('1:2',)
+          assert {'p', 'Bertalotto'} <= set(enoch['witnesses'])
+          assert enoch['witnesses']['p']['complete'] is True
+          assert enoch['witnesses']['Bertalotto']['complete'] is True
+          assert enoch['witnesses']['p']['text']
+          assert enoch['witnesses']['Bertalotto']['text']
+          assert all(
+              segment['status'] in {'reading', 'omission', 'unattested'}
+              for witness in enoch['witnesses'].values()
+              for segment in witness['segments']
+          )
+
+          enoch_work = A.work_passage('1En', '1', '2')
+          assert enoch_work['work'] == '1En'
+          assert enoch_work['title'] == '1 Enoch'
+          assert enoch_work['reference'] == ('1', '2')
+          assert set(enoch_work['versions']) == {
+              '1En__Ethiopic',
+              '1En__Qumran_Aramaic',
+              '1En__Latin_Fragments',
+              '1En__Greek',
+          }
+          assert enoch_work['metadata_only_versions'] == {}
+          assert {record['title'] for record in enoch_work['versions'].values()} == {
+              'Ethiopic', 'Qumran Aramaic', 'Latin Fragments', 'Greek'
+          }
+          assert all(
+              record['status'] in {'available', 'not_present'}
+              for record in enoch_work['versions'].values()
+          )
+          ethiopic = enoch_work['versions']['1En__Ethiopic']
+          assert ethiopic['status'] == 'available'
+          assert ethiopic['passage']['source_refs'] == ('1:2',)
+          assert {'p', 'Bertalotto'} <= set(ethiopic['passage']['witnesses'])
+
+          tjob = A.work_passage('TJob', '1', '1')
+          assert 'TJob__Coptic' in tjob['metadata_only_versions']
+          assert tjob['metadata_only_versions']['TJob__Coptic']['status'] == 'metadata_only'
+          assert 'Coptic' in tjob['metadata_only_versions']['TJob__Coptic']['witnesses']
+          assert tjob['metadata_only_versions']['TJob__Coptic']['passage'] is None
+          PY

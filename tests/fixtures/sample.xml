@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE book SYSTEM "grammateus.dtd">
+<book filename="Sample" title="Sample Work" textStructure="criticalApparatus">
+  <version title="Greek" author="Anonymous" language="Greek">
+    <divisions>
+      <division label="Chapter" delimiter=":"/>
+      <division label="Verse"/>
+    </divisions>
+    <resources>
+      <resource name="Edition"><info>Example edition</info><info>Second note</info><URL>https://example.test/edition</URL></resource>
+    </resources>
+    <manuscripts>
+      <ms abbrev="A" language="Greek" show="yes"><name>Codex <sup>A</sup></name><bibliography>Bibliography A</bibliography></ms>
+      <ms abbrev="B" language="Greek" show="yes"><name>Codex B</name></ms>
+      <ms abbrev="C" language="Greek" show="no"><name>Unused C</name></ms>
+    </manuscripts>
+    <text>
+      <div number="1">
+        <div number="Heading">
+          <unit id="0" group="7" parallel="P1">
+            <reading option="0" mss="A B " linebreak="following">λόγος <w morph="N" lex="θεός" style="em" lang="Greek">θεοῦ</w> </reading>
+            <reading option="1" mss="B ">λόγος κυρίου</reading>
+          </unit>
+        </div>
+        <div number="2">
+          <unit id="1"><reading option="0" mss="A "></reading><reading option="1" mss="B ">πλήρης</reading></unit>
+        </div>
+      </div>
+    </text>
+  </version>
+</book>

@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<book filename="Meta" title="Metadata-only version fixture" textStructure="criticalApparatus">
+  <version title="Greek" author="Editor" language="Greek">
+    <divisions>
+      <division label="Chapter" delimiter=":"/>
+      <division label="Verse"/>
+    </divisions>
+    <manuscripts>
+      <ms abbrev="G" language="Greek" show="yes"><name>Greek witness</name></ms>
+    </manuscripts>
+    <text>
+      <div number="1"><div number="1"><unit id="1" group="0" parallel=""><reading option="0" mss="G ">λόγος</reading></unit></div></div>
+    </text>
+  </version>
+  <version title="Coptic" author="" language="Coptic">
+    <divisions>
+      <division label="Chapter" delimiter=":"/>
+      <division label="Verse"/>
+    </divisions>
+    <manuscripts>
+      <ms abbrev="Coptic" language="Coptic" show="yes">
+        <name>P. Köln Inv. Nr. 3221</name>
+        <bibliography>Coptic fragment bibliography</bibliography>
+      </ms>
+    </manuscripts>
+    <text></text>
+  </version>
+</book>
