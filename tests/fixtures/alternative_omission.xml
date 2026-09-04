@@ -8,6 +8,7 @@
     <manuscripts>
       <ms abbrev="A" language="Greek" show="yes"><name>Witness A</name></ms>
       <ms abbrev="B" language="Greek" show="yes"><name>Witness B</name></ms>
+      <ms abbrev="C" language="Greek" show="yes"><name>Witness C</name></ms>
     </manuscripts>
     <text>
       <div number="1">
@@ -15,6 +16,7 @@
           <unit id="1">
             <reading option="0" mss="A ">alpha</reading>
             <reading option="1" mss="B "></reading>
+            <reading option="2" mss="C ">beta</reading>
           </unit>
         </div>
       </div>
