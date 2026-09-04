@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<book filename="NestedEmpty" title="Nested empty divisions fixture" textStructure="criticalApparatus">
+  <version title="Greek" author="Anonymous" language="Greek">
+    <divisions>
+      <division label="Part" delimiter="."/>
+      <division label="Chapter" delimiter="."/>
+      <division label="Verse"/>
+    </divisions>
+    <manuscripts>
+      <ms abbrev="A" language="Greek" show="yes"><name>Witness A</name></ms>
+    </manuscripts>
+    <text>
+      <div number="1">
+        <div number="a">
+          <div number="1">
+            <unit id="1"><reading option="0" mss="A ">alpha</reading></unit>
+          </div>
+        </div>
+      </div>
+      <div number="2">
+        <div number="b">
+          <div number="1">
+            <unit id="2"><reading option="0" mss="A ">beta</reading></unit>
+          </div>
+        </div>
+        <div number="c" fragment="empty-parent">
+          <div number="2" fragment="empty-leaf"/>
+        </div>
+      </div>
+    </text>
+  </version>
+</book>

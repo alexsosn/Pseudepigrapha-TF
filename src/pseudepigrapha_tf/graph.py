@@ -7,7 +7,7 @@ from typing import Iterable
 from .model import Book, Div, DivisionSpec, Reading, Token, Unit, Version
 
 INT_FEATURES = {
-    "chapter_index", "div_index", "div_level", "is_gap", "is_omission", "is_primary",
+    "chapter_index", "div_index", "div_level", "is_empty_div", "is_gap", "is_omission", "is_primary",
     "manuscript_index", "reading_index", "reading_option", "resource_index", "section_occurrence",
     "token_count", "undefined_manuscript", "unit_index", "variant_position", "verse_index", "w_annotated",
 }
@@ -28,6 +28,7 @@ FEATURE_DESCRIPTIONS = {
     "reading_xml": "mixed XML content inside the OCP reading",
     "reading_option_source": "literal OCP reading/@option before numeric normalization",
     "w_lang": "literal OCP <w>/@lang when present",
+    "is_empty_div": "1 for an empty source div preserved inside a textual OCP version; oslots is a technical anchor only",
     "is_gap": "1 for an anchor slot created for an empty primary reading",
     "is_omission": "1 when an OCP reading has no textual content",
 }
@@ -93,6 +94,8 @@ class TFData:
         oslots = self.edge_features.get("oslots", {})
         if set(oslots) != set(range(max_slot + 1, max_node + 1)):
             errors.append("oslots does not map every non-slot node exactly once")
+        if any(not slots for slots in oslots.values()):
+            errors.append("oslots contains empty support for non-slot node")
         if any(not 1 <= s <= max_slot for slots in oslots.values() for s in slots):
             errors.append("oslots points outside slot range")
         for feature, values in self.edge_features.items():
@@ -393,6 +396,7 @@ def _add_version(builder: _Builder, book: Book, version: Version, book_id: str,
     chapter_level = max(1, len(specs) - 1)
     verse_level = max(1, len(specs))
     section_occurrences: dict[tuple[str, str], int] = {}
+    empty_div_parents: dict[str, str | None] = {}
 
     def normalized_verse(dpath: tuple[str, ...]) -> tuple[str, int]:
         source_verse = dpath[-1]
@@ -427,33 +431,42 @@ def _add_version(builder: _Builder, book: Book, version: Version, book_id: str,
                     dpath, specs, dkey, endings,
                 ))
         label = specs[level - 1].label if level <= len(specs) else ""
+        is_empty = not slots
         builder.node(
             dkey, "div", slots, **_common(book, version), **_ref_features(dpath, specs),
             div_number=div.number, div_level=level, div_label=label,
             div_fragment=div.fragment, div_path="/".join(dpath), div_index=sibling,
+            is_empty_div=1 if is_empty else None,
         )
+        if is_empty:
+            empty_div_parents[dkey] = parent
         if parent:
             builder.edge("parent", dkey, parent)
-        if len(specs) == 1 and level == 1:
-            verse_counter += 1
-            verse_label, occurrence = normalized_verse(dpath)
-            builder.node(
-                f"{dkey}:verse", "verse", slots, **_common(book, version), **_ref_features(dpath, specs),
-                verse=verse_label, verse_index=verse_counter, section_occurrence=occurrence,
-            )
-        elif len(specs) >= 2 and level == chapter_level:
-            chapter_counter += 1
-            builder.node(
-                f"{dkey}:chapter", "chapter", slots, **_common(book, version), **_ref_features(dpath, specs),
-                chapter=_reference(dpath, specs), chapter_index=chapter_counter,
-            )
-        elif len(specs) >= 2 and level == verse_level:
-            verse_counter += 1
-            verse_label, occurrence = normalized_verse(dpath)
-            builder.node(
-                f"{dkey}:verse", "verse", slots, **_common(book, version), **_ref_features(dpath, specs),
-                verse=verse_label, verse_index=verse_counter, section_occurrence=occurrence,
-            )
+
+        # A structurally empty source div is preserved above, but it does not
+        # assert a textual section. Creating a chapter/verse here would invent a
+        # passage that OCP does not actually supply.
+        if slots:
+            if len(specs) == 1 and level == 1:
+                verse_counter += 1
+                verse_label, occurrence = normalized_verse(dpath)
+                builder.node(
+                    f"{dkey}:verse", "verse", slots, **_common(book, version), **_ref_features(dpath, specs),
+                    verse=verse_label, verse_index=verse_counter, section_occurrence=occurrence,
+                )
+            elif len(specs) >= 2 and level == chapter_level:
+                chapter_counter += 1
+                builder.node(
+                    f"{dkey}:chapter", "chapter", slots, **_common(book, version), **_ref_features(dpath, specs),
+                    chapter=_reference(dpath, specs), chapter_index=chapter_counter,
+                )
+            elif len(specs) >= 2 and level == verse_level:
+                verse_counter += 1
+                verse_label, occurrence = normalized_verse(dpath)
+                builder.node(
+                    f"{dkey}:verse", "verse", slots, **_common(book, version), **_ref_features(dpath, specs),
+                    verse=verse_label, verse_index=verse_counter, section_occurrence=occurrence,
+                )
         return slots
 
     for top_index, div in enumerate(version.divs, 1):
@@ -472,7 +485,30 @@ def _add_version(builder: _Builder, book: Book, version: Version, book_id: str,
 
     if not version_slots:
         raise ValueError(f"{book.filename}/{version.title}: version has no primary word/gap slots")
-    technical_anchor = {min(version_slots)}
+    version_anchor = min(version_slots)
+    technical_anchor = {version_anchor}
+
+    # Text-Fabric 13.1 rejects empty oslots. Empty source divs therefore receive
+    # one technical anchor but remain marked is_empty_div=1 and never become TF
+    # text sections. Memoize the nearest nonempty structural ancestor so deeply
+    # nested empty source trees remain linear rather than repeatedly walking up.
+    anchor_cache: dict[str, int] = {}
+
+    def resolve_div_anchor(dkey: str) -> int:
+        cached = anchor_cache.get(dkey)
+        if cached is not None:
+            return cached
+        slots = builder.by_key[dkey].slots
+        if slots:
+            anchor = min(slots)
+        else:
+            parent = empty_div_parents.get(dkey)
+            anchor = version_anchor if parent is None else resolve_div_anchor(parent)
+        anchor_cache[dkey] = anchor
+        return anchor
+
+    for dkey in empty_div_parents:
+        builder.by_key[dkey].slots.add(resolve_div_anchor(dkey))
 
     bkey = f"{vkey}:book"
     builder.node(
@@ -485,7 +521,7 @@ def _add_version(builder: _Builder, book: Book, version: Version, book_id: str,
         division_texts=json.dumps([d.text for d in specs], ensure_ascii=False),
     )
 
-    # TF 13.1 serialization rejects empty oslots for non-slot nodes. Metadata-only
+    # TF 13.1 serialization rejects empty oslots for non-slot nodes. Metadata-like
     # nodes therefore receive one O(1) technical anchor, never a fabricated span.
     for obj in builder.objects:
         if obj.key.startswith(f"{vkey}:ms:"):

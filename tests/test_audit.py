@@ -46,6 +46,23 @@ def test_conversion_report_proves_semantic_parity_against_raw_xml(tmp_path):
     assert report["provenance"]["upstream_commit"] == "abc123"
 
 
+def test_conversion_report_preserves_empty_source_division_without_section_fabrication(tmp_path):
+    source = FIXTURES / "empty_division.xml"
+    (tmp_path / source.name).write_text(source.read_text(encoding="utf-8"), encoding="utf-8")
+    books, warnings = load_source_directory(tmp_path)
+    assert warnings == []
+
+    data = build_tf_data(books)
+    report = build_conversion_report(tmp_path, books, data)
+
+    assert report["status"] == "ok", report["failed_checks"]
+    assert all(report["semantic_checks"].values())
+    assert report["source"]["divisions"] == report["graph"]["divisions"] == 3
+    assert report["source"]["units"] == report["graph"]["units"] == 1
+    assert report["semantic_checks"]["section_coverage"] is True
+    assert report["semantic_checks"]["section_addresses_unique"] is True
+
+
 def test_section_coverage_computes_slot_bound_once():
     data = build_tf_data([parse_file(FIXTURES / "sample.xml")])
 

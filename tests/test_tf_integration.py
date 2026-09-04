@@ -72,6 +72,25 @@ def test_metadata_only_version_has_nonmisleading_default_text(tmp_path):
     assert len(api.F.otype.s("book")) == 1
 
 
+def test_empty_source_division_reloads_without_fabricated_section(tmp_path):
+    api = _load(
+        build_tf_data([parse_file(FIXTURES / "empty_division.xml")]),
+        tmp_path,
+        "div_fragment is_empty_div",
+    )
+    assert api is not None
+
+    assert api.T.nodeFromSection(("EmptyDiv", "1", "1")) is not None
+    assert api.T.nodeFromSection(("EmptyDiv", "1", "2")) is None
+    empty_div = next(
+        node for node in api.F.otype.s("div")
+        if api.F.source_ref.v(node) == "1:2"
+    )
+    assert api.F.div_fragment.v(empty_div) == "empty-upstream"
+    assert api.F.is_empty_div.v(empty_div) == 1
+    assert len(api.L.d(empty_div, otype="word")) == 1
+
+
 def test_passage_returns_all_witnesses_with_explicit_coverage_states(tmp_path):
     api = _load(
         build_tf_data([parse_file(FIXTURES / "sample.xml")]),
