@@ -1,0 +1,14 @@
+<book filename="Dup" title="Duplicate Sections" textStructure="criticalApparatus">
+  <version title="Greek" author="" language="Greek">
+    <divisions><division label="Chapter" delimiter=":"/><division label="Verse"/></divisions>
+    <manuscripts><ms abbrev="A" language="Greek" show="yes"><name>A</name></ms></manuscripts>
+    <text>
+      <div number="10">
+        <div number="4"><unit id="1"><reading option="0" mss="A ">alpha</reading></unit></div>
+        <div number="43"><unit id="2"><reading option="0" mss="A ">beta</reading></unit></div>
+        <div number="4"><unit id="3"><reading option="0" mss="A ">gamma</reading></unit></div>
+        <div number="45"><unit id="4"><reading option="0" mss="A ">delta</reading></unit></div>
+      </div>
+    </text>
+  </version>
+</book>

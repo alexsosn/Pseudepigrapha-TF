@@ -8,14 +8,15 @@ from .model import Book, Div, DivisionSpec, Reading, Token, Unit, Version
 
 INT_FEATURES = {
     "chapter_index", "div_index", "div_level", "is_gap", "is_omission", "is_primary",
-    "manuscript_index", "reading_index", "reading_option", "resource_index", "token_count",
-    "undefined_manuscript", "unit_index", "variant_position", "verse_index", "w_annotated",
+    "manuscript_index", "reading_index", "reading_option", "resource_index", "section_occurrence",
+    "token_count", "undefined_manuscript", "unit_index", "variant_position", "verse_index", "w_annotated",
 }
 
 FEATURE_DESCRIPTIONS = {
     "book": "BHSA-compatible book section identifier; one OCP version is one TF book",
     "chapter": "BHSA-compatible chapter label; compound parent path for deep OCP references",
-    "verse": "BHSA-compatible verse label; terminal OCP division",
+    "verse": "BHSA-compatible verse label; later duplicate upstream addresses receive a technical ~N suffix",
+    "section_occurrence": "1-based occurrence of the exact upstream section address within an OCP version",
     "g_word_utf8": "Unicode surface form, following the BHSA feature name",
     "trailer_utf8": "Unicode material following a word inside its OCP reading",
     "prefix_utf8": "Unicode material preceding a word inside its OCP reading",
@@ -66,27 +67,33 @@ class TFData:
         if not otype:
             return ["missing otype"]
         errors: list[str] = []
-        nodes = set(range(1, self.max_node + 1))
+
+        # These properties scan the complete otype feature. Compute each bound
+        # exactly once: using self.max_slot inside an edge generator turns this
+        # otherwise-linear validation into O(nodes * oslots_edges).
+        max_slot = self.max_slot
+        max_node = self.max_node
+        nodes = set(range(1, max_node + 1))
         if set(otype) != nodes:
             errors.append("otype node ids are not contiguous from 1")
-        if any(otype.get(n) != "word" for n in range(1, self.max_slot + 1)):
+        if any(otype.get(n) != "word" for n in range(1, max_slot + 1)):
             errors.append("word slots are not the first contiguous nodes")
-        if any(otype.get(n) == "word" for n in range(self.max_slot + 1, self.max_node + 1)):
+        if any(otype.get(n) == "word" for n in range(max_slot + 1, max_node + 1)):
             errors.append("word slot found after non-slot nodes")
 
         # Text-Fabric indexes each non-slot type through its min/max node range.
         # Nodes of the same type therefore have to form one contiguous block;
         # interleaving types can make TF interpret unrelated nodes as sections.
-        non_slot_types = {otype[n] for n in range(self.max_slot + 1, self.max_node + 1)}
+        non_slot_types = {otype[n] for n in range(max_slot + 1, max_node + 1)}
         for kind in sorted(non_slot_types):
-            typed = [n for n in range(self.max_slot + 1, self.max_node + 1) if otype[n] == kind]
+            typed = [n for n in range(max_slot + 1, max_node + 1) if otype[n] == kind]
             if typed and typed != list(range(typed[0], typed[-1] + 1)):
                 errors.append(f"non-slot node type {kind} does not occupy one contiguous node-id range")
 
         oslots = self.edge_features.get("oslots", {})
-        if set(oslots) != set(range(self.max_slot + 1, self.max_node + 1)):
+        if set(oslots) != set(range(max_slot + 1, max_node + 1)):
             errors.append("oslots does not map every non-slot node exactly once")
-        if any(not 1 <= s <= self.max_slot for slots in oslots.values() for s in slots):
+        if any(not 1 <= s <= max_slot for slots in oslots.values() for s in slots):
             errors.append("oslots points outside slot range")
         for feature, values in self.edge_features.items():
             if feature == "oslots":
@@ -385,6 +392,22 @@ def _add_version(builder: _Builder, book: Book, version: Version, book_id: str,
     endings: list[tuple[int, str]] = []
     chapter_level = max(1, len(specs) - 1)
     verse_level = max(1, len(specs))
+    section_occurrences: dict[tuple[str, str], int] = {}
+
+    def normalized_verse(dpath: tuple[str, ...]) -> tuple[str, int]:
+        source_verse = dpath[-1]
+        chapter = "1" if len(specs) == 1 else _reference(dpath[:-1], specs)
+        key = (chapter, source_verse)
+        occurrence = section_occurrences.get(key, 0) + 1
+        section_occurrences[key] = occurrence
+        if occurrence == 1:
+            return source_verse, occurrence
+        label = f"{source_verse}~{occurrence}"
+        builder.warnings.append(
+            f"{book.filename}/{version.title}: duplicate source section "
+            f"{_reference(dpath, specs)!r}; exposed as TF {chapter}:{label} while preserving source_ref"
+        )
+        return label, occurrence
 
     def visit(div: Div, level: int, sibling: int, path: tuple[str, ...], parent: str | None) -> set[int]:
         nonlocal unit_counter, chapter_counter, verse_counter, div_serial
@@ -413,9 +436,10 @@ def _add_version(builder: _Builder, book: Book, version: Version, book_id: str,
             builder.edge("parent", dkey, parent)
         if len(specs) == 1 and level == 1:
             verse_counter += 1
+            verse_label, occurrence = normalized_verse(dpath)
             builder.node(
                 f"{dkey}:verse", "verse", slots, **_common(book, version), **_ref_features(dpath, specs),
-                verse=div.number, verse_index=verse_counter,
+                verse=verse_label, verse_index=verse_counter, section_occurrence=occurrence,
             )
         elif len(specs) >= 2 and level == chapter_level:
             chapter_counter += 1
@@ -425,9 +449,10 @@ def _add_version(builder: _Builder, book: Book, version: Version, book_id: str,
             )
         elif len(specs) >= 2 and level == verse_level:
             verse_counter += 1
+            verse_label, occurrence = normalized_verse(dpath)
             builder.node(
                 f"{dkey}:verse", "verse", slots, **_common(book, version), **_ref_features(dpath, specs),
-                verse=div.number, verse_index=verse_counter,
+                verse=verse_label, verse_index=verse_counter, section_occurrence=occurrence,
             )
         return slots
 

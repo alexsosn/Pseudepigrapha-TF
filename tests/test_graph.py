@@ -1,6 +1,7 @@
 from pathlib import Path
 
 from pseudepigrapha_tf.conversion import build_tf_data
+from pseudepigrapha_tf.graph import TFData
 from pseudepigrapha_tf.parser import parse_file
 
 FIXTURES = Path(__file__).parent / "fixtures"
@@ -65,6 +66,34 @@ def test_non_slot_node_types_form_contiguous_ranges_for_text_fabric_indexes():
     for kind in kinds:
         nodes = nodes_of_type(data, kind)
         assert nodes == list(range(min(nodes), max(nodes) + 1)), kind
+
+
+def test_validate_computes_node_bounds_once():
+    data = build_tf_data([parse_file(FIXTURES / "multiple_versions.xml")])
+
+    class CountingTFData(TFData):
+        max_slot_calls = 0
+        max_node_calls = 0
+
+        @property
+        def max_slot(self):
+            self.max_slot_calls += 1
+            return super().max_slot
+
+        @property
+        def max_node(self):
+            self.max_node_calls += 1
+            return super().max_node
+
+    counted = CountingTFData(
+        data.node_features,
+        data.edge_features,
+        data.metadata,
+        data.warnings,
+    )
+    assert counted.validate() == []
+    assert counted.max_slot_calls == 1
+    assert counted.max_node_calls == 1
 
 
 def test_single_division_synthesizes_chapter_and_uses_source_div_as_verse():

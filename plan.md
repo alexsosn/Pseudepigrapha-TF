@@ -11,6 +11,7 @@ Produce a reproducible converter for Online Critical Pseudepigrapha XML that use
 - [x] Primary Unicode text uses BHSA-familiar word/trailer features plus explicit boundary reconstruction.
 - [x] Full OCP source citations are directly exposed on loci/readings/tokens.
 - [x] Three- and four-level OCP references map truthfully into the three-level TF section API.
+- [x] Repeated exact upstream section citations remain unchanged in `source_ref`; later occurrences receive only a deterministic technical `~N` TF-address suffix plus `section_occurrence` rather than an editorial correction.
 - [x] All source `div`, `unit`, `reading`, manuscript, resource, division-declaration, and `<w>` information required for scholarly reconstruction is retained.
 - [x] Declared upstream versions with no textual units remain representable without inventing TF text/sections.
 - [x] Alternative readings remain token-queryable without contaminating the primary slot stream.
@@ -101,7 +102,8 @@ Applied cases:
 - `TJob/Coptic`: upstream declares Coptic division/manuscript metadata but `<text></text>` because the fragmentary Coptic evidence has not yet been included. Preserve it as `version_metadata`; do not synthesize a Coptic textual `book`.
 - Text-Fabric 13.1 serialization: metadata-like non-slot nodes require a nonempty technical `oslots` anchor. Use one slot only and node-type formats so the anchor is never presented as their text.
 - Text-Fabric derived indexes: each non-slot type must occupy one contiguous node-id range. Group graph objects by `otype` at finalization while preserving deterministic source order within each type.
-- parity audit scaling: replace slot×section scans with linear slot-coverage maps.
+- graph/audit scaling: cache global node bounds and replace slot×section scans with linear coverage/index maps; full pinned conversion must complete without relying on a larger timeout.
+- repeated upstream citations: pinned OCP contains exact duplicate source refs (`4Ezra/Syriac 10:4`, `Jub/Greek 10:21`, `SibOr 3:261`, `SibOr 3:262`). Do not guess corrected edition numbering or merge distinct source divisions. Preserve the repeated `source_ref` verbatim, keep both source structures, and expose later copies through deterministic TF verse labels such as `4~2` with `section_occurrence=2`.
 
 ### 10. Passage-level apparatus ergonomics
 

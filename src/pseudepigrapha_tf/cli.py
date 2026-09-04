@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 from pathlib import Path
 from time import perf_counter
 
@@ -67,8 +68,15 @@ def main(argv: list[str] | None = None) -> int:
     write_conversion_report(report, report_path)
     stage_started = _stage("write_report", stage_started)
     if report["status"] != "ok":
+        diagnostic = ""
+        collisions = report.get("diagnostics", {}).get("duplicate_section_addresses", [])
+        if collisions:
+            diagnostic = "; duplicate section addresses: " + json.dumps(
+                collisions[:10], ensure_ascii=False, separators=(",", ":")
+            )
         raise SystemExit(
-            f"semantic parity audit failed ({', '.join(report['failed_checks'])}); report: {report_path}"
+            f"semantic parity audit failed ({', '.join(report['failed_checks'])}); "
+            f"report: {report_path}{diagnostic}"
         )
 
     if not write_tf(data, args.output):
