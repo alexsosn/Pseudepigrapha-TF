@@ -29,6 +29,8 @@ def test_agora_materializer_manifest_declares_ocp_to_tf_contract():
         "{source}",
         "--output",
         "{output}",
+        "--upstream-commit",
+        "{source_revision}",
     ]
     assert materializer["execution"]["network"] == "deny"
     assert materializer["output"]["format"] == "text-fabric"
