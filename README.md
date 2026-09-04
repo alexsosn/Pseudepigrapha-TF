@@ -41,6 +41,7 @@ The main Text-Fabric shape follows BHSA where OCP semantics permit it:
 | primary Unicode display | `prefix_utf8` + `g_word_utf8` + `trailer_utf8` + `boundary_utf8` |
 | exact source citation | `source_ref` plus JSON `source_ref_parts` |
 | source hierarchy | `div` nodes, literal labels/numbers, `parent` edges |
+| empty source `div` inside a textual version | preserved `div` with `is_empty_div=1` and one technical anchor; no fabricated text section |
 | textual locus | `unit` node, explicitly parented to its source `div` |
 | apparatus alternative | `reading` node |
 | alternative-reading token | `variant_word` node |
@@ -49,6 +50,8 @@ The main Text-Fabric shape follows BHSA where OCP semantics permit it:
 | OCP `<w>` annotation | `lex`, `morph`, `style`, effective `language`, literal `w_lang` |
 
 The primary slot stream is OCP `reading option="0"`, matching OCP's default-selection rule. If option 0 is absent, the converter uses the first reading and emits a warning. Empty primary readings receive a surface-less `is_gap=1` anchor slot so apparatus nodes still have a valid locus.
+
+The OCP DTD also permits a `div` with no child `div` or `unit`. When such an empty structure occurs inside an otherwise textual version, the converter preserves its exact `source_ref`, fragment metadata, and `parent` relation as a `div` with `is_empty_div=1`. Text-Fabric 13.1 requires every non-slot node to have `oslots`, so the node receives one technical anchor from the nearest non-empty structural ancestor (or the version as a fallback). That anchor does not assert textual containment: the converter creates no gap slot and no `chapter`/`verse` section for the empty source division.
 
 OCP can also declare a version whose metadata exists but whose text has not yet been included. The pinned corpus does this for `TJob/Coptic`. Such a version is preserved as `version_metadata` with its version/manuscript/resource metadata, but contributes no `book/chapter/verse` section and no invented text.
 
@@ -188,7 +191,7 @@ The report says `status: "ok"` only when every semantic check passes. Section co
 pytest
 ```
 
-The synthetic suite covers parser, graph, apparatus helpers, passage-level witness coverage and declaration provenance, work-level multi-version retrieval, semantic parity, legacy OCP, deep/non-numeric and duplicate references, omissions, metadata-only versions, and reproducible paths. CI additionally installs real Text-Fabric, verifies node-type `T.text()` behavior and deep/duplicate `T.sectionFromNode()`/`T.nodeFromSection()` addresses, converts and audits the pinned complete OCP checkout, reloads the full dataset, exercises `Apparatus.passage("1En__Ethiopic", "1", "2")`, verifies witness declaration provenance, verifies that `Apparatus.work_passage("1En", "1", "2")` exposes all four real 1 Enoch versions, and verifies that real `TJob/Coptic` remains visible as metadata-only evidence.
+The synthetic suite covers parser, graph, apparatus helpers, passage-level witness coverage and declaration provenance, work-level multi-version retrieval, semantic parity, legacy OCP, deep/non-numeric and duplicate references, omissions, empty source divisions, metadata-only versions, and reproducible paths. CI additionally installs real Text-Fabric, verifies node-type `T.text()` behavior and deep/duplicate `T.sectionFromNode()`/`T.nodeFromSection()` addresses, converts and audits the pinned complete OCP checkout, reloads the full dataset, exercises `Apparatus.passage("1En__Ethiopic", "1", "2")`, verifies witness declaration provenance, verifies that `Apparatus.work_passage("1En", "1", "2")` exposes all four real 1 Enoch versions, and verifies that real `TJob/Coptic` remains visible as metadata-only evidence.
 
 ## Licensing
 
