@@ -16,7 +16,11 @@ _ALWAYS_SERIALIZED_NODE_FEATURES = frozenset({"undefined_manuscript"})
 _ALWAYS_SERIALIZED_EDGE_FEATURES = frozenset({"witness", "manuscript_of"})
 
 
-def _node_features_with_format_dependencies(data: TFData) -> dict[str, dict[int, str | int]]:
+def _node_features_with_format_dependencies(
+    data: TFData,
+    *,
+    isolate: bool = True,
+) -> dict[str, dict[int, str | int]]:
     """Return node features including empty maps required by TF/API contracts.
 
     Text-Fabric 13.1 compiles every ``fmt:*`` template during load and expects
@@ -31,7 +35,11 @@ def _node_features_with_format_dependencies(data: TFData) -> dict[str, dict[int,
     when the corpus happens to contain no synthesized witnesses.
     """
 
-    node_features = {name: dict(values) for name, values in data.node_features.items()}
+    node_features = (
+        {name: dict(values) for name, values in data.node_features.items()}
+        if isolate
+        else dict(data.node_features)
+    )
     for name, template in data.metadata.get("otext", {}).items():
         if not name.startswith("fmt:"):
             continue
@@ -42,19 +50,21 @@ def _node_features_with_format_dependencies(data: TFData) -> dict[str, dict[int,
     return node_features
 
 
-def _edge_features_with_api_dependencies(data: TFData) -> dict[str, dict[int, set[int]]]:
-    """Return an isolated edge-feature payload with stable core API relations.
+def _edge_features_with_api_dependencies(
+    data: TFData,
+    *,
+    isolate: bool = True,
+) -> dict[str, dict[int, set[int]]]:
+    """Return edge features plus stable core API relations for serialization."""
 
-    The semantic graph omits an edge feature when no source edge exists.  Some
-    researcher-facing relations, however, must remain loadable even when their
-    correct value is the empty relation.  Materialize those empty feature files
-    only in the writer payload: do not invent graph edges or mutate ``TFData``.
-    """
-
-    edge_features = {
-        name: {source: set(targets) for source, targets in values.items()}
-        for name, values in data.edge_features.items()
-    }
+    edge_features = (
+        {
+            name: {source: set(targets) for source, targets in values.items()}
+            for name, values in data.edge_features.items()
+        }
+        if isolate
+        else dict(data.edge_features)
+    )
     for feature in _ALWAYS_SERIALIZED_EDGE_FEATURES:
         edge_features.setdefault(feature, {})
     return edge_features
@@ -98,14 +108,20 @@ def write_tf(
         raise ValueError("refusing to write invalid Text-Fabric data: " + "; ".join(failures))
     output = Path(output_dir)
     output.mkdir(parents=True, exist_ok=True)
+
+    # The built-in Text-Fabric serializer treats feature mappings as read-only,
+    # so its normal CLI path can reuse the graph payload. Explicit custom
+    # factories remain an untrusted boundary and receive defensive deep copies.
+    isolate_payload = fabric_factory is not None
     if fabric_factory is None:
         try:
             from tf.fabric import Fabric
         except ImportError as exc:  # pragma: no cover - environment-specific
             raise RuntimeError("Text-Fabric is required to write .tf files; install the project dependencies") from exc
         fabric_factory = Fabric
-    node_features = _node_features_with_format_dependencies(data)
-    edge_features = _edge_features_with_api_dependencies(data)
+
+    node_features = _node_features_with_format_dependencies(data, isolate=isolate_payload)
+    edge_features = _edge_features_with_api_dependencies(data, isolate=isolate_payload)
     metadata = _metadata_with_serialized_features(data, node_features, edge_features)
     fabric = fabric_factory(locations=[], modules=[], silent="deep")
     return bool(
