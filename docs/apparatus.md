@@ -2,6 +2,18 @@
 
 `pseudepigrapha_tf.Apparatus` is a convenience layer over a loaded Text-Fabric API. Its methods do not implicitly reload omitted features, so selective loads must include the features and edges required by the operation being used.
 
+## Primitive apparatus relations
+
+`unit_readings(unit)` requires the `reading_of` edge. `witness_reading(unit, manuscript)` and `witness_state(unit, manuscript)` additionally require the `witness` edge. Missing required relations are reported as `ValueError` naming the omitted edge instead of leaking Text-Fabric attribute errors.
+
+`apparatus(unit)` reports each reading's text, primary/alternative status, and witness nodes. It therefore requires `reading_of`, `witness`, and `is_primary`. `reading_text` is used as well, but generated Pseudepigrapha-TF corpora declare it in `fmt:reading-default`, so Text-Fabric loads it as a format dependency even when it is not named explicitly in a selective `TF.load()` call.
+
+## Passage-level helpers
+
+`passage()` and the passage-bearing portions of `work_passage()` require the semantic inputs needed to distinguish primary readings, alternatives, witness assignments, omissions, and unattested witnesses: `reading_of`, `witness`, `is_primary`, `manuscript_of`, and `undefined_manuscript` (plus `ocp_book` for `work_passage()`). Omitting `is_primary` is an error; the API never silently turns an unavailable primary/alternative distinction into `primary=False`.
+
+Descriptive fields such as `source_ref`, `unit_id`, `ms_abbrev`, `ms_name`, `ms_language`, and `ms_show` remain optional where the API already provides a neutral fallback. Selective loading therefore needs to preserve semantic distinctions, not every display field.
+
 ## `witness_text()`
 
 `Apparatus.witness_text(manuscript)` reconstructs all non-empty **standard unit readings** attributed to one manuscript in Text-Fabric corpus-unit order. In this global mode it requires:
