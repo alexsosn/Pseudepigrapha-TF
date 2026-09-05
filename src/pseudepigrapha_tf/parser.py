@@ -6,7 +6,20 @@ from pathlib import Path
 from xml.etree import ElementTree as ET
 from xml.sax.saxutils import escape
 
-from .model import Book, Div, DivisionSpec, Ellipsis, Manuscript, OrphanReading, Reading, Resource, Token, Unit, Version
+from .model import (
+    Book,
+    Div,
+    DivisionSpec,
+    Ellipsis,
+    Manuscript,
+    OrphanReading,
+    Reading,
+    Resource,
+    Token,
+    Unit,
+    Version,
+    _validated_blank_unit_id,
+)
 from .source_structure import SourceStructureError, validate_source_structure
 
 ETHIOPIC_SEPARATORS = frozenset("፡።፣፤፥፦፧፨")
@@ -104,9 +117,11 @@ def _parse_reading(element: ET.Element) -> Reading:
     )
 
 
-def _parse_unit(element: ET.Element) -> Unit:
+def _parse_unit(element: ET.Element, *, validated_modern: bool = False) -> Unit:
+    source_id = element.get("id", "")
+    unit_id = _validated_blank_unit_id() if validated_modern and source_id == "" else source_id
     return Unit(
-        unit_id=element.get("id", ""),
+        unit_id=unit_id,
         group=element.get("group", "0"),
         parallel=element.get("parallel", ""),
         linebreak=element.get("linebreak", ""),
@@ -120,7 +135,10 @@ def _parse_div(element: ET.Element) -> Div:
         if child.tag == "div":
             items.append(_parse_div(child))
         elif child.tag == "unit":
-            items.append(_parse_unit(child))
+            # Modern source structure has already passed validation before this
+            # parser runs. Therefore a remaining literal blank unit ID can only
+            # be an explicitly provenance-approved anomaly.
+            items.append(_parse_unit(child, validated_modern=True))
         elif child.tag == "elipsis":
             items.append(Ellipsis(text=_plain_text(child)))
         elif child.tag == "reading":
@@ -233,10 +251,16 @@ def parse_bytes(data: bytes, *, source_path: str = "") -> Book:
     if root.tag != "book":
         raise InvalidSourceError(f"expected <book> root in {source_path or '<memory>'}, found <{root.tag}>")
 
+    source_sha256 = hashlib.sha256(data).hexdigest()
     has_versions = bool(root.findall("version"))
     is_legacy = not has_versions and root.find("text/chapter") is not None
     try:
-        validate_source_structure(root, legacy=is_legacy, source_path=source_path)
+        validate_source_structure(
+            root,
+            legacy=is_legacy,
+            source_path=source_path,
+            source_sha256=source_sha256,
+        )
     except SourceStructureError as exc:
         raise InvalidSourceError(str(exc)) from exc
 
@@ -251,7 +275,7 @@ def parse_bytes(data: bytes, *, source_path: str = "") -> Book:
         text_structure=root.get("textStructure", ""),
         versions=versions,
         source_path=source_path,
-        source_sha256=hashlib.sha256(data).hexdigest(),
+        source_sha256=source_sha256,
     )
 
 

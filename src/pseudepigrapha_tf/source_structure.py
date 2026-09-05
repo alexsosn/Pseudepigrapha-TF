@@ -96,6 +96,32 @@ MODERN_REQUIRED_ATTRIBUTES: dict[str, frozenset[str]] = {
     "reading": frozenset({"option", "mss"}),
 }
 
+# These required modern attributes define researcher-visible work, witness,
+# locus, or apparatus identity. DTD #REQUIRED only guarantees presence, so
+# whitespace-only CDATA has to be rejected separately. Other required metadata
+# is deliberately allowed to be empty because pinned OCP uses that convention.
+MODERN_NONBLANK_IDENTITY_ATTRIBUTES: dict[str, frozenset[str]] = {
+    "book": frozenset({"filename"}),
+    "ms": frozenset({"abbrev"}),
+    "div": frozenset({"number"}),
+    "unit": frozenset({"id"}),
+    "reading": frozenset({"option"}),
+}
+
+# AdamEve.xml at the pinned OCP revision contains exactly one source-declared
+# blank unit id: Latin (Mozley), source div path 26:0. Bind the exception to the
+# exact source bytes, not merely to a filename-shaped path supplied by a caller.
+KNOWN_BLANK_UNIT_ID_SOURCES: dict[
+    tuple[str, str, str, tuple[str, ...]], str
+] = {
+    (
+        "AdamEve.xml",
+        "AdamEve",
+        "Latin (Mozley)",
+        ("26", "0"),
+    ): "a63275351e2349ce8a31b7427a28b80db034be670ba545e2398832a3d9ac6358",
+}
+
 # These exact pinned manuscript records embed/inhabit DTDs declaring
 # ms/@language #REQUIRED while omitting it in the source. Scope the exception
 # to source basename + OCP book identity + version title + manuscript abbrev;
@@ -136,6 +162,7 @@ def validate_source_structure(
     *,
     legacy: bool,
     source_path: str = "",
+    source_sha256: str = "",
 ) -> None:
     """Reject source structure that cannot be mapped without ambiguity or loss.
 
@@ -151,13 +178,18 @@ def validate_source_structure(
     source_name = source_path.replace("\\", "/").rsplit("/", 1)[-1] if source_path else ""
     book_filename = root.attrib.get("filename", "")
 
-    # Carry the containing version title through the iterative traversal so
-    # record-specific exceptions remain linear and do not require ancestor scans.
-    stack: list[tuple[ET.Element, str, str]] = [(root, f"/{root.tag}", "")]
+    # Carry the containing version title and source div path through the
+    # iterative traversal so record-specific exceptions remain linear and do
+    # not require parent pointers or repeated ancestor scans.
+    stack: list[tuple[ET.Element, str, str, tuple[str, ...]]] = [
+        (root, f"/{root.tag}", "", ())
+    ]
     while stack:
-        parent, path, version_title = stack.pop()
+        parent, path, version_title, div_path = stack.pop()
         if parent.tag == "version":
             version_title = parent.attrib.get("title", "")
+        if parent.tag == "div":
+            div_path = div_path + (parent.attrib.get("number", ""),)
 
         allowed = allowed_children.get(parent.tag)
         if allowed is None:
@@ -182,11 +214,30 @@ def validate_source_structure(
                         f"{location}: missing required attribute {attribute} on <{parent.tag}> at {path}"
                     )
 
+            for attribute in sorted(
+                MODERN_NONBLANK_IDENTITY_ATTRIBUTES.get(parent.tag, frozenset())
+            ):
+                value = parent.attrib.get(attribute)
+                if value is not None and not value.strip():
+                    anomaly_key = (source_name, book_filename, version_title, div_path)
+                    expected_digest = KNOWN_BLANK_UNIT_ID_SOURCES.get(anomaly_key)
+                    known_blank_unit = (
+                        parent.tag == "unit"
+                        and attribute == "id"
+                        and value == ""
+                        and expected_digest is not None
+                        and source_sha256 == expected_digest
+                    )
+                    if not known_blank_unit:
+                        raise SourceStructureError(
+                            f"{location}: blank required identity attribute {attribute} on <{parent.tag}> at {path}"
+                        )
+
         if parent.tag == "manuscripts":
             seen_abbrevs: set[str] = set()
             for manuscript in parent.findall("ms"):
                 abbrev = manuscript.get("abbrev", "")
-                if not abbrev:
+                if not abbrev.strip():
                     continue
                 if abbrev in seen_abbrevs:
                     owner = f"version {version_title!r}" if not legacy else "legacy version"
@@ -220,4 +271,4 @@ def validate_source_structure(
                     f"{location}: unsupported <{child.tag}> child of <{parent.tag}> at {path}"
                 )
         for child in reversed(children):
-            stack.append((child, f"{path}/{child.tag}", version_title))
+            stack.append((child, f"{path}/{child.tag}", version_title, div_path))

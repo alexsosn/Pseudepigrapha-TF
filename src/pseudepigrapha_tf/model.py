@@ -3,6 +3,21 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 
+class _ValidatedBlankUnitId(str):
+    """Internal marker for a source blank accepted by XML provenance validation."""
+
+
+_VALIDATED_BLANK_UNIT_ID = _ValidatedBlankUnitId("")
+
+
+def _validated_blank_unit_id() -> str:
+    return _VALIDATED_BLANK_UNIT_ID
+
+
+def _is_validated_blank_unit_id(value: object) -> bool:
+    return value is _VALIDATED_BLANK_UNIT_ID
+
+
 @dataclass
 class Token:
     text: str

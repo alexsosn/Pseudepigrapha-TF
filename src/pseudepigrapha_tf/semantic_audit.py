@@ -186,6 +186,41 @@ def _graph_orphan_reading_inventory(data: TFData) -> list[dict]:
     return records
 
 
+def _raw_missing_unit_id_inventory(raw_units: list[dict]) -> list[dict]:
+    return [
+        {
+            "ocp_book": record["ocp_book"],
+            "version_title": record["version_title"],
+            "source_ref": record["source_ref"],
+            "unit_id": "",
+            "is_missing_unit_id": 1,
+            "is_source_anomaly": 1,
+        }
+        for record in raw_units
+        if record["unit_id"] == ""
+    ]
+
+
+def _graph_missing_unit_id_inventory(data: TFData) -> list[dict]:
+    records: list[dict] = []
+    for node in base._nodes(data, "unit"):
+        missing = base._feature(data, "is_missing_unit_id", node, 0)
+        anomaly = base._feature(data, "is_source_anomaly", node, 0)
+        if not missing and not anomaly:
+            continue
+        records.append(
+            {
+                "ocp_book": base._feature(data, "ocp_book", node),
+                "version_title": base._feature(data, "version_title", node),
+                "source_ref": base._feature(data, "source_ref", node),
+                "unit_id": base._feature(data, "unit_id", node),
+                "is_missing_unit_id": missing,
+                "is_source_anomaly": anomaly,
+            }
+        )
+    return records
+
+
 def _technical_parent_anchors_ok(data: TFData, node_type: str) -> bool:
     parent_edge = data.edge_features.get("parent", {})
     oslots = data.edge_features.get("oslots", {})
@@ -351,6 +386,8 @@ def build_conversion_report(source_dir: str | Path, books: list[Book], data: TFD
     raw_ellipses, raw_orphan_readings = _raw_special_structure_inventory(source_dir)
     graph_ellipses = _graph_ellipsis_inventory(data)
     graph_orphan_readings = _graph_orphan_reading_inventory(data)
+    raw_missing_unit_ids = _raw_missing_unit_id_inventory(raw["units"])
+    graph_missing_unit_ids = _graph_missing_unit_id_inventory(data)
 
     primary_ok, alternative_ok = base._reconstruction_checks(data)
     source_hashes = {record["file"]: record["sha256"] for record in raw["files"]}
@@ -363,6 +400,8 @@ def build_conversion_report(source_dir: str | Path, books: list[Book], data: TFD
         "division_specs": base._canonical(raw["division_specs"]) == base._canonical(graph["division_specs"]),
         "divisions": base._canonical(raw["divs"]) == base._canonical(graph["divs"]),
         "units": base._canonical(raw["units"]) == base._canonical(graph["units"]),
+        "missing_unit_ids": base._canonical(raw_missing_unit_ids)
+        == base._canonical(graph_missing_unit_ids),
         "reading_payloads": base._canonical(raw["readings"]) == base._canonical(graph["readings"]),
         "manuscripts": base._canonical(raw["manuscripts"]) == base._canonical(graph["manuscripts"]),
         "resources": base._canonical(raw["resources"]) == base._canonical(graph["resources"]),
@@ -405,6 +444,7 @@ def build_conversion_report(source_dir: str | Path, books: list[Book], data: TFD
         "versions": len(raw["versions"]),
         "divisions": len(raw["divs"]),
         "units": len(raw["units"]),
+        "missing_unit_ids": len(raw_missing_unit_ids),
         "readings": len(raw["readings"]),
         "manuscripts": len(raw["manuscripts"]),
         "resources": len(raw["resources"]),
@@ -421,6 +461,7 @@ def build_conversion_report(source_dir: str | Path, books: list[Book], data: TFD
         "metadata_only_versions": metadata_count,
         "divisions": len(base._nodes(data, "div")),
         "units": len(base._nodes(data, "unit")),
+        "missing_unit_ids": len(graph_missing_unit_ids),
         "readings": len(base._nodes(data, "reading")),
         "variant_words": len(base._nodes(data, "variant_word")),
         "ellipses": len(base._nodes(data, "ellipsis")),

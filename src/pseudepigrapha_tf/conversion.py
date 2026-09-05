@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Iterable
 
 from .graph import (
@@ -13,7 +13,15 @@ from .graph import (
     _ref_features,
     _slug,
 )
-from .model import Book, Div, Ellipsis, OrphanReading, Unit, Version
+from .model import (
+    Book,
+    Div,
+    Ellipsis,
+    OrphanReading,
+    Unit,
+    Version,
+    _is_validated_blank_unit_id,
+)
 
 
 @dataclass(frozen=True)
@@ -36,15 +44,52 @@ def _version_has_units(version: Version) -> bool:
     return any(_div_has_units(div) for div in version.divs)
 
 
+def _is_known_blank_unit_id(unit: Unit) -> bool:
+    """Accept only parser-marked blanks that already passed source validation."""
+
+    return _is_validated_blank_unit_id(unit.unit_id)
+
+
+def _validate_model_identities(books: Iterable[Book]) -> None:
+    """Reject blank graph identities before any graph mutation occurs."""
+
+    for book in books:
+        if not book.filename.strip():
+            raise ValueError("blank book filename")
+        for version in book.versions:
+            stack = [(div, ()) for div in version.divs]
+            while stack:
+                div, path = stack.pop()
+                if not div.number.strip():
+                    raise ValueError(f"{book.filename}/{version.title}: blank div number")
+                dpath = path + (div.number,)
+                for item in div.items:
+                    if isinstance(item, Div):
+                        stack.append((item, dpath))
+                    elif isinstance(item, Unit):
+                        if not item.unit_id.strip() and not _is_known_blank_unit_id(item):
+                            raise ValueError(f"{book.filename}/{version.title}: blank unit id")
+                        for reading in item.readings:
+                            if not reading.option.strip():
+                                raise ValueError(
+                                    f"{book.filename}/{version.title}: blank reading option"
+                                )
+                    elif isinstance(item, OrphanReading):
+                        if not item.reading.option.strip():
+                            raise ValueError(
+                                f"{book.filename}/{version.title}: blank reading option"
+                            )
+
+
 def _validate_unique_manuscript_abbreviations(books: Iterable[Book]) -> None:
-    """Reject ambiguous non-empty witness identity before graph mutation."""
+    """Reject ambiguous non-blank witness identity before graph mutation."""
 
     for book in books:
         for version in book.versions:
             seen: set[str] = set()
             for manuscript in version.manuscripts:
                 abbrev = manuscript.abbrev
-                if not abbrev:
+                if not abbrev.strip():
                     continue
                 if abbrev in seen:
                     raise ValueError(
@@ -82,7 +127,10 @@ def _textual_version_for_core_builder(version: Version) -> Version:
         fragment=version.fragment,
         divisions=version.divisions,
         resources=version.resources,
-        manuscripts=version.manuscripts,
+        manuscripts=tuple(
+            replace(ms, abbrev="") if not ms.abbrev.strip() else ms
+            for ms in version.manuscripts
+        ),
         divs=tuple(_without_special_div_items(div) for div in version.divs),
     )
 
@@ -96,7 +144,7 @@ def _manuscript_keys(builder: _Builder, vkey: str) -> dict[str, str]:
         if not obj.key.startswith(prefix):
             continue
         abbrev = str(obj.features.get("ms_abbrev", ""))
-        if not abbrev:
+        if not abbrev.strip():
             continue
         if abbrev in result and result[abbrev] != obj.key:
             raise ValueError(f"{vkey}: duplicate manuscript abbreviation {abbrev!r}")
@@ -342,7 +390,7 @@ def _add_metadata_version(
     mkeys: list[str] = []
     manuscripts: dict[str, str] = {}
     for midx, ms in enumerate(version.manuscripts, 1):
-        if ms.abbrev and ms.abbrev in manuscripts:
+        if ms.abbrev.strip() and ms.abbrev in manuscripts:
             raise ValueError(
                 f"{book.filename}/{version.title}: duplicate manuscript abbreviation {ms.abbrev!r}"
             )
@@ -363,7 +411,7 @@ def _add_metadata_version(
             is_metadata_only=1,
         )
         mkeys.append(mkey)
-        if ms.abbrev:
+        if ms.abbrev.strip():
             manuscripts[ms.abbrev] = mkey
 
     target = f"{vkey}:metadata"
@@ -420,6 +468,52 @@ def _add_metadata_version(
     _stamp_version_identity(builder, start, version_id)
 
 
+def _mark_known_missing_unit_ids(data: TFData, books: Iterable[Book]) -> None:
+    """Expose accepted source-declared blank unit ids without inventing identity."""
+
+    expected: set[tuple[str, str, str]] = set()
+    for book in books:
+        version_ids = _book_ids(book)
+        for version, version_id in zip(book.versions, version_ids):
+            stack = [(div, ()) for div in version.divs]
+            while stack:
+                div, path = stack.pop()
+                dpath = path + (div.number,)
+                for item in div.items:
+                    if isinstance(item, Div):
+                        stack.append((item, dpath))
+                    elif isinstance(item, Unit) and _is_known_blank_unit_id(item):
+                        source_ref = str(_ref_features(dpath, version.divisions)["source_ref"])
+                        expected.add((book.filename, version_id, source_ref))
+
+    if not expected:
+        return
+
+    otype = data.node_features.get("otype", {})
+    ocp_books = data.node_features.get("ocp_book", {})
+    version_ids = data.node_features.get("version_id", {})
+    source_refs = data.node_features.get("source_ref", {})
+    unit_ids = data.node_features.get("unit_id", {})
+    for ocp_book, version_id, source_ref in expected:
+        matches = [
+            node
+            for node, kind in otype.items()
+            if kind == "unit"
+            and ocp_books.get(node) == ocp_book
+            and version_ids.get(node) == version_id
+            and source_refs.get(node) == source_ref
+            and unit_ids.get(node, "") == ""
+        ]
+        if len(matches) != 1:
+            raise ValueError(
+                f"known missing unit id {ocp_book}/{version_id} at {source_ref}: "
+                f"expected exactly one graph unit, found {len(matches)}"
+            )
+        node = matches[0]
+        data.node_features.setdefault("is_missing_unit_id", {})[node] = 1
+        data.node_features.setdefault("is_source_anomaly", {})[node] = 1
+
+
 def build_tf_data(
     books: Iterable[Book],
     *,
@@ -430,6 +524,7 @@ def build_tf_data(
     """Build TF while preserving declared upstream versions that contain no text."""
 
     books = list(books)
+    _validate_model_identities(books)
     _validate_unique_manuscript_abbreviations(books)
     builder = _Builder()
     pending: list[_PendingMetadataVersion] = []
@@ -497,6 +592,7 @@ def build_tf_data(
         upstream_commit=upstream_commit,
         converter_version=converter_version,
     )
+    _mark_known_missing_unit_ids(data, books)
     data.metadata["otext"]["fmt:version_metadata-default"] = "{version_title}"
     data.metadata["otext"]["fmt:ellipsis-default"] = "{ellipsis_text}"
     data.metadata["otext"]["fmt:orphan_reading-default"] = "{reading_text}"
@@ -505,11 +601,16 @@ def build_tf_data(
         data.metadata["is_metadata_only"]["description"] = (
             "1 for metadata attached to an upstream version with no textual units"
         )
-    if "is_source_anomaly" in data.metadata:
-        data.metadata["is_source_anomaly"]["valueType"] = "int"
+    if "is_source_anomaly" in data.node_features:
+        data.metadata.setdefault("is_source_anomaly", {})["valueType"] = "int"
         data.metadata["is_source_anomaly"]["description"] = (
-            "1 for a preserved upstream structure that violates the source file's declared grammar"
+            "1 for a preserved upstream structure or identity anomaly"
         )
+    if "is_missing_unit_id" in data.node_features:
+        data.metadata["is_missing_unit_id"] = {
+            "valueType": "int",
+            "description": "1 when the upstream unit explicitly has an empty id and no id is inferred",
+        }
     if "version_id" in data.metadata:
         data.metadata["version_id"]["description"] = (
             "stable converter identifier for the exact upstream version owning this node"
