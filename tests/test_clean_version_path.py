@@ -1,3 +1,4 @@
+from dataclasses import replace
 from pathlib import Path
 
 from pseudepigrapha_tf import conversion
@@ -38,3 +39,48 @@ def test_clean_textual_version_reuses_model_and_skips_anomaly_pass(monkeypatch):
 
     assert data.validate() == []
     assert (same_version_identity, anomaly_calls) == (True, 0)
+
+
+def test_blank_manuscript_normalization_reuses_original_div_tree(monkeypatch):
+    book = parse_file(FIXTURES / "sample.xml")
+    source_version = book.versions[0]
+    source_version.manuscripts = (
+        source_version.manuscripts[0],
+        source_version.manuscripts[1],
+        replace(source_version.manuscripts[2], abbrev="   "),
+    )
+
+    captured_version = None
+    anomaly_calls = 0
+    original_add_version = conversion._add_version
+    original_add_anomalies = conversion._add_textual_source_anomalies
+
+    def capture_add_version(builder, add_book, version, version_id, book_index, version_index):
+        nonlocal captured_version
+        captured_version = version
+        return original_add_version(
+            builder,
+            add_book,
+            version,
+            version_id,
+            book_index,
+            version_index,
+        )
+
+    def counted_add_anomalies(*args, **kwargs):
+        nonlocal anomaly_calls
+        anomaly_calls += 1
+        return original_add_anomalies(*args, **kwargs)
+
+    monkeypatch.setattr(conversion, "_add_version", capture_add_version)
+    monkeypatch.setattr(conversion, "_add_textual_source_anomalies", counted_add_anomalies)
+
+    data = conversion.build_tf_data([book])
+
+    assert data.validate() == []
+    assert captured_version is not None
+    assert captured_version is not source_version
+    assert captured_version.divs is source_version.divs
+    assert captured_version.manuscripts[2].abbrev == ""
+    assert source_version.manuscripts[2].abbrev == "   "
+    assert anomaly_calls == 0
