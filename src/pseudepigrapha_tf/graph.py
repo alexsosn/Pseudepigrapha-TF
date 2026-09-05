@@ -222,12 +222,15 @@ class _Builder:
         oslots: dict[int, set[int]] = {}
 
         # Text-Fabric's derived indexes use the first/last node id of each
-        # non-slot otype as that type's support range. Preserve source creation
-        # order *within* a type, but group every type into one contiguous block.
-        # The first-seen kind order keeps numbering deterministic without making
-        # graph construction depend on alphabetical type names.
-        kinds = list(dict.fromkeys(obj.kind for obj in self.objects))
-        ordered_objects = [obj for kind in kinds for obj in self.objects if obj.kind == kind]
+        # non-slot otype as that type's support range. Build insertion-ordered
+        # buckets in one global pass so first-seen kind order and source creation
+        # order within each kind remain deterministic without repeated rescans.
+        objects_by_kind: dict[str, list[_Node]] = {}
+        for obj in self.objects:
+            objects_by_kind.setdefault(obj.kind, []).append(obj)
+        ordered_objects: list[_Node] = []
+        for objects in objects_by_kind.values():
+            ordered_objects.extend(objects)
 
         for node_id, obj in enumerate(ordered_objects, max_slot + 1):
             key_to_node[obj.key] = node_id
