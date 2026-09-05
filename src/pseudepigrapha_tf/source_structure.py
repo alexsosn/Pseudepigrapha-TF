@@ -84,21 +84,26 @@ MODERN_ATTRIBUTES: dict[str, frozenset[str] | None] = {
     "w": None,
 }
 
-# Presence requirements are copied from the pinned modern Grammateus DTD except
-# for one observed pinned-source deviation. ClMal.xml embeds the same declaration
-# of ms/@language as #REQUIRED but omits it on both manuscripts. Preserve that
-# absence as unknown metadata instead of rejecting the file or inferring language
-# from its version. The policy is separate from allowed attributes so optional
-# values remain accepted when present but are never invented when absent.
+# Presence requirements copied from the pinned modern Grammateus DTD. Known
+# pinned-source violations are listed separately and scoped to their exact file;
+# this keeps future modern sources on the DTD contract rather than weakening it
+# globally to accommodate one malformed upstream document.
 MODERN_REQUIRED_ATTRIBUTES: dict[str, frozenset[str]] = {
     "book": frozenset({"filename", "title"}),
     "version": frozenset({"title", "author"}),
     "division": frozenset({"label"}),
     "resource": frozenset({"name"}),
-    "ms": frozenset({"abbrev", "show"}),
+    "ms": frozenset({"abbrev", "language", "show"}),
     "div": frozenset({"number"}),
     "unit": frozenset({"id"}),
     "reading": frozenset({"option", "mss"}),
+}
+
+# ClMal.xml embeds a DTD declaring ms/@language #REQUIRED but omits the
+# attribute on both Niese and Mras. Preserve that absence as unknown manuscript
+# language; do not infer it from version/@language.
+MODERN_REQUIRED_ATTRIBUTE_EXCEPTIONS: dict[str, dict[str, frozenset[str]]] = {
+    "ClMal.xml": {"ms": frozenset({"language"})},
 }
 
 LEGACY_ATTRIBUTES: dict[str, frozenset[str] | None] = {
@@ -138,6 +143,8 @@ def validate_source_structure(
     allowed_children = LEGACY_CHILDREN if legacy else MODERN_CHILDREN
     allowed_attributes = LEGACY_ATTRIBUTES if legacy else MODERN_ATTRIBUTES
     location = source_path or "<memory>"
+    source_name = source_path.replace("\\", "/").rsplit("/", 1)[-1] if source_path else ""
+    required_exceptions = MODERN_REQUIRED_ATTRIBUTE_EXCEPTIONS.get(source_name, {})
 
     stack: list[tuple[ET.Element, str]] = [(root, f"/{root.tag}")]
     while stack:
@@ -149,7 +156,9 @@ def validate_source_structure(
             )
 
         if not legacy:
-            for attribute in sorted(MODERN_REQUIRED_ATTRIBUTES.get(parent.tag, ())):
+            required = MODERN_REQUIRED_ATTRIBUTES.get(parent.tag, frozenset())
+            exceptions = required_exceptions.get(parent.tag, frozenset())
+            for attribute in sorted(required - exceptions):
                 if attribute not in parent.attrib:
                     raise SourceStructureError(
                         f"{location}: missing required attribute {attribute} on <{parent.tag}> at {path}"
