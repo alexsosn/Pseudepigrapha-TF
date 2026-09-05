@@ -56,18 +56,27 @@ def test_conversion_report_uses_report_local_node_index(monkeypatch, tmp_path):
     data = build_tf_data(books)
 
     scan_calls: list[str] = []
-    original = compatibility_audit._nodes
+    index_calls = 0
+    original_nodes = compatibility_audit._nodes
+    original_index = compatibility_audit._node_index
 
-    def counted(nodes_data, kind, *args, **kwargs):
+    def counted_nodes(nodes_data, kind, *args, **kwargs):
         node_index = args[0] if args else kwargs.get("node_index")
         if node_index is None:
             scan_calls.append(kind)
-        return original(nodes_data, kind, *args, **kwargs)
+        return original_nodes(nodes_data, kind, *args, **kwargs)
 
-    monkeypatch.setattr(compatibility_audit, "_nodes", counted)
+    def counted_index(index_data):
+        nonlocal index_calls
+        index_calls += 1
+        return original_index(index_data)
+
+    monkeypatch.setattr(compatibility_audit, "_nodes", counted_nodes)
+    monkeypatch.setattr(compatibility_audit, "_node_index", counted_index)
     report = semantic_audit.build_conversion_report(tmp_path, books, data)
 
     assert report["status"] == "ok", report["failed_checks"]
+    assert index_calls == 1
     assert scan_calls == []
 
 
