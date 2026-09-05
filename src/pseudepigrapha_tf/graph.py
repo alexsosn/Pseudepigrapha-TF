@@ -35,12 +35,33 @@ FEATURE_DESCRIPTIONS = {
 
 EDGE_DESCRIPTIONS = {
     "oslots": "Text-Fabric warp edge to occupied/technical anchor word slots",
-    "parent": "OCP structural parent relation (div-to-div or unit-to-div)",
+    "parent": "OCP structural parent relation from div/unit/ellipsis/orphan_reading nodes to div",
     "reading_of": "reading node to its OCP unit",
     "variant_word_of": "variant_word node to its reading",
-    "witness": "reading node to cited manuscript nodes",
+    "witness": "reading/orphan_reading node to cited manuscript nodes",
     "manuscript_of": "manuscript node to its TF book/version",
     "resource_of": "resource node to its TF book/version",
+}
+
+_EDGE_TYPE_CONTRACTS = {
+    "parent": (
+        frozenset({"div", "unit", "ellipsis", "orphan_reading"}),
+        frozenset({"div"}),
+    ),
+    "reading_of": (frozenset({"reading"}), frozenset({"unit"})),
+    "variant_word_of": (frozenset({"variant_word"}), frozenset({"reading"})),
+    "witness": (
+        frozenset({"reading", "orphan_reading"}),
+        frozenset({"manuscript"}),
+    ),
+    "manuscript_of": (
+        frozenset({"manuscript"}),
+        frozenset({"book", "version_metadata"}),
+    ),
+    "resource_of": (
+        frozenset({"resource"}),
+        frozenset({"book", "version_metadata"}),
+    ),
 }
 
 
@@ -103,6 +124,25 @@ class TFData:
                 continue
             if any(src not in nodes or any(dst not in nodes for dst in dsts) for src, dsts in values.items()):
                 errors.append(f"edge feature {feature} refers to unknown nodes")
+
+            contract = _EDGE_TYPE_CONTRACTS.get(feature)
+            if contract is None:
+                continue
+            allowed_sources, allowed_targets = contract
+            for source, targets in values.items():
+                source_type = otype.get(source)
+                if source_type is not None and source_type not in allowed_sources:
+                    expected = ", ".join(sorted(allowed_sources))
+                    errors.append(
+                        f"edge feature {feature} source {source} has type {source_type}; expected one of {expected}"
+                    )
+                for target in targets:
+                    target_type = otype.get(target)
+                    if target_type is not None and target_type not in allowed_targets:
+                        expected = ", ".join(sorted(allowed_targets))
+                        errors.append(
+                            f"edge feature {feature} target {target} has type {target_type}; expected one of {expected}"
+                        )
         return errors
 
 
