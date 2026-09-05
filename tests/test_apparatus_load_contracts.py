@@ -43,6 +43,12 @@ def test_witness_reading_names_missing_witness_edge(tmp_path):
         Apparatus(api).witness_reading(_unit(api), _manuscript(api))
 
 
+def test_witness_state_names_missing_unit_id_instead_of_using_node_id(tmp_path):
+    api = _load(tmp_path, "reading_text reading_of witness")
+    with pytest.raises(ValueError, match="unit_id"):
+        Apparatus(api).witness_state(_unit(api), _manuscript(api))
+
+
 def test_apparatus_names_missing_is_primary_feature(tmp_path):
     api = _load(tmp_path, "reading_of reading_text witness")
     with pytest.raises(ValueError, match="is_primary"):
