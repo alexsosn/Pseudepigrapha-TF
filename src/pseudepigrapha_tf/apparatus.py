@@ -120,15 +120,9 @@ class Apparatus:
             raise ValueError(f"manuscript {manuscript} has multiple readings at unit {unit}: {matches}")
         return matches[0] if matches else None
 
-    def witness_state(self, unit: int, manuscript: int) -> dict[str, object]:
-        """Return an explicit witness state at one apparatus unit.
+    def _state_for_reading(self, unit: int, reading: int | None) -> dict[str, object]:
+        """Build one witness-state record from an already resolved reading."""
 
-        ``omission`` means the witness is explicitly assigned to an empty OCP
-        reading. ``unattested`` means no reading at the unit cites the witness.
-        The latter must not be silently interpreted as an omission or lacuna.
-        """
-
-        reading = self.witness_reading(unit, manuscript)
         unit_id = str(self._feature("unit_id", unit, unit))
         if reading is None:
             return {
@@ -146,6 +140,16 @@ class Apparatus:
             "reading": reading,
             "text": text,
         }
+
+    def witness_state(self, unit: int, manuscript: int) -> dict[str, object]:
+        """Return an explicit witness state at one apparatus unit.
+
+        ``omission`` means the witness is explicitly assigned to an empty OCP
+        reading. ``unattested`` means no reading at the unit cites the witness.
+        The latter must not be silently interpreted as an omission or lacuna.
+        """
+
+        return self._state_for_reading(unit, self.witness_reading(unit, manuscript))
 
     def witness_text(self, manuscript: int, units: Iterable[int] | None = None) -> str:
         if units is None:
@@ -201,19 +205,30 @@ class Apparatus:
 
         source_refs: list[str] = []
         unit_records: list[dict[str, object]] = []
+        reading_by_witness: dict[int, dict[int, int]] = {}
         for unit in units:
             source_ref = str(self._feature("source_ref", unit, ""))
             if source_ref and source_ref not in source_refs:
                 source_refs.append(source_ref)
             readings: list[dict[str, object]] = []
+            unit_witnesses: dict[int, int] = {}
             for reading in self.unit_readings(unit):
                 witness_nodes = tuple(sorted(self.api.E.witness.f(reading)))
+                for manuscript in witness_nodes:
+                    previous = unit_witnesses.get(manuscript)
+                    if previous is not None:
+                        matches = sorted((previous, reading))
+                        raise ValueError(
+                            f"manuscript {manuscript} has multiple readings at unit {unit}: {matches}"
+                        )
+                    unit_witnesses[manuscript] = reading
+                text = self.reading_text(reading)
                 readings.append(
                     {
                         "node": reading,
-                        "text": self.reading_text(reading),
+                        "text": text,
                         "primary": self._feature("is_primary", reading, 0) == 1,
-                        "omission": self.reading_text(reading) == "",
+                        "omission": text == "",
                         "witness_nodes": witness_nodes,
                         "witnesses": tuple(
                             str(self._feature("ms_abbrev", manuscript, manuscript))
@@ -221,6 +236,7 @@ class Apparatus:
                         ),
                     }
                 )
+            reading_by_witness[unit] = unit_witnesses
             unit_records.append(
                 {
                     "node": unit,
@@ -234,7 +250,10 @@ class Apparatus:
         witness_records: dict[str, dict[str, object]] = {}
         for abbrev, manuscript_record in manuscripts.items():
             manuscript = int(manuscript_record["node"])
-            segments = tuple(self.witness_state(unit, manuscript) for unit in units)
+            segments = tuple(
+                self._state_for_reading(unit, reading_by_witness[unit].get(manuscript))
+                for unit in units
+            )
             coverage = Counter(str(segment["status"]) for segment in segments)
             complete = coverage["unattested"] == 0
             chunks = [
