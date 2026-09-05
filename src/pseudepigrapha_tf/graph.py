@@ -106,8 +106,10 @@ class TFData:
         max_node = self.max_node
         nodes = set(range(1, max_node + 1))
         nodes_by_type: dict[str, list[int]] = {}
-        for node, kind in otype.items():
-            nodes_by_type.setdefault(kind, []).append(node)
+        for node in range(1, max_node + 1):
+            kind = otype.get(node)
+            if kind is not None:
+                nodes_by_type.setdefault(kind, []).append(node)
 
         if set(otype) != nodes:
             errors.append("otype node ids are not contiguous from 1")
