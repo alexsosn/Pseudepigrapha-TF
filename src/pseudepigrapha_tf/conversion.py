@@ -37,6 +37,7 @@ class _PendingMetadataVersion:
 class _VersionTreeShape:
     has_units: bool
     has_non_core_items: bool
+    known_blank_unit_refs: tuple[str, ...]
 
 
 def _is_known_blank_unit_id(unit: Unit) -> bool:
@@ -58,6 +59,7 @@ def _validate_and_classify_model(
         for version in book.versions:
             has_units = False
             has_non_core_items = False
+            known_blank_unit_refs: list[str] = []
             stack = [(div, ()) for div in version.divs]
             while stack:
                 div, path = stack.pop()
@@ -69,8 +71,12 @@ def _validate_and_classify_model(
                         stack.append((item, dpath))
                     elif isinstance(item, Unit):
                         has_units = True
-                        if not item.unit_id.strip() and not _is_known_blank_unit_id(item):
-                            raise ValueError(f"{book.filename}/{version.title}: blank unit id")
+                        if not item.unit_id.strip():
+                            if not _is_known_blank_unit_id(item):
+                                raise ValueError(f"{book.filename}/{version.title}: blank unit id")
+                            known_blank_unit_refs.append(
+                                str(_ref_features(dpath, version.divisions)["source_ref"])
+                            )
                         for reading in item.readings:
                             if not reading.option.strip():
                                 raise ValueError(
@@ -84,7 +90,13 @@ def _validate_and_classify_model(
                             raise ValueError(
                                 f"{book.filename}/{version.title}: blank reading option"
                             )
-            version_shapes.append(_VersionTreeShape(has_units, has_non_core_items))
+            version_shapes.append(
+                _VersionTreeShape(
+                    has_units,
+                    has_non_core_items,
+                    tuple(known_blank_unit_refs),
+                )
+            )
         book_shapes.append(tuple(version_shapes))
     return tuple(book_shapes)
 
@@ -468,23 +480,19 @@ def _add_metadata_version(
     _stamp_version_identity(builder, start, version_id)
 
 
-def _mark_known_missing_unit_ids(data: TFData, books: Iterable[Book]) -> None:
-    """Expose accepted source-declared blank unit ids without inventing identity."""
+def _mark_known_missing_unit_ids(
+    data: TFData,
+    books: Iterable[Book],
+    book_shapes: tuple[tuple[_VersionTreeShape, ...], ...],
+) -> None:
+    """Expose preflight-authorized blank unit ids without rescanning source trees."""
 
     expected: set[tuple[str, str, str]] = set()
-    for book in books:
+    for book, shapes in zip(books, book_shapes):
         version_ids = _book_ids(book)
-        for version, version_id in zip(book.versions, version_ids):
-            stack = [(div, ()) for div in version.divs]
-            while stack:
-                div, path = stack.pop()
-                dpath = path + (div.number,)
-                for item in div.items:
-                    if isinstance(item, Div):
-                        stack.append((item, dpath))
-                    elif isinstance(item, Unit) and _is_known_blank_unit_id(item):
-                        source_ref = str(_ref_features(dpath, version.divisions)["source_ref"])
-                        expected.add((book.filename, version_id, source_ref))
+        for version_id, shape in zip(version_ids, shapes):
+            for source_ref in shape.known_blank_unit_refs:
+                expected.add((book.filename, version_id, source_ref))
 
     if not expected:
         return
@@ -607,7 +615,7 @@ def build_tf_data(
         upstream_commit=upstream_commit,
         converter_version=converter_version,
     )
-    _mark_known_missing_unit_ids(data, books)
+    _mark_known_missing_unit_ids(data, books, book_shapes)
     data.metadata["otext"]["fmt:version_metadata-default"] = "{version_title}"
     data.metadata["otext"]["fmt:ellipsis-default"] = "{ellipsis_text}"
     data.metadata["otext"]["fmt:orphan_reading-default"] = "{reading_text}"
