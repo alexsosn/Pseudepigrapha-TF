@@ -97,6 +97,22 @@ def test_special_and_metadata_edge_type_unions_are_valid():
     assert data.validate() == []
 
 
+def test_ellipsis_parent_union_is_explicitly_valid():
+    data = build_tf_data([parse_file(FIXTURES / "ellipsis.xml")])
+    otype = data.node_features["otype"]
+    ellipsis = _node(data, "ellipsis")
+    assert data.edge_features["parent"][ellipsis]
+    assert all(otype[target] == "div" for target in data.edge_features["parent"][ellipsis])
+    assert data.validate() == []
+
+
+def test_parent_edge_metadata_describes_all_canonical_source_types():
+    data = build_tf_data([parse_file(FIXTURES / "ellipsis.xml"), parse_file(FIXTURES / "orphan_reading.xml")])
+    assert data.metadata["parent"]["description"] == (
+        "OCP structural parent relation from div/unit/ellipsis/orphan_reading nodes to div"
+    )
+
+
 def test_unregistered_custom_edge_keeps_generic_existing_node_contract():
     data = _data()
     reading = _node(data, "reading")
