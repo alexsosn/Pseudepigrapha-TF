@@ -64,6 +64,15 @@ _EDGE_TYPE_CONTRACTS = {
     ),
 }
 
+_EDGE_CARDINALITY_CONTRACTS = (
+    ("reading_of", frozenset({"reading"}), 1, 1, "exactly 1"),
+    ("variant_word_of", frozenset({"variant_word"}), 1, 1, "exactly 1"),
+    ("manuscript_of", frozenset({"manuscript"}), 1, 1, "exactly 1"),
+    ("resource_of", frozenset({"resource"}), 1, 1, "exactly 1"),
+    ("parent", frozenset({"unit", "ellipsis", "orphan_reading"}), 1, 1, "exactly 1"),
+    ("parent", frozenset({"div"}), 0, 1, "at most 1"),
+)
+
 
 @dataclass
 class TFData:
@@ -96,6 +105,10 @@ class TFData:
         max_slot = self.max_slot
         max_node = self.max_node
         nodes = set(range(1, max_node + 1))
+        nodes_by_type: dict[str, list[int]] = {}
+        for node, kind in otype.items():
+            nodes_by_type.setdefault(kind, []).append(node)
+
         if set(otype) != nodes:
             errors.append("otype node ids are not contiguous from 1")
         if any(otype.get(n) != "word" for n in range(1, max_slot + 1)):
@@ -106,9 +119,10 @@ class TFData:
         # Text-Fabric indexes each non-slot type through its min/max node range.
         # Nodes of the same type therefore have to form one contiguous block;
         # interleaving types can make TF interpret unrelated nodes as sections.
-        non_slot_types = {otype[n] for n in range(max_slot + 1, max_node + 1)}
-        for kind in sorted(non_slot_types):
-            typed = [n for n in range(max_slot + 1, max_node + 1) if otype[n] == kind]
+        for kind, typed in sorted(nodes_by_type.items()):
+            if kind == "word":
+                continue
+            typed = [node for node in typed if node > max_slot]
             if typed and typed != list(range(typed[0], typed[-1] + 1)):
                 errors.append(f"non-slot node type {kind} does not occupy one contiguous node-id range")
 
@@ -142,6 +156,17 @@ class TFData:
                         expected = ", ".join(sorted(allowed_targets))
                         errors.append(
                             f"edge feature {feature} target {target} has type {target_type}; expected one of {expected}"
+                        )
+
+        for feature, source_types, minimum, maximum, expected in _EDGE_CARDINALITY_CONTRACTS:
+            values = self.edge_features.get(feature, {})
+            for source_type in source_types:
+                for source in nodes_by_type.get(source_type, ()):
+                    count = len(values.get(source, set()))
+                    if count < minimum or count > maximum:
+                        errors.append(
+                            f"edge feature {feature} source {source} has type {source_type} with {count} targets; "
+                            f"expected {expected}"
                         )
         return errors
 
