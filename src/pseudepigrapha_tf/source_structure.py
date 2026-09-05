@@ -84,10 +84,7 @@ MODERN_ATTRIBUTES: dict[str, frozenset[str] | None] = {
     "w": None,
 }
 
-# Presence requirements copied from the pinned modern Grammateus DTD. Known
-# pinned-source violations are listed separately and scoped by both exact source
-# basename and OCP book identity; merely renaming another source to a known file
-# must not weaken validation.
+# Presence requirements copied from the pinned modern Grammateus DTD.
 MODERN_REQUIRED_ATTRIBUTES: dict[str, frozenset[str]] = {
     "book": frozenset({"filename", "title"}),
     "version": frozenset({"title", "author"}),
@@ -99,16 +96,19 @@ MODERN_REQUIRED_ATTRIBUTES: dict[str, frozenset[str]] = {
     "reading": frozenset({"option", "mss"}),
 }
 
-# These files embed DTDs declaring ms/@language #REQUIRED but contain at least
-# one manuscript declaration without it. Preserve the absence as unknown
-# manuscript language; never infer it from version/@language.
-MODERN_REQUIRED_ATTRIBUTE_EXCEPTIONS: dict[
-    tuple[str, str], dict[str, frozenset[str]]
-] = {
-    ("ClMal.xml", "ClMal"): {"ms": frozenset({"language"})},
-    ("Eup.xml", "Eup"): {"ms": frozenset({"language"})},
-    ("Ps-Eup.xml", "Ps-Eup"): {"ms": frozenset({"language"})},
-}
+# These exact pinned manuscript records embed/inhabit DTDs declaring
+# ms/@language #REQUIRED while omitting it in the source. Scope the exception
+# to source basename + OCP book identity + version title + manuscript abbrev;
+# neighboring records in the same file still obey the DTD requirement.
+KNOWN_MISSING_MANUSCRIPT_LANGUAGE: frozenset[tuple[str, str, str, str]] = frozenset(
+    {
+        ("ClMal.xml", "ClMal", "Jewish Antiquities", "Niese"),
+        ("ClMal.xml", "ClMal", "Praep. Evang.", "Mras"),
+        ("Eup.xml", "Eup", "Praep. Evang. (Frag. 3)", "Mras"),
+        ("Ps-Eup.xml", "Ps-Eup", "Praep. Evang. (Frag. 1)", "Mras"),
+        ("Ps-Eup.xml", "Ps-Eup", "Praep. Evang. (Frag. 2)", "Mras"),
+    }
+)
 
 LEGACY_ATTRIBUTES: dict[str, frozenset[str] | None] = {
     "book": frozenset({"filename", "title", "textStructure", "language"}),
@@ -148,12 +148,16 @@ def validate_source_structure(
     allowed_attributes = LEGACY_ATTRIBUTES if legacy else MODERN_ATTRIBUTES
     location = source_path or "<memory>"
     source_name = source_path.replace("\\", "/").rsplit("/", 1)[-1] if source_path else ""
-    source_identity = (source_name, root.attrib.get("filename", ""))
-    required_exceptions = MODERN_REQUIRED_ATTRIBUTE_EXCEPTIONS.get(source_identity, {})
+    book_filename = root.attrib.get("filename", "")
 
-    stack: list[tuple[ET.Element, str]] = [(root, f"/{root.tag}")]
+    # Carry the containing version title through the iterative traversal so
+    # record-specific exceptions remain linear and do not require ancestor scans.
+    stack: list[tuple[ET.Element, str, str]] = [(root, f"/{root.tag}", "")]
     while stack:
-        parent, path = stack.pop()
+        parent, path, version_title = stack.pop()
+        if parent.tag == "version":
+            version_title = parent.attrib.get("title", "")
+
         allowed = allowed_children.get(parent.tag)
         if allowed is None:
             raise SourceStructureError(
@@ -162,8 +166,16 @@ def validate_source_structure(
 
         if not legacy:
             required = MODERN_REQUIRED_ATTRIBUTES.get(parent.tag, frozenset())
-            exceptions = required_exceptions.get(parent.tag, frozenset())
-            for attribute in sorted(required - exceptions):
+            if parent.tag == "ms":
+                manuscript_identity = (
+                    source_name,
+                    book_filename,
+                    version_title,
+                    parent.attrib.get("abbrev", ""),
+                )
+                if manuscript_identity in KNOWN_MISSING_MANUSCRIPT_LANGUAGE:
+                    required = required - {"language"}
+            for attribute in sorted(required):
                 if attribute not in parent.attrib:
                     raise SourceStructureError(
                         f"{location}: missing required attribute {attribute} on <{parent.tag}> at {path}"
@@ -194,4 +206,4 @@ def validate_source_structure(
                     f"{location}: unsupported <{child.tag}> child of <{parent.tag}> at {path}"
                 )
         for child in reversed(children):
-            stack.append((child, f"{path}/{child.tag}"))
+            stack.append((child, f"{path}/{child.tag}", version_title))
