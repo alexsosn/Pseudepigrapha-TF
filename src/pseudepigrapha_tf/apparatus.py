@@ -38,16 +38,11 @@ class Apparatus:
     def _book_id(self, book_node: int) -> str:
         """Resolve the canonical TF book/section id for a textual version.
 
-        Text-Fabric uses section features internally when compiling ``T`` and
-        does not guarantee that a loaded section feature is exposed as a normal
-        ``F.<name>`` feature on section nodes. Resolve through the canonical
-        section API instead of depending on that implementation detail.
+        ``book`` is the top-level Text-Fabric section node, so the canonical
+        section API can resolve it directly without enumerating its word slots.
         """
 
-        slots = tuple(self.api.L.d(book_node, otype="word"))
-        if not slots:
-            raise ValueError(f"textual OCP version node {book_node} contains no word slots")
-        section = self.api.T.sectionFromNode(slots[0])
+        section = self.api.T.sectionFromNode(book_node)
         if not section or not section[0]:
             raise ValueError(f"cannot resolve TF book section id for textual OCP version node {book_node}")
         return str(section[0])
