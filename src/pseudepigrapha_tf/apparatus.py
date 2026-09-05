@@ -153,9 +153,13 @@ class Apparatus:
 
     def witness_text(self, manuscript: int, units: Iterable[int] | None = None) -> str:
         if units is None:
-            selector = getattr(self.api.F.otype, "s", None)
-            if selector is None:
-                raise ValueError("units must be supplied when the TF otype feature has no selector")
+            otype = getattr(self.api.F, "otype", None)
+            selector = getattr(otype, "s", None) if otype is not None else None
+            node_type = getattr(otype, "v", None) if otype is not None else None
+            if selector is None or node_type is None:
+                raise ValueError(
+                    "units must be supplied when the TF otype feature has no selector/type lookup"
+                )
 
             witness = getattr(self.api.E, "witness", None)
             witness_sources = getattr(witness, "t", None) if witness is not None else None
@@ -172,6 +176,13 @@ class Apparatus:
 
             reading_by_unit: dict[int, int] = {}
             for reading in witness_sources(manuscript):
+                source_type = node_type(reading)
+                if source_type == "orphan_reading":
+                    continue
+                if source_type != "reading":
+                    raise ValueError(
+                        f"witness edge source {reading} has unexpected node type {source_type!r}"
+                    )
                 owners = tuple(reading_owner(reading))
                 if not owners:
                     raise ValueError(f"reading {reading} has no reading_of unit")
