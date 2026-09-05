@@ -6,7 +6,7 @@ from pathlib import Path
 from xml.etree import ElementTree as ET
 from xml.sax.saxutils import escape
 
-from .model import Book, Div, DivisionSpec, Ellipsis, Manuscript, Reading, Resource, Token, Unit, Version
+from .model import Book, Div, DivisionSpec, Ellipsis, Manuscript, OrphanReading, Reading, Resource, Token, Unit, Version
 from .source_structure import SourceStructureError, validate_source_structure
 
 ETHIOPIC_SEPARATORS = frozenset("፡።፣፤፥፦፧፨")
@@ -123,6 +123,8 @@ def _parse_div(element: ET.Element) -> Div:
             items.append(_parse_unit(child))
         elif child.tag == "elipsis":
             items.append(Ellipsis(text=_plain_text(child)))
+        elif child.tag == "reading":
+            items.append(OrphanReading(reading=_parse_reading(child)))
     return Div(
         number=element.get("number", ""),
         fragment=element.get("fragment", ""),
