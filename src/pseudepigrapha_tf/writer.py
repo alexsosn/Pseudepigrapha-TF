@@ -4,7 +4,7 @@ import re
 from pathlib import Path
 from typing import Callable, Protocol
 
-from .graph import INT_FEATURES, TFData
+from .graph import EDGE_DESCRIPTIONS, INT_FEATURES, TFData
 
 
 class _FabricLike(Protocol):
@@ -13,6 +13,7 @@ class _FabricLike(Protocol):
 
 _FORMAT_FEATURE = re.compile(r"\{([^}:]+)(?::[^}]*)?\}")
 _ALWAYS_SERIALIZED_NODE_FEATURES = frozenset({"undefined_manuscript"})
+_ALWAYS_SERIALIZED_EDGE_FEATURES = frozenset({"witness", "manuscript_of"})
 
 
 def _node_features_with_format_dependencies(data: TFData) -> dict[str, dict[int, str | int]]:
@@ -41,10 +42,30 @@ def _node_features_with_format_dependencies(data: TFData) -> dict[str, dict[int,
     return node_features
 
 
-def _metadata_with_node_features(
-    data: TFData, node_features: dict[str, dict[int, str | int]]
+def _edge_features_with_api_dependencies(data: TFData) -> dict[str, dict[int, set[int]]]:
+    """Return an isolated edge-feature payload with stable core API relations.
+
+    The semantic graph omits an edge feature when no source edge exists.  Some
+    researcher-facing relations, however, must remain loadable even when their
+    correct value is the empty relation.  Materialize those empty feature files
+    only in the writer payload: do not invent graph edges or mutate ``TFData``.
+    """
+
+    edge_features = {
+        name: {source: set(targets) for source, targets in values.items()}
+        for name, values in data.edge_features.items()
+    }
+    for feature in _ALWAYS_SERIALIZED_EDGE_FEATURES:
+        edge_features.setdefault(feature, {})
+    return edge_features
+
+
+def _metadata_with_serialized_features(
+    data: TFData,
+    node_features: dict[str, dict[int, str | int]],
+    edge_features: dict[str, dict[int, set[int]]],
 ) -> dict[str, dict[str, str]]:
-    """Ensure every serialized node feature has valid TF feature metadata."""
+    """Ensure every serialized node and edge feature has valid TF metadata."""
 
     metadata = {name: dict(values) for name, values in data.metadata.items()}
     for feature in node_features:
@@ -53,6 +74,14 @@ def _metadata_with_node_features(
             {
                 "valueType": "int" if feature in INT_FEATURES else "str",
                 "description": f"OCP/TF feature {feature}",
+            },
+        )
+    for feature in edge_features:
+        metadata.setdefault(
+            feature,
+            {
+                "valueType": "str",
+                "description": EDGE_DESCRIPTIONS.get(feature, feature),
             },
         )
     return metadata
@@ -76,12 +105,13 @@ def write_tf(
             raise RuntimeError("Text-Fabric is required to write .tf files; install the project dependencies") from exc
         fabric_factory = Fabric
     node_features = _node_features_with_format_dependencies(data)
-    metadata = _metadata_with_node_features(data, node_features)
+    edge_features = _edge_features_with_api_dependencies(data)
+    metadata = _metadata_with_serialized_features(data, node_features, edge_features)
     fabric = fabric_factory(locations=[], modules=[], silent="deep")
     return bool(
         fabric.save(
             nodeFeatures=node_features,
-            edgeFeatures=data.edge_features,
+            edgeFeatures=edge_features,
             metaData=metadata,
             location=str(output),
             module="",
