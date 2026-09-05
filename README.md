@@ -26,7 +26,7 @@ pseudepigrapha-tf convert \
   --output tf/0.1
 ```
 
-The converter auto-detects the source Git commit and records it in TF metadata. `--upstream-commit` can override this for a nonstandard checkout. Zero-byte XML files are reported and skipped; malformed non-empty XML fails loudly.
+The converter auto-detects the source Git commit and records it in TF metadata. `--upstream-commit` can override this for a nonstandard checkout. Zero-byte XML files are reported and skipped; malformed non-empty XML fails loudly. Well-formed XML also fails with `InvalidSourceError` when it contains a child element outside the explicitly supported modern or legacy source vocabulary, preventing silent loss when upstream structure changes.
 
 Every successful conversion also writes `conversion-report.json` beside the `.tf` features. The conversion fails if the independent raw-XML parity audit detects a semantic mismatch.
 
@@ -43,16 +43,20 @@ The main Text-Fabric shape follows BHSA where OCP semantics permit it:
 | exact upstream-version identity | `version_id` on version-owned non-slot nodes; stable even when sibling versions have the same title |
 | source hierarchy | `div` nodes, literal labels/numbers, `parent` edges |
 | empty source `div` inside a textual version | preserved `div` with `is_empty_div=1` and one technical anchor; no fabricated text section |
+| pinned `<elipsis>` structural marker | `ellipsis` node with literal `source_tag=elipsis`, `ellipsis_text`, `source_child_index`, `parent`, and one technical anchor |
+| direct `<reading>` under `<div>` source anomaly | `orphan_reading` with `is_source_anomaly=1`, full reading payload, `source_child_index`, `parent`, and ordinary `witness` edges; never assigned to an invented unit |
 | textual locus | `unit` node, explicitly parented to its source `div` |
 | apparatus alternative | `reading` node |
 | alternative-reading token | `variant_word` node |
-| witness | `manuscript` node; `witness` edge from reading; citation-only witnesses have `undefined_manuscript=1` |
+| witness | `manuscript` node; `witness` edge from reading/orphan reading; citation-only witnesses have `undefined_manuscript=1` |
 | upstream version with no textual units | `version_metadata` node; never a fabricated TF `book` section |
 | OCP `<w>` annotation | `lex`, `morph`, `style`, effective `language`, literal `w_lang` |
 
 The primary slot stream is OCP `reading option="0"`, matching OCP's default-selection rule. If option 0 is absent, the converter uses the first reading and emits a warning. Empty primary readings receive a surface-less `is_gap=1` anchor slot so apparatus nodes still have a valid locus.
 
 The OCP DTD also permits a `div` with no child `div` or `unit`. When such an empty structure occurs inside an otherwise textual version, the converter preserves its exact `source_ref`, fragment metadata, and `parent` relation as a `div` with `is_empty_div=1`. Text-Fabric 13.1 requires every non-slot node to have `oslots`, so the node receives one technical anchor from the nearest non-empty structural ancestor (or the version as a fallback). That anchor does not assert textual containment: the converter creates no gap slot and no `chapter`/`verse` section for the empty source division.
+
+The pinned OCP checkout contains two additional source structures that cannot simply be discarded. `Aristob.xml` extends its embedded DTD with the upstream-spelled `<elipsis>` child of `<div>`; these markers become `ellipsis` nodes. `PssSol.xml` contains direct `<reading>` children of `<div>` even though its own embedded DTD requires readings to be inside `<unit>`. Those readings become `orphan_reading` nodes. The converter preserves their source position and payload but does **not** guess which neighboring unit they were intended to belong to. Their `mss` citations still become ordinary `witness` edges, including citation-only `undefined_manuscript=1` nodes for undeclared abbreviations such as the pinned `unit149` citation. Both special node types use a single parent-derived technical `oslots` anchor and contribute no fabricated word slot or text section.
 
 OCP can also declare a version whose metadata exists but whose text has not yet been included. The pinned corpus does this for `TJob/Coptic`. Such a version is preserved as `version_metadata` with its version/manuscript/resource metadata, but contributes no `book/chapter/verse` section and no invented text.
 
@@ -83,9 +87,11 @@ variant_word-default     -> the variant token itself
 manuscript-default       -> manuscript abbreviation
 resource-default         -> resource name
 version_metadata-default -> version title
+ellipsis-default         -> ellipsis_text
+orphan_reading-default   -> reading_text
 ```
 
-This makes standard `T.text()` calls unsurprising. Text-Fabric 13.1 requires every non-slot node to serialize with an `oslots` anchor, so manuscripts, resources, metadata-only versions, and variant tokens use a **single O(1) technical anchor** rather than a fabricated textual span. Their node-type formats prevent that anchor from being rendered as their text.
+This makes standard `T.text()` calls unsurprising. Text-Fabric 13.1 requires every non-slot node to serialize with an `oslots` anchor, so manuscripts, resources, metadata-only versions, special source-anomaly nodes, and variant tokens use a **single O(1) technical anchor** rather than a fabricated textual span where they do not own ordinary text slots. Their node-type formats prevent that anchor from being rendered as their text.
 
 For routine apparatus work, the package also provides helpers:
 
@@ -180,20 +186,23 @@ When loading only selected TF features, `work_passage()` requires at least `ocp_
 `conversion-report.json` is built by rereading the raw XML independently of the converter's parsed model and comparing it with the generated TF graph. It checks:
 
 - source file SHA-256s and every declared version, including metadata-only versions;
+- explicit modern/legacy child-element vocabulary before inventory extraction, so an unsupported subtree cannot be silently ignored by both parser and audit;
 - division declarations and every structural division/reference;
 - unit attributes and explicit unit→div parent linkage;
-- every reading's option, witnesses, flags, normalized text, and mixed XML;
+- every standard reading's option, witnesses, flags, normalized text, and mixed XML;
 - `reading_of` cardinality, target type, exact version ownership, source locus, and unit identity;
+- preserved `<elipsis>` markers by source tag, text, exact parent/source reference, source child position, and technical anchor;
+- direct-div `orphan_reading` anomalies by option, raw `mss`, **actual `witness` graph targets**, flags, normalized/mixed XML, exact parent/source position, technical anchor, and exact-version witness ownership;
 - manuscript metadata and bibliography;
 - `manuscript_of` cardinality, target type, and exact version ownership, including citation-only and metadata-only witnesses;
 - resources and `resource_of` cardinality, target type, and exact version ownership, including metadata-only resources;
 - duplicate human-readable version titles remain distinguishable through `version_id` during ownership validation;
-- every annotated `<w>` and its attributes;
+- every annotated `<w>` in standard unit readings and its attributes; special orphan-reading mixed XML remains preserved verbatim in `reading_xml` because no unit/token locus is inferred for malformed source structure;
 - primary and alternative token reconstruction;
 - complete and unique `book/chapter/verse` coverage for the textual slot stream, including deterministic disambiguation of repeated exact upstream citations without changing their `source_ref`;
 - graph size including `oslots` edge count.
 
-The report says `status: "ok"` only when every semantic check passes. Section coverage and ownership checks are computed in linear time so the audit itself does not reintroduce the dense-scaling problem eliminated from the graph.
+The report says `status: "ok"` only when every semantic check passes. Section coverage, ownership, source-structure validation, and special-anomaly scans are linear in their respective node/element/edge counts so the audit itself does not reintroduce the dense-scaling problem eliminated from the graph.
 
 ## Test
 
@@ -201,7 +210,7 @@ The report says `status: "ok"` only when every semantic check passes. Section co
 pytest
 ```
 
-The synthetic suite covers parser, graph, apparatus helpers, reading-token semantics on real Text-Fabric, passage-level witness coverage and declaration provenance, work-level multi-version retrieval, semantic parity, ownership-edge corruption, legacy OCP, deep/non-numeric and duplicate references, omissions, empty source divisions, metadata-only versions, and reproducible paths. CI additionally installs real Text-Fabric, verifies node-type `T.text()` behavior and deep/duplicate `T.sectionFromNode()`/`T.nodeFromSection()` addresses, converts and audits the pinned complete OCP checkout, reloads the full dataset, exercises `Apparatus.passage("1En__Ethiopic", "1", "2")`, verifies witness declaration provenance, verifies that `Apparatus.work_passage("1En", "1", "2")` exposes all four real 1 Enoch versions, and verifies that real `TJob/Coptic` remains visible as metadata-only evidence.
+The synthetic suite covers parser, graph, apparatus helpers, reading-token semantics on real Text-Fabric, passage-level witness coverage and declaration provenance, work-level multi-version retrieval, semantic parity, ownership-edge corruption, explicit source-structure drift rejection, preserved ellipsis/direct-reading anomalies and their corruption detection, legacy OCP, deep/non-numeric and duplicate references, omissions, empty source divisions, metadata-only versions, and reproducible paths. CI additionally installs real Text-Fabric, verifies node-type `T.text()` behavior and deep/duplicate `T.sectionFromNode()`/`T.nodeFromSection()` addresses, converts and audits the pinned complete OCP checkout (including the real Aristob/PssSol source anomalies), reloads the full dataset, exercises `Apparatus.passage("1En__Ethiopic", "1", "2")`, verifies witness declaration provenance, verifies that `Apparatus.work_passage("1En", "1", "2")` exposes all four real 1 Enoch versions, and verifies that real `TJob/Coptic` remains visible as metadata-only evidence.
 
 ## Licensing
 

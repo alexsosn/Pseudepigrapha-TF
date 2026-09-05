@@ -61,11 +61,27 @@ class Unit:
     readings: tuple[Reading, ...]
 
 
+@dataclass(frozen=True)
+class Ellipsis:
+    """OCP structural omission marker; upstream spells the element ``elipsis``."""
+
+    text: str = ""
+    source_tag: str = "elipsis"
+
+
+@dataclass
+class OrphanReading:
+    """Reading found directly under a div, outside the source DTD's unit wrapper."""
+
+    reading: Reading
+    source_tag: str = "reading"
+
+
 @dataclass
 class Div:
     number: str
     fragment: str
-    items: tuple["Div | Unit", ...] = ()
+    items: tuple["Div | Unit | Ellipsis | OrphanReading", ...] = ()
 
     @property
     def children(self) -> tuple["Div", ...]:
@@ -74,6 +90,14 @@ class Div:
     @property
     def units(self) -> tuple[Unit, ...]:
         return tuple(item for item in self.items if isinstance(item, Unit))
+
+    @property
+    def ellipses(self) -> tuple[Ellipsis, ...]:
+        return tuple(item for item in self.items if isinstance(item, Ellipsis))
+
+    @property
+    def orphan_readings(self) -> tuple[OrphanReading, ...]:
+        return tuple(item for item in self.items if isinstance(item, OrphanReading))
 
 
 @dataclass

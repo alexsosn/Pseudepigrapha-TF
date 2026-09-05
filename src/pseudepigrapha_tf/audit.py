@@ -9,6 +9,8 @@ from xml.sax.saxutils import escape
 
 from .graph import TFData
 from .model import Book, DivisionSpec
+from .parser import InvalidSourceError
+from .source_structure import SourceStructureError, validate_source_structure
 
 
 def _plain_text(element: ET.Element | None) -> str:
@@ -119,10 +121,15 @@ def _raw_inventory(source_dir: Path) -> dict:
         if path.name.startswith(".") or not data.strip():
             continue
         root = ET.fromstring(data)
+        versions = root.findall("version")
+        is_legacy = not versions and root.find("text/chapter") is not None
+        try:
+            validate_source_structure(root, legacy=is_legacy, source_path=path.name)
+        except SourceStructureError as exc:
+            raise InvalidSourceError(str(exc)) from exc
         ocp_book = root.get("filename", "")
         source_sha256 = hashlib.sha256(data).hexdigest()
         inventory["files"].append({"file": path.name, "sha256": source_sha256})
-        versions = root.findall("version")
         if versions:
             for version in versions:
                 version_title = version.get("title", "")

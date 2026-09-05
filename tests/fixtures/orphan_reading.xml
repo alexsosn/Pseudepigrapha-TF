@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<book filename="Orphan" title="Direct reading fixture" textStructure="criticalApparatus">
+  <version title="Greek" author="Anonymous" language="Greek">
+    <divisions>
+      <division label="Chapter" delimiter=":"/>
+      <division label="Verse"/>
+    </divisions>
+    <manuscripts>
+      <ms abbrev="A" language="Greek" show="yes"><name>Witness A</name></ms>
+      <ms abbrev="B" language="Greek" show="yes"><name>Witness B</name></ms>
+    </manuscripts>
+    <text>
+      <div number="1">
+        <div number="1">
+          <unit id="1"><reading option="0" mss="A ">alpha</reading></unit>
+          <reading option="2" mss="B X " linebreak="following" indent="1">orphan <w lex="x" morph="N">beta</w></reading>
+          <unit id="2"><reading option="0" mss="A ">omega</reading></unit>
+        </div>
+      </div>
+    </text>
+  </version>
+</book>
