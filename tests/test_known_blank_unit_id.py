@@ -1,3 +1,4 @@
+import hashlib
 from pathlib import Path
 
 import pytest
@@ -7,6 +8,7 @@ from pseudepigrapha_tf.model import Book, Div, DivisionSpec, Reading, Token, Uni
 from pseudepigrapha_tf.parser import InvalidSourceError, parse_bytes
 from pseudepigrapha_tf.semantic_audit import build_conversion_report
 from pseudepigrapha_tf.source import load_source_directory
+from pseudepigrapha_tf.source_structure import KNOWN_BLANK_UNIT_ID_SOURCES
 
 
 def _adam_eve_xml(*, version_title: str = "Latin (Mozley)", inner_div: str = "0") -> bytes:
@@ -35,9 +37,15 @@ def _adam_eve_xml(*, version_title: str = "Latin (Mozley)", inner_div: str = "0"
 </book>'''.encode()
 
 
-def _case(tmp_path: Path):
+def _case(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     source = tmp_path / "AdamEve.xml"
-    source.write_bytes(_adam_eve_xml())
+    source_bytes = _adam_eve_xml()
+    monkeypatch.setitem(
+        KNOWN_BLANK_UNIT_ID_SOURCES,
+        ("AdamEve.xml", "AdamEve", "Latin (Mozley)", ("26", "0")),
+        hashlib.sha256(source_bytes).hexdigest(),
+    )
+    source.write_bytes(source_bytes)
     books, warnings = load_source_directory(tmp_path)
     assert warnings == []
     return books, build_tf_data(books)
@@ -52,8 +60,11 @@ def _unit(data, *, unit_id: str | None = None):
     )
 
 
-def test_known_pinned_blank_unit_id_is_preserved_marked_and_audited(tmp_path: Path):
-    books, data = _case(tmp_path)
+def test_known_pinned_blank_unit_id_is_preserved_marked_and_audited(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    books, data = _case(tmp_path, monkeypatch)
 
     unit = next(
         node
@@ -74,8 +85,12 @@ def test_known_pinned_blank_unit_id_is_preserved_marked_and_audited(tmp_path: Pa
 
 
 @pytest.mark.parametrize("feature", ["is_missing_unit_id", "is_source_anomaly"])
-def test_missing_unit_id_audit_rejects_missing_marker(tmp_path: Path, feature: str):
-    books, data = _case(tmp_path)
+def test_missing_unit_id_audit_rejects_missing_marker(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    feature: str,
+):
+    books, data = _case(tmp_path, monkeypatch)
     missing = next(
         node
         for node in data.node_features["is_missing_unit_id"]
@@ -88,8 +103,11 @@ def test_missing_unit_id_audit_rejects_missing_marker(tmp_path: Path, feature: s
     assert report["semantic_checks"]["missing_unit_ids"] is False
 
 
-def test_missing_unit_id_audit_rejects_spurious_marker(tmp_path: Path):
-    books, data = _case(tmp_path)
+def test_missing_unit_id_audit_rejects_spurious_marker(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    books, data = _case(tmp_path, monkeypatch)
     regular = _unit(data, unit_id="28")
     data.node_features.setdefault("is_missing_unit_id", {})[regular] = 1
     data.node_features.setdefault("is_source_anomaly", {})[regular] = 1
