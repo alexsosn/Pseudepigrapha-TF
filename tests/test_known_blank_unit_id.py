@@ -1,10 +1,22 @@
+import copy
 import hashlib
+import pickle
 from pathlib import Path
 
 import pytest
 
 from pseudepigrapha_tf.conversion import build_tf_data
-from pseudepigrapha_tf.model import Book, Div, DivisionSpec, Reading, Token, Unit, Version
+from pseudepigrapha_tf.model import (
+    Book,
+    Div,
+    DivisionSpec,
+    Reading,
+    Token,
+    Unit,
+    Version,
+    _ValidatedBlankUnitId,
+    _is_validated_blank_unit_id,
+)
 from pseudepigrapha_tf.parser import InvalidSourceError, parse_bytes
 from pseudepigrapha_tf.semantic_audit import build_conversion_report
 from pseudepigrapha_tf.source import load_source_directory
@@ -40,7 +52,7 @@ def _adam_eve_xml(*, version_title: str = "Latin (Mozley)", inner_div: str = "0"
 </book>'''.encode()
 
 
-def _case(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+def _parsed_books(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> list[Book]:
     source = tmp_path / "AdamEve.xml"
     source_bytes = _adam_eve_xml()
     monkeypatch.setitem(
@@ -51,6 +63,11 @@ def _case(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     source.write_bytes(source_bytes)
     books, warnings = load_source_directory(tmp_path)
     assert warnings == []
+    return books
+
+
+def _case(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    books = _parsed_books(tmp_path, monkeypatch)
     return books, build_tf_data(books)
 
 
@@ -118,6 +135,42 @@ def test_missing_unit_id_audit_rejects_spurious_marker(
     report = build_conversion_report(tmp_path, books, data)
     assert report["status"] == "failed"
     assert report["semantic_checks"]["missing_unit_ids"] is False
+
+
+@pytest.mark.parametrize(
+    ("copy_kind", "transform"),
+    [
+        ("shallow", lambda books: [copy.copy(books[0])]),
+        ("deepcopy", lambda books: copy.deepcopy(books)),
+        ("pickle", lambda books: pickle.loads(pickle.dumps(books))),
+    ],
+)
+def test_validated_blank_unit_marker_survives_model_copy_and_serialization(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    copy_kind: str,
+    transform,
+):
+    books = _parsed_books(tmp_path, monkeypatch)
+    transformed = transform(books)
+
+    data = build_tf_data(transformed)
+
+    missing = next(
+        node
+        for node, value in data.node_features.get("is_missing_unit_id", {}).items()
+        if value == 1
+    )
+    assert data.node_features["source_ref"][missing] == "26:0", copy_kind
+    assert missing not in data.node_features.get("unit_id", {})
+
+
+def test_copy_and_pickle_do_not_authorize_counterfeit_private_marker():
+    counterfeit = _ValidatedBlankUnitId("")
+    assert not _is_validated_blank_unit_id(counterfeit)
+    assert not _is_validated_blank_unit_id(copy.copy(counterfeit))
+    assert not _is_validated_blank_unit_id(copy.deepcopy(counterfeit))
+    assert not _is_validated_blank_unit_id(pickle.loads(pickle.dumps(counterfeit)))
 
 
 @pytest.mark.parametrize("source_sha256", ["", PINNED_ADAM_EVE_SHA256])
