@@ -3,6 +3,8 @@ from pathlib import Path
 import pytest
 
 from pseudepigrapha_tf import audit
+from pseudepigrapha_tf.conversion import build_tf_data
+from pseudepigrapha_tf.model import Book, Div, DivisionSpec, Manuscript, Reading, Token, Unit, Version
 from pseudepigrapha_tf.parser import InvalidSourceError, parse_bytes
 
 
@@ -24,6 +26,18 @@ def _modern(*versions: str) -> bytes:
         + "".join(versions)
         + "</book>"
     ).encode()
+
+
+def _model_manuscript(name: str) -> Manuscript:
+    return Manuscript(
+        abbrev="A",
+        language="Greek",
+        show="yes",
+        name=name,
+        name_xml=name,
+        bibliography=(),
+        bibliography_xml=(),
+    )
 
 
 def test_parser_rejects_duplicate_manuscript_abbreviation_within_version():
@@ -70,3 +84,38 @@ def test_legacy_duplicate_manuscript_abbreviation_is_rejected():
         match=r"duplicates manuscript abbreviation 'A'.*legacy version",
     ):
         parse_bytes(data, source_path="legacy-duplicate-ms.xml")
+
+
+def test_graph_builder_rejects_duplicate_manuscript_abbreviation_in_direct_model():
+    reading = Reading(
+        option="0",
+        witnesses=("A",),
+        mss_raw="A ",
+        linebreak="",
+        indent="",
+        text="alpha",
+        content_xml="alpha",
+        tokens=(Token("alpha"),),
+    )
+    version = Version(
+        title="Greek",
+        author="Anonymous",
+        language="Greek",
+        fragment="",
+        divisions=(DivisionSpec("Chapter"),),
+        resources=(),
+        manuscripts=(_model_manuscript("First"), _model_manuscript("Second")),
+        divs=(Div("1", "", (Unit("1", "0", "", "", (reading,)),)),),
+    )
+    book = Book(
+        filename="DupMs",
+        title="Duplicate manuscript fixture",
+        text_structure="",
+        versions=(version,),
+    )
+
+    with pytest.raises(
+        ValueError,
+        match=r"DupMs/Greek: duplicate manuscript abbreviation 'A'",
+    ):
+        build_tf_data([book])
