@@ -3,7 +3,10 @@ from pathlib import Path
 import pytest
 
 from pseudepigrapha_tf import audit
+from pseudepigrapha_tf.conversion import build_tf_data
 from pseudepigrapha_tf.parser import InvalidSourceError, parse_bytes, parse_file
+from pseudepigrapha_tf.semantic_audit import build_conversion_report
+from pseudepigrapha_tf.source import load_source_directory
 
 FIXTURES = Path(__file__).parent / "fixtures"
 
@@ -39,6 +42,44 @@ def test_raw_audit_rejects_same_schema_drift_instead_of_inventorying_it(tmp_path
 
     with pytest.raises(InvalidSourceError, match=r"unsupported <future> child of <div>"):
         audit._raw_inventory(tmp_path)
+
+
+def test_upstream_elipsis_extension_is_preserved_in_model_and_graph():
+    book = parse_file(FIXTURES / "ellipsis.xml")
+    marker = book.versions[0].divs[0].items[1]
+    assert marker.__class__.__name__ == "Ellipsis"
+    assert marker.source_tag == "elipsis"
+    assert marker.text == "lost passage"
+
+    data = build_tf_data([book])
+    markers = [n for n, kind in data.node_features["otype"].items() if kind == "ellipsis"]
+    assert len(markers) == 1
+    node = markers[0]
+    assert data.node_features["source_tag"][node] == "elipsis"
+    assert data.node_features["ellipsis_text"][node] == "lost passage"
+    assert data.node_features["source_ref"][node] == "1"
+    assert data.node_features["source_child_index"][node] == 2
+    assert len(data.edge_features["oslots"][node]) == 1
+
+    parent = next(
+        n for n, kind in data.node_features["otype"].items()
+        if kind == "div" and data.node_features["source_ref"][n] == "1"
+    )
+    assert data.edge_features["parent"][node] == {parent}
+    assert data.max_slot == 2
+
+
+def test_conversion_report_audits_upstream_elipsis_extension(tmp_path):
+    source = FIXTURES / "ellipsis.xml"
+    (tmp_path / source.name).write_text(source.read_text(encoding="utf-8"), encoding="utf-8")
+    books, warnings = load_source_directory(tmp_path)
+    assert warnings == []
+
+    data = build_tf_data(books)
+    report = build_conversion_report(tmp_path, books, data)
+    assert report["status"] == "ok", report["failed_checks"]
+    assert report["source"]["ellipses"] == report["graph"]["ellipses"] == 1
+    assert report["semantic_checks"]["ellipses"] is True
 
 
 def test_legacy_chapter_verse_source_remains_supported():
