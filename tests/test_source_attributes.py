@@ -197,7 +197,7 @@ def test_pinned_capitalized_delimiter_alias_is_preserved_and_audited(tmp_path):
 
     books, warnings = load_source_directory(tmp_path)
     assert warnings == []
-    assert books[0].versions[0].division_specs[0].delimiter == ":" if hasattr(books[0].versions[0], "division_specs") else books[0].versions[0].divisions[0].delimiter == ":"
+    assert books[0].versions[0].divisions[0].delimiter == ":"
 
     graph = build_tf_data(books)
     report = build_conversion_report(tmp_path, books, graph)
