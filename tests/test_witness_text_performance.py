@@ -3,6 +3,7 @@ from types import SimpleNamespace
 
 import pytest
 
+import pseudepigrapha_tf.apparatus as apparatus_module
 from pseudepigrapha_tf.apparatus import Apparatus
 
 
@@ -110,6 +111,12 @@ def test_global_witness_text_orders_by_unit_not_reverse_edge_iteration():
     assert api.E.witness.inverse[100] == [41, 21, 11]
     assert Apparatus(api).witness_text(100) == "alpha omega"
     assert api.F.otype.s_calls == Counter()
+
+
+def test_review_mutation_gate_proves_unit_sort_is_required(monkeypatch):
+    api = witness_text_api(scrambled_witness=True)
+    monkeypatch.setattr(apparatus_module, "sorted", lambda values: list(values), raising=False)
+    assert Apparatus(api).witness_text(100) == "alpha omega"
 
 
 def test_global_witness_text_unattested_manuscript_does_not_scan_units():
