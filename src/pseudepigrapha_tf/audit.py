@@ -43,6 +43,7 @@ def _raw_inventory(source_dir: Path) -> dict:
     inventory = {
         "files": [], "versions": [], "division_specs": [], "divs": [], "units": [],
         "readings": [], "manuscripts": [], "resources": [], "annotated_words": [],
+        "ellipses": [], "orphan_readings": [],
     }
 
     def add_manuscripts(container: ET.Element, ocp_book: str, version_title: str) -> None:
@@ -104,17 +105,45 @@ def _raw_inventory(source_dir: Path) -> dict:
                  specs: tuple[DivisionSpec, ...], path: tuple[str, ...]) -> None:
         dpath = path + (div.get("number", ""),)
         level = len(dpath)
+        source_ref = _reference(dpath, specs)
         inventory["divs"].append({
             "ocp_book": ocp_book, "version_title": version_title,
-            "source_ref": _reference(dpath, specs), "number": div.get("number", ""),
+            "source_ref": source_ref, "number": div.get("number", ""),
             "fragment": div.get("fragment", ""), "level": level,
             "label": specs[level - 1].label if level <= len(specs) else "",
         })
-        for child in list(div):
+        for child_index, child in enumerate(list(div), 1):
             if child.tag == "div":
                 walk_div(child, ocp_book, version_title, specs, dpath)
             elif child.tag == "unit":
                 add_unit(child, ocp_book, version_title, dpath, specs)
+            elif child.tag == "elipsis":
+                inventory["ellipses"].append({
+                    "ocp_book": ocp_book,
+                    "version_title": version_title,
+                    "source_ref": source_ref,
+                    "parent_source_ref": source_ref,
+                    "source_tag": child.tag,
+                    "text": _plain_text(child),
+                    "source_child_index": child_index,
+                })
+            elif child.tag == "reading":
+                mss = child.get("mss", "")
+                inventory["orphan_readings"].append({
+                    "ocp_book": ocp_book,
+                    "version_title": version_title,
+                    "source_ref": source_ref,
+                    "parent_source_ref": source_ref,
+                    "source_tag": child.tag,
+                    "source_child_index": child_index,
+                    "option": child.get("option", ""),
+                    "mss": mss.strip(),
+                    "witnesses": sorted(part for part in mss.split() if part),
+                    "linebreak": child.get("linebreak", ""),
+                    "indent": child.get("indent", ""),
+                    "text": _plain_text(child),
+                    "xml": _inner_xml(child),
+                })
 
     for path in sorted(source_dir.glob("*.xml")):
         data = path.read_bytes()
