@@ -14,6 +14,7 @@ from .graph import (
     _slug,
 )
 from .model import Book, Div, Ellipsis, OrphanReading, Unit, Version
+from .source_structure import KNOWN_BLANK_UNIT_IDS
 
 
 @dataclass(frozen=True)
@@ -36,6 +37,28 @@ def _version_has_units(version: Version) -> bool:
     return any(_div_has_units(div) for div in version.divs)
 
 
+def _source_basename(source_path: str) -> str:
+    return source_path.replace("\\", "/").rsplit("/", 1)[-1] if source_path else ""
+
+
+def _is_known_blank_unit_id(
+    book: Book,
+    version: Version,
+    path: tuple[str, ...],
+    unit: Unit,
+) -> bool:
+    return (
+        unit.unit_id == ""
+        and (
+            _source_basename(book.source_path),
+            book.filename,
+            version.title,
+            path,
+        )
+        in KNOWN_BLANK_UNIT_IDS
+    )
+
+
 def _validate_model_identities(books: Iterable[Book]) -> None:
     """Reject blank graph identities before any graph mutation occurs."""
 
@@ -43,16 +66,19 @@ def _validate_model_identities(books: Iterable[Book]) -> None:
         if not book.filename.strip():
             raise ValueError("blank book filename")
         for version in book.versions:
-            stack = list(version.divs)
+            stack = [(div, ()) for div in version.divs]
             while stack:
-                div = stack.pop()
+                div, path = stack.pop()
                 if not div.number.strip():
                     raise ValueError(f"{book.filename}/{version.title}: blank div number")
+                dpath = path + (div.number,)
                 for item in div.items:
                     if isinstance(item, Div):
-                        stack.append(item)
+                        stack.append((item, dpath))
                     elif isinstance(item, Unit):
-                        if not item.unit_id.strip():
+                        if not item.unit_id.strip() and not _is_known_blank_unit_id(
+                            book, version, dpath, item
+                        ):
                             raise ValueError(f"{book.filename}/{version.title}: blank unit id")
                         for reading in item.readings:
                             if not reading.option.strip():
@@ -453,6 +479,54 @@ def _add_metadata_version(
     _stamp_version_identity(builder, start, version_id)
 
 
+def _mark_known_missing_unit_ids(data: TFData, books: Iterable[Book]) -> None:
+    """Expose accepted source-declared blank unit ids without inventing identity."""
+
+    expected: set[tuple[str, str, str]] = set()
+    for book in books:
+        version_ids = _book_ids(book)
+        for version, version_id in zip(book.versions, version_ids):
+            stack = [(div, ()) for div in version.divs]
+            while stack:
+                div, path = stack.pop()
+                dpath = path + (div.number,)
+                for item in div.items:
+                    if isinstance(item, Div):
+                        stack.append((item, dpath))
+                    elif isinstance(item, Unit) and _is_known_blank_unit_id(
+                        book, version, dpath, item
+                    ):
+                        source_ref = str(_ref_features(dpath, version.divisions)["source_ref"])
+                        expected.add((book.filename, version_id, source_ref))
+
+    if not expected:
+        return
+
+    otype = data.node_features.get("otype", {})
+    ocp_books = data.node_features.get("ocp_book", {})
+    version_ids = data.node_features.get("version_id", {})
+    source_refs = data.node_features.get("source_ref", {})
+    unit_ids = data.node_features.get("unit_id", {})
+    for ocp_book, version_id, source_ref in expected:
+        matches = [
+            node
+            for node, kind in otype.items()
+            if kind == "unit"
+            and ocp_books.get(node) == ocp_book
+            and version_ids.get(node) == version_id
+            and source_refs.get(node) == source_ref
+            and unit_ids.get(node, "") == ""
+        ]
+        if len(matches) != 1:
+            raise ValueError(
+                f"known missing unit id {ocp_book}/{version_id} at {source_ref}: "
+                f"expected exactly one graph unit, found {len(matches)}"
+            )
+        node = matches[0]
+        data.node_features.setdefault("is_missing_unit_id", {})[node] = 1
+        data.node_features.setdefault("is_source_anomaly", {})[node] = 1
+
+
 def build_tf_data(
     books: Iterable[Book],
     *,
@@ -531,6 +605,7 @@ def build_tf_data(
         upstream_commit=upstream_commit,
         converter_version=converter_version,
     )
+    _mark_known_missing_unit_ids(data, books)
     data.metadata["otext"]["fmt:version_metadata-default"] = "{version_title}"
     data.metadata["otext"]["fmt:ellipsis-default"] = "{ellipsis_text}"
     data.metadata["otext"]["fmt:orphan_reading-default"] = "{reading_text}"
@@ -539,11 +614,16 @@ def build_tf_data(
         data.metadata["is_metadata_only"]["description"] = (
             "1 for metadata attached to an upstream version with no textual units"
         )
-    if "is_source_anomaly" in data.metadata:
-        data.metadata["is_source_anomaly"]["valueType"] = "int"
+    if "is_source_anomaly" in data.node_features:
+        data.metadata.setdefault("is_source_anomaly", {})["valueType"] = "int"
         data.metadata["is_source_anomaly"]["description"] = (
-            "1 for a preserved upstream structure that violates the source file's declared grammar"
+            "1 for a preserved upstream structure or identity anomaly"
         )
+    if "is_missing_unit_id" in data.node_features:
+        data.metadata["is_missing_unit_id"] = {
+            "valueType": "int",
+            "description": "1 when the upstream unit explicitly has an empty id and no id is inferred",
+        }
     if "version_id" in data.metadata:
         data.metadata["version_id"]["description"] = (
             "stable converter identifier for the exact upstream version owning this node"
