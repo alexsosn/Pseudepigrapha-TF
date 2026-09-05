@@ -39,39 +39,25 @@ class _VersionTreeShape:
     has_non_core_items: bool
 
 
-def _classify_version_tree(version: Version) -> _VersionTreeShape:
-    """Classify one source tree without allocating replacement Div objects."""
-
-    has_units = False
-    has_non_core_items = False
-    stack = list(version.divs)
-    while stack:
-        div = stack.pop()
-        for item in div.items:
-            if isinstance(item, Div):
-                stack.append(item)
-            elif isinstance(item, Unit):
-                has_units = True
-            else:
-                # Keep future/non-core model item types away from _add_version,
-                # which intentionally understands only Div and Unit children.
-                has_non_core_items = True
-    return _VersionTreeShape(has_units, has_non_core_items)
-
-
 def _is_known_blank_unit_id(unit: Unit) -> bool:
     """Accept only parser-marked blanks that already passed source validation."""
 
     return _is_validated_blank_unit_id(unit.unit_id)
 
 
-def _validate_model_identities(books: Iterable[Book]) -> None:
-    """Reject blank graph identities before any graph mutation occurs."""
+def _validate_and_classify_model(
+    books: Iterable[Book],
+) -> tuple[tuple[_VersionTreeShape, ...], ...]:
+    """Validate source identities and classify every version in one tree pass."""
 
+    book_shapes: list[tuple[_VersionTreeShape, ...]] = []
     for book in books:
         if not book.filename.strip():
             raise ValueError("blank book filename")
+        version_shapes: list[_VersionTreeShape] = []
         for version in book.versions:
+            has_units = False
+            has_non_core_items = False
             stack = [(div, ()) for div in version.divs]
             while stack:
                 div, path = stack.pop()
@@ -82,6 +68,7 @@ def _validate_model_identities(books: Iterable[Book]) -> None:
                     if isinstance(item, Div):
                         stack.append((item, dpath))
                     elif isinstance(item, Unit):
+                        has_units = True
                         if not item.unit_id.strip() and not _is_known_blank_unit_id(item):
                             raise ValueError(f"{book.filename}/{version.title}: blank unit id")
                         for reading in item.readings:
@@ -89,11 +76,17 @@ def _validate_model_identities(books: Iterable[Book]) -> None:
                                 raise ValueError(
                                     f"{book.filename}/{version.title}: blank reading option"
                                 )
-                    elif isinstance(item, OrphanReading):
-                        if not item.reading.option.strip():
+                    else:
+                        # Keep future/non-core model item types away from _add_version,
+                        # which intentionally understands only Div and Unit children.
+                        has_non_core_items = True
+                        if isinstance(item, OrphanReading) and not item.reading.option.strip():
                             raise ValueError(
                                 f"{book.filename}/{version.title}: blank reading option"
                             )
+            version_shapes.append(_VersionTreeShape(has_units, has_non_core_items))
+        book_shapes.append(tuple(version_shapes))
+    return tuple(book_shapes)
 
 
 def _validate_unique_manuscript_abbreviations(books: Iterable[Book]) -> None:
@@ -531,20 +524,22 @@ def build_tf_data(
     """Build TF while preserving declared upstream versions that contain no text."""
 
     books = list(books)
-    _validate_model_identities(books)
+    book_shapes = _validate_and_classify_model(books)
     _validate_unique_manuscript_abbreviations(books)
     builder = _Builder()
     pending: list[_PendingMetadataVersion] = []
 
-    for bidx, book in enumerate(books, 1):
+    for bidx, (book, shapes) in enumerate(zip(books, book_shapes), 1):
         version_ids = _book_ids(book)
         book_anchor: int | None = None
         metadata: list[_PendingMetadataVersion] = []
 
         # Textual versions go first so metadata-only siblings can use a technical
         # anchor from the same OCP work even when upstream lists the empty version first.
-        for vidx, (version, version_id) in enumerate(zip(book.versions, version_ids), 1):
-            shape = _classify_version_tree(version)
+        for vidx, (version, version_id, shape) in enumerate(
+            zip(book.versions, version_ids, shapes),
+            1,
+        ):
             if shape.has_units:
                 first_slot = builder.next_slot
                 start = len(builder.objects)
