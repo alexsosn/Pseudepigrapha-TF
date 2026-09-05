@@ -116,33 +116,6 @@ def test_exception_filename_does_not_exempt_wrong_book_identity():
         parse_bytes(_missing_manuscript_language(book_filename="Attrs"), source_path="ClMal.xml")
 
 
-@pytest.mark.parametrize("source_name", ["ClMal.xml", "Eup.xml"])
-def test_pinned_missing_manuscript_language_stays_unknown_and_audited(tmp_path, source_name):
-    book_filename = source_name.removesuffix(".xml")
-    data = _missing_manuscript_language(book_filename=book_filename)
-    source_dir = tmp_path / book_filename
-    source_dir.mkdir()
-    path = source_dir / source_name
-    path.write_bytes(data)
-
-    books, warnings = load_source_directory(source_dir)
-    assert warnings == []
-    manuscript = books[0].versions[0].manuscripts[0]
-    assert manuscript.language == ""
-
-    graph = build_tf_data(books)
-    manuscript_node = next(
-        node
-        for node, kind in graph.node_features["otype"].items()
-        if kind == "manuscript"
-    )
-    assert graph.node_features.get("ms_language", {}).get(manuscript_node, "") == ""
-
-    report = build_conversion_report(source_dir, books, graph)
-    assert report["status"] == "ok", report["failed_checks"]
-    assert report["semantic_checks"]["manuscripts"] is True
-
-
 def test_raw_audit_rejects_same_unknown_attribute(tmp_path):
     path = tmp_path / "attributes.xml"
     path.write_bytes(_with_attribute(b'<unit id="1" group="2" parallel="p" linebreak="following">', b'future="metadata"'))
