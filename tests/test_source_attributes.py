@@ -72,7 +72,6 @@ def test_parser_rejects_unknown_attribute_that_would_be_dropped(element, element
         ("division", b'<division label="Chapter" delimiter=":"/>', b'label="Chapter"', "label"),
         ("resource", b'<resource name="Edition">', b'name="Edition"', "name"),
         ("ms", b'<ms abbrev="A" language="Greek" show="yes">', b'abbrev="A"', "abbrev"),
-        ("ms", b'<ms abbrev="A" language="Greek" show="yes">', b'language="Greek"', "language"),
         ("ms", b'<ms abbrev="A" language="Greek" show="yes">', b'show="yes"', "show"),
         ("div", b'<div number="1" fragment="dfrag">', b'number="1"', "number"),
         ("unit", b'<unit id="1" group="2" parallel="p" linebreak="following">', b'id="1"', "id"),
@@ -89,6 +88,32 @@ def test_parser_rejects_missing_modern_dtd_required_attribute(element, element_s
             _without_attribute(element_start, attribute),
             source_path="attributes.xml",
         )
+
+
+def test_pinned_missing_manuscript_language_stays_unknown_and_audited(tmp_path):
+    data = _without_attribute(
+        b'<ms abbrev="A" language="Greek" show="yes">',
+        b'language="Greek"',
+    )
+    path = tmp_path / "clmal-style.xml"
+    path.write_bytes(data)
+
+    books, warnings = load_source_directory(tmp_path)
+    assert warnings == []
+    manuscript = books[0].versions[0].manuscripts[0]
+    assert manuscript.language == ""
+
+    graph = build_tf_data(books)
+    manuscript_node = next(
+        node
+        for node, kind in graph.node_features["otype"].items()
+        if kind == "manuscript"
+    )
+    assert graph.node_features.get("ms_language", {}).get(manuscript_node, "") == ""
+
+    report = build_conversion_report(tmp_path, books, graph)
+    assert report["status"] == "ok", report["failed_checks"]
+    assert report["semantic_checks"]["manuscripts"] is True
 
 
 def test_raw_audit_rejects_same_unknown_attribute(tmp_path):
