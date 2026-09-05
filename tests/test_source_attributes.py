@@ -90,7 +90,7 @@ def test_parser_rejects_missing_modern_dtd_required_attribute(element, element_s
         )
 
 
-def test_non_clmal_missing_manuscript_language_is_rejected():
+def test_non_exception_file_missing_manuscript_language_is_rejected():
     data = _without_attribute(
         b'<ms abbrev="A" language="Greek" show="yes">',
         b'language="Greek"',
@@ -102,15 +102,18 @@ def test_non_clmal_missing_manuscript_language_is_rejected():
         parse_bytes(data, source_path="Other.xml")
 
 
-def test_pinned_clmal_missing_manuscript_language_stays_unknown_and_audited(tmp_path):
+@pytest.mark.parametrize("source_name", ["ClMal.xml", "Eup.xml"])
+def test_pinned_missing_manuscript_language_stays_unknown_and_audited(tmp_path, source_name):
     data = _without_attribute(
         b'<ms abbrev="A" language="Greek" show="yes">',
         b'language="Greek"',
     )
-    path = tmp_path / "ClMal.xml"
+    source_dir = tmp_path / source_name.removesuffix(".xml")
+    source_dir.mkdir()
+    path = source_dir / source_name
     path.write_bytes(data)
 
-    books, warnings = load_source_directory(tmp_path)
+    books, warnings = load_source_directory(source_dir)
     assert warnings == []
     manuscript = books[0].versions[0].manuscripts[0]
     assert manuscript.language == ""
@@ -123,7 +126,7 @@ def test_pinned_clmal_missing_manuscript_language_stays_unknown_and_audited(tmp_
     )
     assert graph.node_features.get("ms_language", {}).get(manuscript_node, "") == ""
 
-    report = build_conversion_report(tmp_path, books, graph)
+    report = build_conversion_report(source_dir, books, graph)
     assert report["status"] == "ok", report["failed_checks"]
     assert report["semantic_checks"]["manuscripts"] is True
 
@@ -194,7 +197,7 @@ def test_pinned_capitalized_delimiter_alias_is_preserved_and_audited(tmp_path):
 
     books, warnings = load_source_directory(tmp_path)
     assert warnings == []
-    assert books[0].versions[0].divisions[0].delimiter == ":"
+    assert books[0].versions[0].division_specs[0].delimiter == ":" if hasattr(books[0].versions[0], "division_specs") else books[0].versions[0].divisions[0].delimiter == ":"
 
     graph = build_tf_data(books)
     report = build_conversion_report(tmp_path, books, graph)
