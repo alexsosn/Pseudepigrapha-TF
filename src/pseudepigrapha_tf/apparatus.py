@@ -179,30 +179,15 @@ class Apparatus:
             )
         return tuple(result)
 
-    def passage(self, book: str, chapter: str | int, verse: str | int) -> dict[str, object]:
-        """Return one TF verse together with its full OCP apparatus by witness.
-
-        This is the high-level entry point for questions such as "give me
-        1En 1:2 in every witness". The result preserves the distinction between
-        an explicit empty reading (``omission``) and a witness for which the
-        source gives no reading at that unit (``unattested``).
-
-        A witness-level ``text`` is returned only when every unit in the verse is
-        attested (including explicit omissions). ``attested_text`` is always the
-        concatenation of the non-empty readings that are actually present.
-        """
-
-        reference = (str(book), str(chapter), str(verse))
-        verse_node = self.api.T.nodeFromSection(reference)
-        if verse_node is None:
-            raise KeyError(f"Text-Fabric section not found: {reference!r}")
+    def _passage_from_context(
+        self,
+        reference: tuple[str, str, str],
+        verse_node: int,
+        manuscripts: dict[str, dict[str, object]],
+    ) -> dict[str, object]:
+        """Build a passage from already validated, request-local context."""
 
         units = tuple(self.api.L.d(verse_node, otype="unit"))
-        book_nodes = tuple(self.api.L.u(verse_node, otype="book"))
-        if len(book_nodes) != 1:
-            raise ValueError(f"expected one containing book for {reference!r}, found {book_nodes}")
-        book_node = book_nodes[0]
-
         source_refs: list[str] = []
         unit_records: list[dict[str, object]] = []
         reading_by_witness: dict[int, dict[int, int]] = {}
@@ -246,7 +231,6 @@ class Apparatus:
                 }
             )
 
-        manuscripts = self._witnesses(book_node)
         witness_records: dict[str, dict[str, object]] = {}
         for abbrev, manuscript_record in manuscripts.items():
             manuscript = int(manuscript_record["node"])
@@ -279,6 +263,30 @@ class Apparatus:
             "witnesses": witness_records,
         }
 
+    def passage(self, book: str, chapter: str | int, verse: str | int) -> dict[str, object]:
+        """Return one TF verse together with its full OCP apparatus by witness.
+
+        This is the high-level entry point for questions such as "give me
+        1En 1:2 in every witness". The result preserves the distinction between
+        an explicit empty reading (``omission``) and a witness for which the
+        source gives no reading at that unit (``unattested``).
+
+        A witness-level ``text`` is returned only when every unit in the verse is
+        attested (including explicit omissions). ``attested_text`` is always the
+        concatenation of the non-empty readings that are actually present.
+        """
+
+        reference = (str(book), str(chapter), str(verse))
+        verse_node = self.api.T.nodeFromSection(reference)
+        if verse_node is None:
+            raise KeyError(f"Text-Fabric section not found: {reference!r}")
+
+        book_nodes = tuple(self.api.L.u(verse_node, otype="book"))
+        if len(book_nodes) != 1:
+            raise ValueError(f"expected one containing book for {reference!r}, found {book_nodes}")
+        book_node = book_nodes[0]
+        return self._passage_from_context(reference, verse_node, self._witnesses(book_node))
+
     def work_passage(self, work: str, chapter: str | int, verse: str | int) -> dict[str, object]:
         """Return the requested passage across every OCP version of one work.
 
@@ -298,14 +306,14 @@ class Apparatus:
         chapter = str(chapter)
         verse = str(verse)
 
-        textual_books = tuple(
+        textual_versions = tuple(
             sorted(
                 (
-                    node
+                    (self._book_id(node), node)
                     for node in self.api.F.otype.s("book")
                     if str(ocp_book.v(node) or "") == work
                 ),
-                key=self._book_id,
+                key=lambda item: item[0],
             )
         )
         metadata_nodes = tuple(
@@ -319,19 +327,28 @@ class Apparatus:
             )
         )
 
-        if not textual_books and not metadata_nodes:
+        if not textual_versions and not metadata_nodes:
             raise KeyError(f"OCP work not found in loaded Text-Fabric data: {work!r}")
 
-        owner_for_title = textual_books[0] if textual_books else metadata_nodes[0]
+        owner_for_title = textual_versions[0][1] if textual_versions else metadata_nodes[0]
         title = str(self._feature("title", owner_for_title, ""))
 
         versions: dict[str, dict[str, object]] = {}
-        for book_node in textual_books:
-            version_id = self._book_id(book_node)
-            try:
-                passage = self.passage(version_id, chapter, verse)
-            except KeyError:
+        for version_id, book_node in textual_versions:
+            manuscripts = self._witnesses(book_node)
+            reference = (version_id, chapter, verse)
+            verse_node = self.api.T.nodeFromSection(reference)
+            if verse_node is None:
                 passage = None
+            else:
+                book_nodes = tuple(self.api.L.u(verse_node, otype="book"))
+                if len(book_nodes) != 1:
+                    raise ValueError(f"expected one containing book for {reference!r}, found {book_nodes}")
+                containing_book = book_nodes[0]
+                passage_manuscripts = (
+                    manuscripts if containing_book == book_node else self._witnesses(containing_book)
+                )
+                passage = self._passage_from_context(reference, verse_node, passage_manuscripts)
             versions[version_id] = {
                 "node": book_node,
                 "id": version_id,
@@ -339,7 +356,7 @@ class Apparatus:
                 "language": self._feature("language", book_node, ""),
                 "author": self._feature("author", book_node, ""),
                 "status": "available" if passage is not None else "not_present",
-                "witnesses": self._witnesses(book_node),
+                "witnesses": manuscripts,
                 "passage": passage,
             }
 
