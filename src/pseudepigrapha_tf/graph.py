@@ -444,9 +444,11 @@ def _add_version(builder: _Builder, book: Book, version: Version, book_id: str,
     manuscripts: dict[str, str] = {}
     for midx, ms in enumerate(version.manuscripts, 1):
         key = f"{vkey}:ms:{midx}"
-        if ms.abbrev in manuscripts:
-            builder.warnings.append(f"{book.filename}/{version.title}: duplicate manuscript abbreviation {ms.abbrev!r}")
-        else:
+        if ms.abbrev and ms.abbrev in manuscripts:
+            raise ValueError(
+                f"{book.filename}/{version.title}: duplicate manuscript abbreviation {ms.abbrev!r}"
+            )
+        if ms.abbrev:
             manuscripts[ms.abbrev] = key
         builder.node(
             key, "manuscript", (), **_common(book, version), ms_abbrev=ms.abbrev,

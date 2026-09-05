@@ -137,11 +137,12 @@ def validate_source_structure(
     legacy: bool,
     source_path: str = "",
 ) -> None:
-    """Reject source children/attributes that would otherwise be silently lost.
+    """Reject source structure that cannot be mapped without ambiguity or loss.
 
     This is deliberately narrower than full DTD validation. It guards the
-    converter's preservation boundary while leaving cardinality/order checks to
-    separate validation work. Elements and attributes are each visited once.
+    converter's preservation boundary while leaving unrelated cardinality/order
+    checks to separate validation work. Elements and attributes are each visited
+    a constant number of times, so validation remains linear in source size.
     """
 
     allowed_children = LEGACY_CHILDREN if legacy else MODERN_CHILDREN
@@ -180,6 +181,19 @@ def validate_source_structure(
                     raise SourceStructureError(
                         f"{location}: missing required attribute {attribute} on <{parent.tag}> at {path}"
                     )
+
+        if parent.tag == "manuscripts":
+            seen_abbrevs: set[str] = set()
+            for manuscript in parent.findall("ms"):
+                abbrev = manuscript.get("abbrev", "")
+                if not abbrev:
+                    continue
+                if abbrev in seen_abbrevs:
+                    owner = f"version {version_title!r}" if not legacy else "legacy version"
+                    raise SourceStructureError(
+                        f"{location}: duplicates manuscript abbreviation {abbrev!r} in {owner} at {path}"
+                    )
+                seen_abbrevs.add(abbrev)
 
         if (
             not legacy
