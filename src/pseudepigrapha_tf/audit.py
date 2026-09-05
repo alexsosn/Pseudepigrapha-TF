@@ -350,89 +350,16 @@ def _parent_linkage_ok(data: TFData) -> bool:
     return True
 
 
-def _section_coverage_ok(data: TFData) -> bool:
-    by_kind = {kind: _nodes(data, kind) for kind in ("book", "chapter", "verse")}
-    oslots = data.edge_features.get("oslots", {})
-    for slot in range(1, data.max_slot + 1):
-        for kind in ("book", "chapter", "verse"):
-            if sum(1 for node in by_kind[kind] if slot in oslots.get(node, set())) != 1:
-                return False
-    return True
-
-
-def _section_addresses_unique(data: TFData) -> bool:
-    oslots = data.edge_features.get("oslots", {})
-    books, chapters = _nodes(data, "book"), _nodes(data, "chapter")
-    seen: set[tuple[str, str, str]] = set()
-    for verse in _nodes(data, "verse"):
-        slots = oslots.get(verse, set())
-        if not slots:
-            continue
-        slot = min(slots)
-        book_nodes = [node for node in books if slot in oslots.get(node, set())]
-        chapter_nodes = [node for node in chapters if slot in oslots.get(node, set())]
-        if len(book_nodes) != 1 or len(chapter_nodes) != 1:
-            return False
-        address = (
-            str(_feature(data, "book", book_nodes[0])),
-            str(_feature(data, "chapter", chapter_nodes[0])),
-            str(_feature(data, "verse", verse)),
-        )
-        if address in seen:
-            return False
-        seen.add(address)
-    return True
-
-
 def build_conversion_report(source_dir: str | Path, books: list[Book], data: TFData) -> dict:
-    raw = _raw_inventory(Path(source_dir))
-    graph = _graph_inventory(data)
-    primary_ok, alternative_ok = _reconstruction_checks(data)
-    source_hashes = {record["file"]: record["sha256"] for record in raw["files"]}
-    model_hashes = {book.source_path: book.source_sha256 for book in books}
-    checks = {
-        "source_hashes": source_hashes == model_hashes,
-        "versions": _canonical(raw["versions"]) == _canonical(graph["versions"]),
-        "division_specs": _canonical(raw["division_specs"]) == _canonical(graph["division_specs"]),
-        "divisions": _canonical(raw["divs"]) == _canonical(graph["divs"]),
-        "units": _canonical(raw["units"]) == _canonical(graph["units"]),
-        "reading_payloads": _canonical(raw["readings"]) == _canonical(graph["readings"]),
-        "manuscripts": _canonical(raw["manuscripts"]) == _canonical(graph["manuscripts"]),
-        "resources": _canonical(raw["resources"]) == _canonical(graph["resources"]),
-        "annotated_words": _canonical(raw["annotated_words"]) == _canonical(graph["annotated_words"]),
-        "primary_reconstruction": primary_ok,
-        "alternative_reconstruction": alternative_ok,
-        "unit_parent_linkage": _parent_linkage_ok(data),
-        "section_coverage": _section_coverage_ok(data),
-        "section_addresses_unique": _section_addresses_unique(data),
-    }
-    source_counts = {
-        "files": len(raw["files"]), "versions": len(raw["versions"]), "divisions": len(raw["divs"]),
-        "units": len(raw["units"]), "readings": len(raw["readings"]),
-        "manuscripts": len(raw["manuscripts"]), "resources": len(raw["resources"]),
-        "annotated_words": len(raw["annotated_words"]),
-    }
-    graph_counts = {
-        "slots": data.max_slot, "nodes": data.max_node, "oslots_edges": data.oslots_edge_count,
-        "versions": len(_nodes(data, "book")), "divisions": len(_nodes(data, "div")),
-        "units": len(_nodes(data, "unit")), "readings": len(_nodes(data, "reading")),
-        "variant_words": len(_nodes(data, "variant_word")),
-        "manuscripts": len([n for n in _nodes(data, "manuscript") if _feature(data, "undefined_manuscript", n, 0) != 1]),
-        "resources": len(_nodes(data, "resource")),
-        "witness_edges": sum(len(targets) for targets in data.edge_features.get("witness", {}).values()),
-    }
-    generic = data.metadata.get("", {})
-    failed = [name for name, ok in checks.items() if not ok]
-    return {
-        "status": "ok" if not failed else "failed", "failed_checks": failed,
-        "semantic_checks": checks, "source": source_counts, "graph": graph_counts,
-        "source_sha256": source_hashes,
-        "provenance": {
-            "upstream_repository": generic.get("upstreamRepository", ""),
-            "upstream_commit": generic.get("upstreamCommit", ""),
-            "converter_version": generic.get("converterVersion", ""),
-        },
-    }
+    """Return the canonical semantic parity report through the legacy entry point.
+
+    The import is intentionally lazy because :mod:`semantic_audit` imports this
+    module for low-level inventory helpers.
+    """
+
+    from .semantic_audit import build_conversion_report as semantic_report
+
+    return semantic_report(source_dir, books, data)
 
 
 def write_conversion_report(report: dict, path: str | Path) -> None:

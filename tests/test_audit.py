@@ -2,6 +2,7 @@ from pathlib import Path
 
 import pytest
 
+from pseudepigrapha_tf import audit as compatibility_audit
 from pseudepigrapha_tf.conversion import build_tf_data
 from pseudepigrapha_tf.graph import TFData
 from pseudepigrapha_tf.parser import parse_file
@@ -134,6 +135,19 @@ def test_conversion_report_includes_metadata_only_versions(tmp_path):
     assert report["graph"]["versions"] == 2
     assert report["graph"]["metadata_only_versions"] == 1
     assert report["source"]["manuscripts"] == report["graph"]["manuscripts"] == 2
+
+
+def test_compatibility_audit_entry_point_matches_canonical_semantic_report(tmp_path):
+    source = FIXTURES / "metadata_only_version.xml"
+    (tmp_path / source.name).write_text(source.read_text(encoding="utf-8"), encoding="utf-8")
+    books, warnings = load_source_directory(tmp_path)
+    assert warnings == []
+    data = build_tf_data(books)
+
+    canonical = build_conversion_report(tmp_path, books, data)
+    compatibility = compatibility_audit.build_conversion_report(tmp_path, books, data)
+
+    assert compatibility == canonical
 
 
 def test_conversion_report_detects_silent_reading_corruption(tmp_path):
