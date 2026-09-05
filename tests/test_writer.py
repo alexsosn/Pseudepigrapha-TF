@@ -21,6 +21,16 @@ class FakeFabric:
         return True
 
 
+def _feature_snapshots(data):
+    return (
+        {name: dict(values) for name, values in data.node_features.items()},
+        {
+            name: {source: set(targets) for source, targets in values.items()}
+            for name, values in data.edge_features.items()
+        },
+    )
+
+
 def test_writer_delegates_validated_features_to_text_fabric(tmp_path):
     data = build_tf_data([parse_file(FIXTURES / "sample.xml")])
     assert write_tf(data, tmp_path / "tf", fabric_factory=FakeFabric)
@@ -55,11 +65,7 @@ def test_default_writer_reuses_graph_feature_payloads_without_mutation(monkeypat
     import tf.fabric
 
     data = build_tf_data([parse_file(FIXTURES / "sample.xml")])
-    node_snapshot = {name: dict(values) for name, values in data.node_features.items()}
-    edge_snapshot = {
-        name: {source: set(targets) for source, targets in values.items()}
-        for name, values in data.edge_features.items()
-    }
+    node_snapshot, edge_snapshot = _feature_snapshots(data)
     monkeypatch.setattr(tf.fabric, "Fabric", FakeFabric)
 
     assert write_tf(data, tmp_path / "tf")
@@ -72,6 +78,16 @@ def test_default_writer_reuses_graph_feature_payloads_without_mutation(monkeypat
     assert saved["edgeFeatures"] is not data.edge_features
     for name, values in data.edge_features.items():
         assert saved["edgeFeatures"][name] is values
+
+    assert data.node_features == node_snapshot
+    assert data.edge_features == edge_snapshot
+
+
+def test_real_text_fabric_write_does_not_mutate_reused_graph_payloads(tmp_path):
+    data = build_tf_data([parse_file(FIXTURES / "sample.xml")])
+    node_snapshot, edge_snapshot = _feature_snapshots(data)
+
+    assert write_tf(data, tmp_path / "tf")
 
     assert data.node_features == node_snapshot
     assert data.edge_features == edge_snapshot
