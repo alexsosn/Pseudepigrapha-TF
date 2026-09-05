@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<book filename="Ellipsis" title="Ellipsis fixture" textStructure="fragmentary">
+  <version title="Greek" author="Anonymous" language="Greek">
+    <divisions>
+      <division label="Chapter" delimiter=":"/>
+      <division label="Paragraph"/>
+    </divisions>
+    <manuscripts>
+      <ms abbrev="A" language="Greek" show="yes"><name>Witness A</name></ms>
+    </manuscripts>
+    <text>
+      <div number="1">
+        <div number="1"><unit id="1"><reading option="0" mss="A ">alpha</reading></unit></div>
+        <elipsis>lost passage</elipsis>
+        <div number="2"><unit id="2"><reading option="0" mss="A ">omega</reading></unit></div>
+      </div>
+    </text>
+  </version>
+</book>
