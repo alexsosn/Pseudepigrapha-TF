@@ -82,6 +82,53 @@ def test_conversion_report_audits_upstream_elipsis_extension(tmp_path):
     assert report["semantic_checks"]["ellipses"] is True
 
 
+def test_direct_div_reading_is_preserved_without_inventing_a_unit():
+    book = parse_file(FIXTURES / "orphan_reading.xml")
+    parent_div = book.versions[0].divs[0].children[0]
+    orphan = parent_div.items[1]
+    assert orphan.__class__.__name__ == "OrphanReading"
+    assert orphan.source_tag == "reading"
+    assert orphan.reading.option == "2"
+    assert orphan.reading.witnesses == ("B",)
+    assert orphan.reading.text == "orphan beta"
+    assert "<w lex=\"x\" morph=\"N\">beta</w>" in orphan.reading.content_xml
+
+    data = build_tf_data([book])
+    nodes = [n for n, kind in data.node_features["otype"].items() if kind == "orphan_reading"]
+    assert len(nodes) == 1
+    node = nodes[0]
+    assert data.node_features["source_tag"][node] == "reading"
+    assert data.node_features["source_ref"][node] == "1:1"
+    assert data.node_features["source_child_index"][node] == 2
+    assert data.node_features["reading_option_source"][node] == "2"
+    assert data.node_features["reading_text"][node] == "orphan beta"
+    assert data.node_features["mss"][node] == "B"
+    assert data.node_features["linebreak"][node] == "following"
+    assert data.node_features["indent"][node] == "1"
+    assert node not in data.edge_features.get("reading_of", {})
+    assert len(data.edge_features["oslots"][node]) == 1
+
+    parent = next(
+        n for n, kind in data.node_features["otype"].items()
+        if kind == "div" and data.node_features["source_ref"][n] == "1:1"
+    )
+    assert data.edge_features["parent"][node] == {parent}
+    assert data.max_slot == 2
+
+
+def test_conversion_report_audits_direct_div_reading_anomaly(tmp_path):
+    source = FIXTURES / "orphan_reading.xml"
+    (tmp_path / source.name).write_text(source.read_text(encoding="utf-8"), encoding="utf-8")
+    books, warnings = load_source_directory(tmp_path)
+    assert warnings == []
+
+    data = build_tf_data(books)
+    report = build_conversion_report(tmp_path, books, data)
+    assert report["status"] == "ok", report["failed_checks"]
+    assert report["source"]["orphan_readings"] == report["graph"]["orphan_readings"] == 1
+    assert report["semantic_checks"]["orphan_readings"] is True
+
+
 def test_legacy_chapter_verse_source_remains_supported():
     book = parse_file(FIXTURES / "legacy.xml")
     assert book.filename == "Legacy"
