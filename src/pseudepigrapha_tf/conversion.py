@@ -13,8 +13,15 @@ from .graph import (
     _ref_features,
     _slug,
 )
-from .model import Book, Div, Ellipsis, OrphanReading, Unit, Version
-from .source_structure import KNOWN_BLANK_UNIT_ID_SOURCES
+from .model import (
+    Book,
+    Div,
+    Ellipsis,
+    OrphanReading,
+    Unit,
+    Version,
+    _is_validated_blank_unit_id,
+)
 
 
 @dataclass(frozen=True)
@@ -37,27 +44,10 @@ def _version_has_units(version: Version) -> bool:
     return any(_div_has_units(div) for div in version.divs)
 
 
-def _source_basename(source_path: str) -> str:
-    return source_path.replace("\\", "/").rsplit("/", 1)[-1] if source_path else ""
+def _is_known_blank_unit_id(unit: Unit) -> bool:
+    """Accept only parser-marked blanks that already passed source validation."""
 
-
-def _is_known_blank_unit_id(
-    book: Book,
-    version: Version,
-    path: tuple[str, ...],
-    unit: Unit,
-) -> bool:
-    if unit.unit_id != "":
-        return False
-    expected_digest = KNOWN_BLANK_UNIT_ID_SOURCES.get(
-        (
-            _source_basename(book.source_path),
-            book.filename,
-            version.title,
-            path,
-        )
-    )
-    return bool(book.source_sha256) and book.source_sha256 == expected_digest
+    return _is_validated_blank_unit_id(unit.unit_id)
 
 
 def _validate_model_identities(books: Iterable[Book]) -> None:
@@ -77,9 +67,7 @@ def _validate_model_identities(books: Iterable[Book]) -> None:
                     if isinstance(item, Div):
                         stack.append((item, dpath))
                     elif isinstance(item, Unit):
-                        if not item.unit_id.strip() and not _is_known_blank_unit_id(
-                            book, version, dpath, item
-                        ):
+                        if not item.unit_id.strip() and not _is_known_blank_unit_id(item):
                             raise ValueError(f"{book.filename}/{version.title}: blank unit id")
                         for reading in item.readings:
                             if not reading.option.strip():
@@ -494,9 +482,7 @@ def _mark_known_missing_unit_ids(data: TFData, books: Iterable[Book]) -> None:
                 for item in div.items:
                     if isinstance(item, Div):
                         stack.append((item, dpath))
-                    elif isinstance(item, Unit) and _is_known_blank_unit_id(
-                        book, version, dpath, item
-                    ):
+                    elif isinstance(item, Unit) and _is_known_blank_unit_id(item):
                         source_ref = str(_ref_features(dpath, version.divisions)["source_ref"])
                         expected.add((book.filename, version_id, source_ref))
 
