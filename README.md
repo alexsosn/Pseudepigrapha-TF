@@ -104,6 +104,10 @@ A.passage("1En__Ethiopic", "1", "2")
 A.work_passage("1En", "1", "2")
 ```
 
+`reading_tokens(reading)` returns token nodes that actually belong to that reading. A non-empty primary reading returns its `word` slots through Text-Fabric's `oslots.s()` API; a non-empty alternative returns its `variant_word` nodes. An explicit omission returns `()`, so a primary `is_gap` slot or an alternative reading's shared primary locus is never exposed as textual content. A non-primary reading that has text but no variant tokens is treated as an inconsistent graph and raises `ValueError` rather than silently substituting the primary locus.
+
+For a selective Text-Fabric load, `reading_tokens()` requires `reading_text` and `is_primary`. The `oslots` warp feature is provided by Text-Fabric and is used only for non-empty primary readings. `variant_word_of` is additionally required only when resolving a non-empty alternative reading; corpora with no alternative tokens may legitimately have no serialized `variant_word_of` feature, and primary readings or omissions remain usable in that case. Missing required features/edges are reported as `ValueError` with the relevant feature name.
+
 ### Passage-level apparatus
 
 `Apparatus.passage(book, chapter, verse)` is the high-level interface for retrieving a verse together with all of its critical evidence from **one textual OCP version**. When an OCP work contains several top-level `<version>` elements, `book` is that version's stable TF section id, for example:
@@ -197,7 +201,7 @@ The report says `status: "ok"` only when every semantic check passes. Section co
 pytest
 ```
 
-The synthetic suite covers parser, graph, apparatus helpers, passage-level witness coverage and declaration provenance, work-level multi-version retrieval, semantic parity, ownership-edge corruption, legacy OCP, deep/non-numeric and duplicate references, omissions, empty source divisions, metadata-only versions, and reproducible paths. CI additionally installs real Text-Fabric, verifies node-type `T.text()` behavior and deep/duplicate `T.sectionFromNode()`/`T.nodeFromSection()` addresses, converts and audits the pinned complete OCP checkout, reloads the full dataset, exercises `Apparatus.passage("1En__Ethiopic", "1", "2")`, verifies witness declaration provenance, verifies that `Apparatus.work_passage("1En", "1", "2")` exposes all four real 1 Enoch versions, and verifies that real `TJob/Coptic` remains visible as metadata-only evidence.
+The synthetic suite covers parser, graph, apparatus helpers, reading-token semantics on real Text-Fabric, passage-level witness coverage and declaration provenance, work-level multi-version retrieval, semantic parity, ownership-edge corruption, legacy OCP, deep/non-numeric and duplicate references, omissions, empty source divisions, metadata-only versions, and reproducible paths. CI additionally installs real Text-Fabric, verifies node-type `T.text()` behavior and deep/duplicate `T.sectionFromNode()`/`T.nodeFromSection()` addresses, converts and audits the pinned complete OCP checkout, reloads the full dataset, exercises `Apparatus.passage("1En__Ethiopic", "1", "2")`, verifies witness declaration provenance, verifies that `Apparatus.work_passage("1En", "1", "2")` exposes all four real 1 Enoch versions, and verifies that real `TJob/Coptic` remains visible as metadata-only evidence.
 
 ## Licensing
 
