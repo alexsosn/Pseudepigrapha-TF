@@ -1,5 +1,7 @@
 from pathlib import Path
 
+import pytest
+
 from pseudepigrapha_tf.graph import build_tf_data
 from pseudepigrapha_tf.parser import parse_file
 from pseudepigrapha_tf.writer import write_tf
@@ -19,6 +21,11 @@ class FakeFabric:
     def save(self, **kwargs):
         self.saved = kwargs
         return True
+
+
+class ExplodingFabric:
+    def __init__(self, *args, **kwargs):
+        raise AssertionError("serializer must not be constructed for invalid graph data")
 
 
 def _feature_snapshots(data):
@@ -59,6 +66,15 @@ def test_writer_delegates_validated_features_to_text_fabric(tmp_path):
     assert saved["metaData"]["otext"] == data.metadata["otext"]
     assert saved["location"] == str(tmp_path / "tf")
     assert saved["module"] == ""
+
+
+def test_public_writer_rejects_mutated_invalid_graph_before_serializer(tmp_path):
+    data = build_tf_data([parse_file(FIXTURES / "sample.xml")])
+    book = next(node for node, kind in data.node_features["otype"].items() if kind == "book")
+    data.edge_features["oslots"][book].add(data.max_slot + 1)
+
+    with pytest.raises(ValueError, match="oslots points outside slot range"):
+        write_tf(data, tmp_path / "tf", fabric_factory=ExplodingFabric)
 
 
 def test_default_writer_reuses_graph_feature_payloads_without_mutation(monkeypatch, tmp_path):
