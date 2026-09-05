@@ -96,6 +96,18 @@ MODERN_REQUIRED_ATTRIBUTES: dict[str, frozenset[str]] = {
     "reading": frozenset({"option", "mss"}),
 }
 
+# These required modern attributes define researcher-visible work, witness,
+# locus, or apparatus identity. DTD #REQUIRED only guarantees presence, so
+# whitespace-only CDATA has to be rejected separately. Other required metadata
+# is deliberately allowed to be empty because pinned OCP uses that convention.
+MODERN_NONBLANK_IDENTITY_ATTRIBUTES: dict[str, frozenset[str]] = {
+    "book": frozenset({"filename"}),
+    "ms": frozenset({"abbrev"}),
+    "div": frozenset({"number"}),
+    "unit": frozenset({"id"}),
+    "reading": frozenset({"option"}),
+}
+
 # These exact pinned manuscript records embed/inhabit DTDs declaring
 # ms/@language #REQUIRED while omitting it in the source. Scope the exception
 # to source basename + OCP book identity + version title + manuscript abbrev;
@@ -182,11 +194,20 @@ def validate_source_structure(
                         f"{location}: missing required attribute {attribute} on <{parent.tag}> at {path}"
                     )
 
+            for attribute in sorted(
+                MODERN_NONBLANK_IDENTITY_ATTRIBUTES.get(parent.tag, frozenset())
+            ):
+                value = parent.attrib.get(attribute)
+                if value is not None and not value.strip():
+                    raise SourceStructureError(
+                        f"{location}: blank required identity attribute {attribute} on <{parent.tag}> at {path}"
+                    )
+
         if parent.tag == "manuscripts":
             seen_abbrevs: set[str] = set()
             for manuscript in parent.findall("ms"):
                 abbrev = manuscript.get("abbrev", "")
-                if not abbrev:
+                if not abbrev.strip():
                     continue
                 if abbrev in seen_abbrevs:
                     owner = f"version {version_title!r}" if not legacy else "legacy version"
