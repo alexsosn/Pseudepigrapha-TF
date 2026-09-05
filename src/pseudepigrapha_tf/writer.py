@@ -97,15 +97,14 @@ def _metadata_with_serialized_features(
     return metadata
 
 
-def write_tf(
+def _serialize_tf(
     data: TFData,
     output_dir: str | Path,
     *,
     fabric_factory: Callable[..., _FabricLike] | None = None,
 ) -> bool:
-    failures = data.validate()
-    if failures:
-        raise ValueError("refusing to write invalid Text-Fabric data: " + "; ".join(failures))
+    """Serialize data that has already crossed the caller's validation boundary."""
+
     output = Path(output_dir)
     output.mkdir(parents=True, exist_ok=True)
 
@@ -134,3 +133,21 @@ def write_tf(
             silent="deep",
         )
     )
+
+
+def _write_prevalidated_tf(data: TFData, output_dir: str | Path) -> bool:
+    """Serialize the CLI's freshly generated and already validated graph."""
+
+    return _serialize_tf(data, output_dir)
+
+
+def write_tf(
+    data: TFData,
+    output_dir: str | Path,
+    *,
+    fabric_factory: Callable[..., _FabricLike] | None = None,
+) -> bool:
+    failures = data.validate()
+    if failures:
+        raise ValueError("refusing to write invalid Text-Fabric data: " + "; ".join(failures))
+    return _serialize_tf(data, output_dir, fabric_factory=fabric_factory)
