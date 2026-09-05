@@ -135,23 +135,6 @@ def _textual_version_for_core_builder(version: Version) -> Version:
     )
 
 
-def _manuscript_keys(builder: _Builder, vkey: str) -> dict[str, str]:
-    """Return the unique manuscript key for each declared abbreviation."""
-
-    result: dict[str, str] = {}
-    prefix = f"{vkey}:ms:"
-    for obj in builder.objects:
-        if not obj.key.startswith(prefix):
-            continue
-        abbrev = str(obj.features.get("ms_abbrev", ""))
-        if not abbrev.strip():
-            continue
-        if abbrev in result and result[abbrev] != obj.key:
-            raise ValueError(f"{vkey}: duplicate manuscript abbreviation {abbrev!r}")
-        result[abbrev] = obj.key
-    return result
-
-
 def _attach_orphan_witnesses(
     builder: _Builder,
     *,
@@ -226,12 +209,12 @@ def _add_textual_source_anomalies(
     version: Version,
     book_index: int,
     version_index: int,
+    manuscripts: dict[str, str],
 ) -> None:
     """Attach preserved non-core source items after Div nodes have TF anchors."""
 
     vkey = f"book:{book_index}:version:{version_index}"
     specs = version.divisions
-    manuscripts = _manuscript_keys(builder, vkey)
     owner_key = f"{vkey}:book"
     div_serial = 0
     ellipsis_serial = 0
@@ -540,7 +523,7 @@ def build_tf_data(
             if _version_has_units(version):
                 first_slot = builder.next_slot
                 start = len(builder.objects)
-                _add_version(
+                manuscripts = _add_version(
                     builder,
                     book,
                     _textual_version_for_core_builder(version),
@@ -548,7 +531,14 @@ def build_tf_data(
                     bidx,
                     vidx,
                 )
-                _add_textual_source_anomalies(builder, book, version, bidx, vidx)
+                _add_textual_source_anomalies(
+                    builder,
+                    book,
+                    version,
+                    bidx,
+                    vidx,
+                    manuscripts,
+                )
                 _stamp_version_identity(builder, start, version_id)
                 if book_anchor is None and builder.next_slot > first_slot:
                     book_anchor = first_slot
