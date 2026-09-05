@@ -70,6 +70,21 @@ def test_conversion_report_reuses_section_address_resolution(monkeypatch, tmp_pa
     assert calls == 1
 
 
+def test_conversion_report_preserves_invalid_section_address_semantics(monkeypatch, tmp_path):
+    source = FIXTURES / "three_divisions.xml"
+    (tmp_path / source.name).write_text(source.read_text(encoding="utf-8"), encoding="utf-8")
+    books, warnings = load_source_directory(tmp_path)
+    assert warnings == []
+    data = build_tf_data(books)
+
+    monkeypatch.setattr(semantic_audit, "_section_address_records", lambda _: None)
+    report = semantic_audit.build_conversion_report(tmp_path, books, data)
+
+    assert report["status"] == "failed"
+    assert report["semantic_checks"]["section_addresses_unique"] is False
+    assert report["diagnostics"]["duplicate_section_addresses"] == []
+
+
 def test_conversion_report_preserves_empty_source_division_without_section_fabrication(tmp_path):
     source = FIXTURES / "empty_division.xml"
     (tmp_path / source.name).write_text(source.read_text(encoding="utf-8"), encoding="utf-8")
