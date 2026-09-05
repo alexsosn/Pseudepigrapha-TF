@@ -23,6 +23,12 @@ class Apparatus:
             raise ValueError(f"feature {name!r} must be loaded for this Apparatus operation")
         return feature
 
+    def _require_edge(self, name: str):
+        edge = getattr(self.api.E, name, None)
+        if edge is None:
+            raise ValueError(f"edge feature {name!r} must be loaded for this Apparatus operation")
+        return edge
+
     def _book_id(self, book_node: int) -> str:
         """Resolve the canonical TF book/section id for a textual version.
 
@@ -69,7 +75,8 @@ class Apparatus:
         return witnesses
 
     def unit_readings(self, unit: int) -> tuple[int, ...]:
-        return tuple(sorted(self.api.E.reading_of.t(unit)))
+        reading_of = self._require_edge("reading_of")
+        return tuple(sorted(reading_of.t(unit)))
 
     def reading_text(self, reading: int) -> str:
         return self.api.F.reading_text.v(reading) or ""
@@ -111,10 +118,11 @@ class Apparatus:
         return variants
 
     def witness_reading(self, unit: int, manuscript: int) -> int | None:
+        witness = self._require_edge("witness")
         matches = [
             reading
             for reading in self.unit_readings(unit)
-            if manuscript in self.api.E.witness.f(reading)
+            if manuscript in witness.f(reading)
         ]
         if len(matches) > 1:
             raise ValueError(f"manuscript {manuscript} has multiple readings at unit {unit}: {matches}")
@@ -216,14 +224,16 @@ class Apparatus:
         return " ".join(chunks)
 
     def apparatus(self, unit: int) -> tuple[dict[str, object], ...]:
+        is_primary = self._require_feature("is_primary")
+        witness = self._require_edge("witness")
         result = []
         for reading in self.unit_readings(unit):
             result.append(
                 {
                     "reading": reading,
                     "text": self.reading_text(reading),
-                    "primary": self.api.F.is_primary.v(reading) == 1,
-                    "witnesses": tuple(sorted(self.api.E.witness.f(reading))),
+                    "primary": is_primary.v(reading) == 1,
+                    "witnesses": tuple(sorted(witness.f(reading))),
                 }
             )
         return tuple(result)
@@ -236,6 +246,8 @@ class Apparatus:
     ) -> dict[str, object]:
         """Build a passage from already validated, request-local context."""
 
+        is_primary = self._require_feature("is_primary")
+        witness = self._require_edge("witness")
         units = tuple(self.api.L.d(verse_node, otype="unit"))
         source_refs: list[str] = []
         unit_records: list[dict[str, object]] = []
@@ -247,7 +259,7 @@ class Apparatus:
             readings: list[dict[str, object]] = []
             unit_witnesses: dict[int, int] = {}
             for reading in self.unit_readings(unit):
-                witness_nodes = tuple(sorted(self.api.E.witness.f(reading)))
+                witness_nodes = tuple(sorted(witness.f(reading)))
                 for manuscript in witness_nodes:
                     previous = unit_witnesses.get(manuscript)
                     if previous is not None:
@@ -261,7 +273,7 @@ class Apparatus:
                     {
                         "node": reading,
                         "text": text,
-                        "primary": self._feature("is_primary", reading, 0) == 1,
+                        "primary": is_primary.v(reading) == 1,
                         "omission": text == "",
                         "witness_nodes": witness_nodes,
                         "witnesses": tuple(
