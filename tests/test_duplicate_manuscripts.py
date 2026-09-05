@@ -20,6 +20,10 @@ def _ms(abbrev: str = "A", name: str = "Witness A") -> str:
     return f'<ms abbrev="{abbrev}" language="Greek" show="yes"><name>{name}</name></ms>'
 
 
+def _ms_without_abbrev(name: str) -> str:
+    return f'<ms language="Greek" show="yes"><name>{name}</name></ms>'
+
+
 def _modern(*versions: str) -> bytes:
     return (
         '<book filename="DupMs" title="Duplicate manuscript fixture">'
@@ -28,15 +32,45 @@ def _modern(*versions: str) -> bytes:
     ).encode()
 
 
-def _model_manuscript(name: str) -> Manuscript:
+def _model_manuscript(name: str, abbrev: str = "A") -> Manuscript:
     return Manuscript(
-        abbrev="A",
+        abbrev=abbrev,
         language="Greek",
         show="yes",
         name=name,
         name_xml=name,
         bibliography=(),
         bibliography_xml=(),
+    )
+
+
+def _model_book(*, manuscripts: tuple[Manuscript, ...], witnesses: tuple[str, ...]) -> Book:
+    mss_raw = " ".join(witnesses) + (" " if witnesses else "")
+    reading = Reading(
+        option="0",
+        witnesses=witnesses,
+        mss_raw=mss_raw,
+        linebreak="",
+        indent="",
+        text="alpha",
+        content_xml="alpha",
+        tokens=(Token("alpha"),),
+    )
+    version = Version(
+        title="Greek",
+        author="Anonymous",
+        language="Greek",
+        fragment="",
+        divisions=(DivisionSpec("Chapter"),),
+        resources=(),
+        manuscripts=manuscripts,
+        divs=(Div("1", "", (Unit("1", "0", "", "", (reading,)),)),),
+    )
+    return Book(
+        filename="DupMs",
+        title="Duplicate manuscript fixture",
+        text_structure="",
+        versions=(version,),
     )
 
 
@@ -73,6 +107,21 @@ def test_same_manuscript_abbreviation_in_different_versions_is_allowed():
     assert [version.manuscripts[0].abbrev for version in book.versions] == ["A", "A"]
 
 
+def test_modern_missing_abbreviation_reports_required_attribute_not_duplicate():
+    data = _modern(
+        _version(
+            "Greek",
+            _ms_without_abbrev("First") + _ms_without_abbrev("Second"),
+        )
+    )
+
+    with pytest.raises(
+        InvalidSourceError,
+        match=r"missing required attribute abbrev on <ms>",
+    ):
+        parse_bytes(data, source_path="missing-abbrev.xml")
+
+
 def test_legacy_duplicate_manuscript_abbreviation_is_rejected():
     data = f'''<book filename="LegacyDup" title="Legacy duplicate" language="Greek">
   <manuscripts>{_ms(name="First")}{_ms(name="Second")}</manuscripts>
@@ -86,32 +135,20 @@ def test_legacy_duplicate_manuscript_abbreviation_is_rejected():
         parse_bytes(data, source_path="legacy-duplicate-ms.xml")
 
 
+def test_legacy_multiple_manuscripts_without_abbreviation_are_not_ambiguous():
+    data = f'''<book filename="LegacyNoAbbrev" title="Legacy metadata" language="Greek">
+  <manuscripts>{_ms_without_abbrev("First")}{_ms_without_abbrev("Second")}</manuscripts>
+  <text><chapter number="1"><verse reference="1"><unit id="1"><reading option="0" mss="">alpha</reading></unit></verse></chapter></text>
+</book>'''.encode()
+
+    book = parse_bytes(data, source_path="legacy-no-abbrev.xml")
+    assert [ms.abbrev for ms in book.versions[0].manuscripts] == ["", ""]
+
+
 def test_graph_builder_rejects_duplicate_manuscript_abbreviation_in_direct_model():
-    reading = Reading(
-        option="0",
-        witnesses=("A",),
-        mss_raw="A ",
-        linebreak="",
-        indent="",
-        text="alpha",
-        content_xml="alpha",
-        tokens=(Token("alpha"),),
-    )
-    version = Version(
-        title="Greek",
-        author="Anonymous",
-        language="Greek",
-        fragment="",
-        divisions=(DivisionSpec("Chapter"),),
-        resources=(),
+    book = _model_book(
         manuscripts=(_model_manuscript("First"), _model_manuscript("Second")),
-        divs=(Div("1", "", (Unit("1", "0", "", "", (reading,)),)),),
-    )
-    book = Book(
-        filename="DupMs",
-        title="Duplicate manuscript fixture",
-        text_structure="",
-        versions=(version,),
+        witnesses=("A",),
     )
 
     with pytest.raises(
@@ -119,3 +156,22 @@ def test_graph_builder_rejects_duplicate_manuscript_abbreviation_in_direct_model
         match=r"DupMs/Greek: duplicate manuscript abbreviation 'A'",
     ):
         build_tf_data([book])
+
+
+def test_graph_builder_allows_multiple_unaddressable_manuscripts_without_abbreviation():
+    book = _model_book(
+        manuscripts=(
+            _model_manuscript("First", abbrev=""),
+            _model_manuscript("Second", abbrev=""),
+        ),
+        witnesses=(),
+    )
+
+    data = build_tf_data([book])
+    manuscript_nodes = [
+        node
+        for node, kind in data.node_features["otype"].items()
+        if kind == "manuscript"
+    ]
+    assert len(manuscript_nodes) == 2
+    assert all(data.node_features.get("ms_abbrev", {}).get(node, "") == "" for node in manuscript_nodes)
