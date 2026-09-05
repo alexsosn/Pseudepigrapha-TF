@@ -37,6 +37,16 @@ def _without_attribute(element_start: bytes, attribute: bytes) -> bytes:
     return data.replace(element_start, replacement, 1)
 
 
+def _missing_manuscript_language(*, book_filename: str = "Attrs") -> bytes:
+    data = _without_attribute(
+        b'<ms abbrev="A" language="Greek" show="yes">',
+        b'language="Greek"',
+    )
+    if book_filename != "Attrs":
+        data = data.replace(b'filename="Attrs"', f'filename="{book_filename}"'.encode(), 1)
+    return data
+
+
 @pytest.mark.parametrize(
     ("element", "element_start"),
     [
@@ -91,24 +101,26 @@ def test_parser_rejects_missing_modern_dtd_required_attribute(element, element_s
 
 
 def test_non_exception_file_missing_manuscript_language_is_rejected():
-    data = _without_attribute(
-        b'<ms abbrev="A" language="Greek" show="yes">',
-        b'language="Greek"',
-    )
     with pytest.raises(
         InvalidSourceError,
         match=r"Other.xml: missing required attribute language on <ms> at /book/version/manuscripts/ms",
     ):
-        parse_bytes(data, source_path="Other.xml")
+        parse_bytes(_missing_manuscript_language(), source_path="Other.xml")
+
+
+def test_exception_filename_does_not_exempt_wrong_book_identity():
+    with pytest.raises(
+        InvalidSourceError,
+        match=r"ClMal.xml: missing required attribute language on <ms> at /book/version/manuscripts/ms",
+    ):
+        parse_bytes(_missing_manuscript_language(book_filename="Attrs"), source_path="ClMal.xml")
 
 
 @pytest.mark.parametrize("source_name", ["ClMal.xml", "Eup.xml"])
 def test_pinned_missing_manuscript_language_stays_unknown_and_audited(tmp_path, source_name):
-    data = _without_attribute(
-        b'<ms abbrev="A" language="Greek" show="yes">',
-        b'language="Greek"',
-    )
-    source_dir = tmp_path / source_name.removesuffix(".xml")
+    book_filename = source_name.removesuffix(".xml")
+    data = _missing_manuscript_language(book_filename=book_filename)
+    source_dir = tmp_path / book_filename
     source_dir.mkdir()
     path = source_dir / source_name
     path.write_bytes(data)
