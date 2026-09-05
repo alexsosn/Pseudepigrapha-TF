@@ -80,6 +80,21 @@ def test_all_modeled_modern_attributes_and_unit_linebreak_remain_supported():
     assert (reading.linebreak, reading.indent) == ("following", "1")
 
 
+def test_pinned_capitalized_delimiter_alias_is_preserved_and_audited(tmp_path):
+    data = _modern_xml().replace(b'delimiter=":"', b'Delimiter=":"', 1)
+    path = tmp_path / "attributes.xml"
+    path.write_bytes(data)
+
+    books, warnings = load_source_directory(tmp_path)
+    assert warnings == []
+    assert books[0].versions[0].divisions[0].delimiter == ":"
+
+    graph = build_tf_data(books)
+    report = build_conversion_report(tmp_path, books, graph)
+    assert report["status"] == "ok", report["failed_checks"]
+    assert report["semantic_checks"]["division_specs"] is True
+
+
 def test_unknown_w_attribute_is_preserved_inside_audited_mixed_xml(tmp_path):
     data = _modern_xml().replace(
         b">alpha</reading>",
