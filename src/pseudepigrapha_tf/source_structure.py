@@ -23,7 +23,10 @@ MODERN_CHILDREN: dict[str, frozenset[str]] = {
     "bibliography": frozenset({"booktitle"}),
     "booktitle": frozenset(),
     "text": frozenset({"div"}),
-    "div": frozenset({"div", "unit"}),
+    # Aristob.xml in the pinned corpus carries an embedded DTD extension that
+    # adds the upstream-spelled <elipsis> omission marker to div content.
+    "div": frozenset({"div", "unit", "elipsis"}),
+    "elipsis": frozenset(),
     "unit": frozenset({"reading"}),
     "reading": frozenset({"w"}),
     "w": frozenset(),
