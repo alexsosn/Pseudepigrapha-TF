@@ -59,6 +59,7 @@ jobs:
           assert report['provenance']['upstream_commit'] == '2d1d14d23434a784d377ff7f4409ccdb2d18aafb'
           assert report['source']['versions'] == report['graph']['versions']
           assert report['source']['readings'] == report['graph']['readings']
+          assert report['source']['missing_unit_ids'] == report['graph']['missing_unit_ids'] == 1
           assert report['graph']['metadata_only_versions'] >= 1
           assert report['graph']['slots'] > 0
           assert report['graph']['oslots_edges'] > 0
@@ -73,7 +74,7 @@ jobs:
           TF = Fabric(locations=['/tmp/pseudepigrapha-tf/0.1'], modules=[''], silent='deep')
           api = TF.load(
               'reading_text ms_abbrev ms_language ms_name ms_show undefined_manuscript resource_name source_ref is_primary '
-              'unit_id prefix_utf8 g_word_utf8 trailer_utf8 boundary_utf8 '
+              'unit_id is_missing_unit_id is_source_anomaly prefix_utf8 g_word_utf8 trailer_utf8 boundary_utf8 '
               'version_title version_id is_metadata_only ocp_book title language author '
               'reading_of witness manuscript_of',
               silent='deep',
@@ -82,6 +83,18 @@ jobs:
           assert api.F.otype.maxSlot > 0
           assert api.F.otype.slotType == 'word'
           assert tuple(api.T.sectionTypes) == ('book', 'chapter', 'verse')
+
+          missing_units = [
+              n for n in api.F.otype.s('unit')
+              if api.F.is_missing_unit_id.v(n) == 1
+          ]
+          assert len(missing_units) == 1
+          missing_unit = missing_units[0]
+          assert api.F.ocp_book.v(missing_unit) == 'AdamEve'
+          assert api.F.version_title.v(missing_unit) == 'Latin (Mozley)'
+          assert api.F.source_ref.v(missing_unit) == '26:0'
+          assert not api.F.unit_id.v(missing_unit)
+          assert api.F.is_source_anomaly.v(missing_unit) == 1
 
           alternative = next(
               n for n in api.F.otype.s('reading')
