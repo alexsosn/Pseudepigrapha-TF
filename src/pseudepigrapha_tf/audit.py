@@ -242,7 +242,24 @@ def _raw_inventory(source_dir: Path) -> dict:
     return inventory
 
 
-def _nodes(data: TFData, kind: str) -> list[int]:
+def _node_index(data: TFData) -> dict[str, list[int]]:
+    """Build a deterministic node-type index in one pass over ``otype``."""
+
+    index: dict[str, list[int]] = {}
+    for node, kind in data.node_features["otype"].items():
+        index.setdefault(kind, []).append(node)
+    for nodes in index.values():
+        nodes.sort()
+    return index
+
+
+def _nodes(
+    data: TFData,
+    kind: str,
+    node_index: dict[str, list[int]] | None = None,
+) -> list[int]:
+    if node_index is not None:
+        return node_index.get(kind, [])
     return sorted(n for n, value in data.node_features["otype"].items() if value == kind)
 
 
@@ -250,12 +267,15 @@ def _feature(data: TFData, name: str, node: int, default=""):
     return data.node_features.get(name, {}).get(node, default)
 
 
-def _graph_inventory(data: TFData) -> dict:
+def _graph_inventory(
+    data: TFData,
+    node_index: dict[str, list[int]] | None = None,
+) -> dict:
     inventory = {
         "versions": [], "division_specs": [], "divs": [], "units": [], "readings": [],
         "manuscripts": [], "resources": [], "annotated_words": [],
     }
-    for node in _nodes(data, "book"):
+    for node in _nodes(data, "book", node_index):
         ocp_book = _feature(data, "ocp_book", node)
         version_title = _feature(data, "version_title", node)
         inventory["versions"].append({
@@ -278,7 +298,7 @@ def _graph_inventory(data: TFData) -> dict:
                 "label": label, "delimiter": delimiters[index - 1] if index <= len(delimiters) else "",
                 "text": texts[index - 1] if index <= len(texts) else "",
             })
-    for node in _nodes(data, "div"):
+    for node in _nodes(data, "div", node_index):
         inventory["divs"].append({
             "ocp_book": _feature(data, "ocp_book", node),
             "version_title": _feature(data, "version_title", node),
@@ -288,7 +308,7 @@ def _graph_inventory(data: TFData) -> dict:
             "level": _feature(data, "div_level", node, 0),
             "label": _feature(data, "div_label", node),
         })
-    for node in _nodes(data, "unit"):
+    for node in _nodes(data, "unit", node_index):
         inventory["units"].append({
             "ocp_book": _feature(data, "ocp_book", node),
             "version_title": _feature(data, "version_title", node),
@@ -297,7 +317,7 @@ def _graph_inventory(data: TFData) -> dict:
             "parallel": _feature(data, "parallel", node), "linebreak": _feature(data, "unit_linebreak", node),
         })
     witness_edges = data.edge_features.get("witness", {})
-    for node in _nodes(data, "reading"):
+    for node in _nodes(data, "reading", node_index):
         witnesses = sorted(_feature(data, "ms_abbrev", target) for target in witness_edges.get(node, set()))
         inventory["readings"].append({
             "ocp_book": _feature(data, "ocp_book", node),
@@ -308,7 +328,7 @@ def _graph_inventory(data: TFData) -> dict:
             "indent": _feature(data, "indent", node), "text": _feature(data, "reading_text", node),
             "xml": _feature(data, "reading_xml", node), "primary": _feature(data, "is_primary", node, 0) == 1,
         })
-    for node in _nodes(data, "manuscript"):
+    for node in _nodes(data, "manuscript", node_index):
         if _feature(data, "undefined_manuscript", node, 0) == 1:
             continue
         inventory["manuscripts"].append({
@@ -319,7 +339,7 @@ def _graph_inventory(data: TFData) -> dict:
             "bibliography": json.loads(_feature(data, "bibliography", node, "[]")),
             "bibliography_xml": json.loads(_feature(data, "bibliography_xml", node, "[]")),
         })
-    for node in _nodes(data, "resource"):
+    for node in _nodes(data, "resource", node_index):
         inventory["resources"].append({
             "ocp_book": _feature(data, "ocp_book", node), "version_title": _feature(data, "version_title", node),
             "name": _feature(data, "resource_name", node),
@@ -341,13 +361,16 @@ def _normalize(text: str) -> str:
     return re.sub(r"\s+", " ", text.replace("\u200b", "")).strip()
 
 
-def _reconstruction_checks(data: TFData) -> tuple[bool, bool]:
+def _reconstruction_checks(
+    data: TFData,
+    node_index: dict[str, list[int]] | None = None,
+) -> tuple[bool, bool]:
     reading_to_variants: dict[int, list[int]] = {}
     for variant, targets in data.edge_features.get("variant_word_of", {}).items():
         for reading in targets:
             reading_to_variants.setdefault(reading, []).append(variant)
     primary_ok = alternative_ok = True
-    for reading in _nodes(data, "reading"):
+    for reading in _nodes(data, "reading", node_index):
         expected = _normalize(str(_feature(data, "reading_text", reading)))
         if _feature(data, "is_primary", reading, 0) == 1:
             slots = sorted(data.edge_features["oslots"].get(reading, set()))
@@ -366,10 +389,13 @@ def _reconstruction_checks(data: TFData) -> tuple[bool, bool]:
     return primary_ok, alternative_ok
 
 
-def _parent_linkage_ok(data: TFData) -> bool:
+def _parent_linkage_ok(
+    data: TFData,
+    node_index: dict[str, list[int]] | None = None,
+) -> bool:
     parent = data.edge_features.get("parent", {})
-    div_nodes = set(_nodes(data, "div"))
-    for unit in _nodes(data, "unit"):
+    div_nodes = set(_nodes(data, "div", node_index))
+    for unit in _nodes(data, "unit", node_index):
         targets = parent.get(unit, set())
         if len(targets) != 1:
             return False

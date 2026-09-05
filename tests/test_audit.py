@@ -48,6 +48,69 @@ def test_conversion_report_proves_semantic_parity_against_raw_xml(tmp_path):
     assert report["provenance"]["upstream_commit"] == "abc123"
 
 
+def test_conversion_report_uses_report_local_node_index(monkeypatch, tmp_path):
+    source = FIXTURES / "three_divisions.xml"
+    (tmp_path / source.name).write_text(source.read_text(encoding="utf-8"), encoding="utf-8")
+    books, warnings = load_source_directory(tmp_path)
+    assert warnings == []
+    data = build_tf_data(books)
+
+    scan_calls: list[str] = []
+    index_calls = 0
+    original_nodes = compatibility_audit._nodes
+    original_index = compatibility_audit._node_index
+
+    def counted_nodes(nodes_data, kind, *args, **kwargs):
+        node_index = args[0] if args else kwargs.get("node_index")
+        if node_index is None:
+            scan_calls.append(kind)
+        return original_nodes(nodes_data, kind, *args, **kwargs)
+
+    def counted_index(index_data):
+        nonlocal index_calls
+        index_calls += 1
+        return original_index(index_data)
+
+    monkeypatch.setattr(compatibility_audit, "_nodes", counted_nodes)
+    monkeypatch.setattr(compatibility_audit, "_node_index", counted_index)
+    report = semantic_audit.build_conversion_report(tmp_path, books, data)
+
+    assert report["status"] == "ok", report["failed_checks"]
+    assert index_calls == 1
+    assert scan_calls == []
+
+
+def test_node_index_scans_otype_once_and_sorts_each_kind_without_coercion():
+    class CountingOtype(dict):
+        items_calls = 0
+
+        def items(self):
+            self.items_calls += 1
+            return super().items()
+
+    otype = CountingOtype([(3, "unit"), (2, "book"), (1, "unit"), (4, 7)])
+    data = TFData({"otype": otype}, {}, {}, [])
+
+    index = compatibility_audit._node_index(data)
+
+    assert otype.items_calls == 1
+    assert index == {"unit": [1, 3], "book": [2], 7: [4]}
+    assert compatibility_audit._nodes(data, "7", index) == []
+    assert compatibility_audit._nodes(data, "7") == []
+
+
+def test_node_index_is_not_cached_on_mutable_tfdata():
+    data = build_tf_data([parse_file(FIXTURES / "sample.xml")])
+    index = compatibility_audit._node_index(data)
+    new_node = max(data.node_features["otype"]) + 1
+
+    data.node_features["otype"][new_node] = "unit"
+
+    assert new_node not in compatibility_audit._nodes(data, "unit", index)
+    assert new_node in compatibility_audit._nodes(data, "unit")
+    assert new_node in compatibility_audit._node_index(data)["unit"]
+
+
 def test_conversion_report_reuses_section_address_resolution(monkeypatch, tmp_path):
     source = FIXTURES / "three_divisions.xml"
     (tmp_path / source.name).write_text(source.read_text(encoding="utf-8"), encoding="utf-8")
@@ -58,10 +121,10 @@ def test_conversion_report_reuses_section_address_resolution(monkeypatch, tmp_pa
     calls = 0
     original = semantic_audit._section_address_records
 
-    def counted(records_data):
+    def counted(records_data, node_index=None):
         nonlocal calls
         calls += 1
-        return original(records_data)
+        return original(records_data, node_index)
 
     monkeypatch.setattr(semantic_audit, "_section_address_records", counted)
     report = semantic_audit.build_conversion_report(tmp_path, books, data)
@@ -77,7 +140,7 @@ def test_conversion_report_preserves_invalid_section_address_semantics(monkeypat
     assert warnings == []
     data = build_tf_data(books)
 
-    monkeypatch.setattr(semantic_audit, "_section_address_records", lambda _: None)
+    monkeypatch.setattr(semantic_audit, "_section_address_records", lambda _data, _node_index=None: None)
     report = semantic_audit.build_conversion_report(tmp_path, books, data)
 
     assert report["status"] == "failed"
