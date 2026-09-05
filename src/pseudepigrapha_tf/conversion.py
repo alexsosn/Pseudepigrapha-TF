@@ -14,7 +14,7 @@ from .graph import (
     _slug,
 )
 from .model import Book, Div, Ellipsis, OrphanReading, Unit, Version
-from .source_structure import KNOWN_BLANK_UNIT_IDS
+from .source_structure import KNOWN_BLANK_UNIT_ID_SOURCES
 
 
 @dataclass(frozen=True)
@@ -47,16 +47,17 @@ def _is_known_blank_unit_id(
     path: tuple[str, ...],
     unit: Unit,
 ) -> bool:
-    return (
-        unit.unit_id == ""
-        and (
+    if unit.unit_id != "":
+        return False
+    expected_digest = KNOWN_BLANK_UNIT_ID_SOURCES.get(
+        (
             _source_basename(book.source_path),
             book.filename,
             version.title,
             path,
         )
-        in KNOWN_BLANK_UNIT_IDS
     )
+    return bool(book.source_sha256) and book.source_sha256 == expected_digest
 
 
 def _validate_model_identities(books: Iterable[Book]) -> None:
