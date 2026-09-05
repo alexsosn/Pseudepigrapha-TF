@@ -70,10 +70,18 @@ class Ellipsis:
 
 
 @dataclass
+class OrphanReading:
+    """Reading found directly under a div, outside the source DTD's unit wrapper."""
+
+    reading: Reading
+    source_tag: str = "reading"
+
+
+@dataclass
 class Div:
     number: str
     fragment: str
-    items: tuple["Div | Unit | Ellipsis", ...] = ()
+    items: tuple["Div | Unit | Ellipsis | OrphanReading", ...] = ()
 
     @property
     def children(self) -> tuple["Div", ...]:
@@ -86,6 +94,10 @@ class Div:
     @property
     def ellipses(self) -> tuple[Ellipsis, ...]:
         return tuple(item for item in self.items if isinstance(item, Ellipsis))
+
+    @property
+    def orphan_readings(self) -> tuple[OrphanReading, ...]:
+        return tuple(item for item in self.items if isinstance(item, OrphanReading))
 
 
 @dataclass
