@@ -102,6 +102,14 @@ def test_global_witness_text_requires_exactly_one_unit_per_cited_reading():
             Apparatus(api).witness_text(100)
 
 
+def test_global_witness_text_missing_edge_features_fail_clearly():
+    for missing in ("witness", "reading_of"):
+        api = witness_text_api()
+        delattr(api.E, missing)
+        with pytest.raises(ValueError, match=missing):
+            Apparatus(api).witness_text(100)
+
+
 def test_explicit_units_preserve_caller_order_and_duplicates():
     api = witness_text_api()
     assert Apparatus(api).witness_text(100, units=(40, 10, 40, 20)) == "omega alpha omega"
