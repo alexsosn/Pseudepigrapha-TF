@@ -6,6 +6,17 @@ from dataclasses import dataclass, field
 class _ValidatedBlankUnitId(str):
     """Internal marker for a source blank accepted by XML provenance validation."""
 
+    def __copy__(self):
+        return self
+
+    def __deepcopy__(self, memo):
+        return self
+
+    def __reduce__(self):
+        if self is _VALIDATED_BLANK_UNIT_ID:
+            return (_validated_blank_unit_id, ())
+        return (type(self), (str(self),))
+
 
 _VALIDATED_BLANK_UNIT_ID = _ValidatedBlankUnitId("")
 
