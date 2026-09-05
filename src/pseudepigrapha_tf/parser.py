@@ -7,6 +7,7 @@ from xml.etree import ElementTree as ET
 from xml.sax.saxutils import escape
 
 from .model import Book, Div, DivisionSpec, Manuscript, Reading, Resource, Token, Unit, Version
+from .source_structure import SourceStructureError, validate_source_structure
 
 ETHIOPIC_SEPARATORS = frozenset("፡።፣፤፥፦፧፨")
 
@@ -221,8 +222,16 @@ def parse_bytes(data: bytes, *, source_path: str = "") -> Book:
         raise InvalidSourceError(f"cannot parse {source_path or '<memory>'}: {exc}") from exc
     if root.tag != "book":
         raise InvalidSourceError(f"expected <book> root in {source_path or '<memory>'}, found <{root.tag}>")
+
+    has_versions = bool(root.findall("version"))
+    is_legacy = not has_versions and root.find("text/chapter") is not None
+    try:
+        validate_source_structure(root, legacy=is_legacy, source_path=source_path)
+    except SourceStructureError as exc:
+        raise InvalidSourceError(str(exc)) from exc
+
     versions = tuple(_parse_version(v) for v in root.findall("version"))
-    if not versions and root.find("text/chapter") is not None:
+    if not versions and is_legacy:
         versions = (_parse_legacy_version(root),)
     if not versions:
         raise InvalidSourceError(f"book has no supported text structure: {source_path or '<memory>'}")
