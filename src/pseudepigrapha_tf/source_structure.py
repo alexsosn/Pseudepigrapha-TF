@@ -61,8 +61,8 @@ MODERN_ATTRIBUTES: dict[str, frozenset[str] | None] = {
     "version": frozenset({"title", "author", "fragment", "language"}),
     "divisions": frozenset(),
     # ApocrEzek.xml in the pinned corpus uses capitalized Delimiter in several
-    # later versions. Parser and raw audit normalize it to the same semantic
-    # delimiter field; allowing the spelling here is therefore lossless.
+    # later versions. Parser and raw audit normalize either spelling to the same
+    # semantic delimiter field. Simultaneous use is rejected below as ambiguous.
     "division": frozenset({"label", "delimiter", "Delimiter"}),
     "resources": frozenset(),
     "resource": frozenset({"name"}),
@@ -129,6 +129,16 @@ def validate_source_structure(
         if allowed is None:
             raise SourceStructureError(
                 f"{location}: unsupported <{parent.tag}> element at {path}"
+            )
+
+        if (
+            not legacy
+            and parent.tag == "division"
+            and "delimiter" in parent.attrib
+            and "Delimiter" in parent.attrib
+        ):
+            raise SourceStructureError(
+                f"{location}: both delimiter and Delimiter on <division> at {path}"
             )
 
         attribute_policy = allowed_attributes[parent.tag]
