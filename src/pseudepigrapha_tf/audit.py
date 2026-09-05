@@ -120,15 +120,20 @@ def _raw_inventory(source_dir: Path) -> dict:
         data = path.read_bytes()
         if path.name.startswith(".") or not data.strip():
             continue
+        source_sha256 = hashlib.sha256(data).hexdigest()
         root = ET.fromstring(data)
         versions = root.findall("version")
         is_legacy = not versions and root.find("text/chapter") is not None
         try:
-            validate_source_structure(root, legacy=is_legacy, source_path=path.name)
+            validate_source_structure(
+                root,
+                legacy=is_legacy,
+                source_path=path.name,
+                source_sha256=source_sha256,
+            )
         except SourceStructureError as exc:
             raise InvalidSourceError(str(exc)) from exc
         ocp_book = root.get("filename", "")
-        source_sha256 = hashlib.sha256(data).hexdigest()
         inventory["files"].append({"file": path.name, "sha256": source_sha256})
         if versions:
             for version in versions:
