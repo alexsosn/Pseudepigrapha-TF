@@ -12,7 +12,7 @@ from .graph import (
     _common,
     _ref_features,
 )
-from .model import Book, Div, Ellipsis, Unit, Version
+from .model import Book, Div, Ellipsis, OrphanReading, Unit, Version
 
 
 @dataclass(frozen=True)
@@ -42,21 +42,21 @@ def _stamp_version_identity(builder: _Builder, start: int, version_id: str) -> N
         obj.features["version_id"] = version_id
 
 
-def _without_ellipses(div: Div) -> Div:
-    """Return the textual structure understood by the core slot/section builder."""
+def _without_special_div_items(div: Div) -> Div:
+    """Return only the Div/Unit structure understood by the core text builder."""
 
     return Div(
         number=div.number,
         fragment=div.fragment,
         items=tuple(
-            _without_ellipses(item) if isinstance(item, Div) else item
+            _without_special_div_items(item) if isinstance(item, Div) else item
             for item in div.items
-            if not isinstance(item, Ellipsis)
+            if not isinstance(item, (Ellipsis, OrphanReading))
         ),
     )
 
 
-def _textual_version_without_ellipses(version: Version) -> Version:
+def _textual_version_for_core_builder(version: Version) -> Version:
     return Version(
         title=version.title,
         author=version.author,
@@ -65,33 +65,67 @@ def _textual_version_without_ellipses(version: Version) -> Version:
         divisions=version.divisions,
         resources=version.resources,
         manuscripts=version.manuscripts,
-        divs=tuple(_without_ellipses(div) for div in version.divs),
+        divs=tuple(_without_special_div_items(div) for div in version.divs),
     )
 
 
-def _add_textual_ellipses(
+def _add_orphan_reading_node(
+    builder: _Builder,
+    *,
+    key: str,
+    parent_key: str,
+    anchor: set[int],
+    book: Book,
+    version: Version,
+    path: tuple[str, ...],
+    source_child_index: int,
+    orphan: OrphanReading,
+    is_metadata_only: int = 0,
+) -> None:
+    reading = orphan.reading
+    features: dict[str, object] = {
+        **_common(book, version),
+        **_ref_features(path, version.divisions),
+        "source_tag": orphan.source_tag,
+        "source_child_index": source_child_index,
+        "reading_option_source": reading.option,
+        "mss": reading.mss_raw.strip(),
+        "linebreak": reading.linebreak,
+        "indent": reading.indent,
+        "reading_text": reading.text,
+        "reading_xml": reading.content_xml,
+        "is_source_anomaly": 1,
+    }
+    if is_metadata_only:
+        features["is_metadata_only"] = 1
+    builder.node(key, "orphan_reading", anchor, **features)
+    builder.edge("parent", key, parent_key)
+
+
+def _add_textual_source_anomalies(
     builder: _Builder,
     book: Book,
     version: Version,
     book_index: int,
     version_index: int,
 ) -> None:
-    """Attach source omission markers after the core builder has anchored divs."""
+    """Attach preserved non-core source items after Div nodes have TF anchors."""
 
     vkey = f"book:{book_index}:version:{version_index}"
     specs = version.divisions
     div_serial = 0
     ellipsis_serial = 0
+    orphan_serial = 0
 
     def visit(div: Div, path: tuple[str, ...]) -> None:
-        nonlocal div_serial, ellipsis_serial
+        nonlocal div_serial, ellipsis_serial, orphan_serial
         div_serial += 1
         dkey = f"{vkey}:div:{div_serial}"
         dpath = path + (div.number,)
         parent = builder.by_key[dkey]
         if not parent.slots:
             raise ValueError(
-                f"{book.filename}/{version.title}: ellipsis parent {dpath!r} has no TF anchor"
+                f"{book.filename}/{version.title}: special source item parent {dpath!r} has no TF anchor"
             )
         technical_anchor = {min(parent.slots)}
         for child_position, item in enumerate(div.items, 1):
@@ -111,6 +145,19 @@ def _add_textual_ellipses(
                     source_child_index=child_position,
                 )
                 builder.edge("parent", ekey, dkey)
+            elif isinstance(item, OrphanReading):
+                orphan_serial += 1
+                _add_orphan_reading_node(
+                    builder,
+                    key=f"{vkey}:orphan_reading:{orphan_serial}",
+                    parent_key=dkey,
+                    anchor=technical_anchor,
+                    book=book,
+                    version=version,
+                    path=dpath,
+                    source_child_index=child_position,
+                    orphan=item,
+                )
 
     for div in version.divs:
         visit(div, ())
@@ -140,9 +187,10 @@ def _add_metadata_version(
 
     div_serial = 0
     ellipsis_serial = 0
+    orphan_serial = 0
 
     def add_div(div: Div, level: int, sibling: int, path: tuple[str, ...], parent: str | None) -> None:
-        nonlocal div_serial, ellipsis_serial
+        nonlocal div_serial, ellipsis_serial, orphan_serial
         div_serial += 1
         dpath = path + (div.number,)
         dkey = f"{vkey}:div:{div_serial}"
@@ -182,6 +230,20 @@ def _add_metadata_version(
                     is_metadata_only=1,
                 )
                 builder.edge("parent", ekey, dkey)
+            elif isinstance(item, OrphanReading):
+                orphan_serial += 1
+                _add_orphan_reading_node(
+                    builder,
+                    key=f"{vkey}:orphan_reading:{orphan_serial}",
+                    parent_key=dkey,
+                    anchor=technical_anchor,
+                    book=book,
+                    version=version,
+                    path=dpath,
+                    source_child_index=source_child_index,
+                    orphan=item,
+                    is_metadata_only=1,
+                )
             else:
                 raise ValueError(
                     f"{book.filename}/{version.title}: metadata-only classification encountered textual unit"
@@ -278,12 +340,12 @@ def build_tf_data(
                 _add_version(
                     builder,
                     book,
-                    _textual_version_without_ellipses(version),
+                    _textual_version_for_core_builder(version),
                     version_id,
                     bidx,
                     vidx,
                 )
-                _add_textual_ellipses(builder, book, version, bidx, vidx)
+                _add_textual_source_anomalies(builder, book, version, bidx, vidx)
                 _stamp_version_identity(builder, start, version_id)
                 if book_anchor is None and builder.next_slot > first_slot:
                     book_anchor = first_slot
@@ -329,10 +391,16 @@ def build_tf_data(
     )
     data.metadata["otext"]["fmt:version_metadata-default"] = "{version_title}"
     data.metadata["otext"]["fmt:ellipsis-default"] = "{ellipsis_text}"
+    data.metadata["otext"]["fmt:orphan_reading-default"] = "{reading_text}"
     if "is_metadata_only" in data.metadata:
         data.metadata["is_metadata_only"]["valueType"] = "int"
         data.metadata["is_metadata_only"]["description"] = (
             "1 for metadata attached to an upstream version with no textual units"
+        )
+    if "is_source_anomaly" in data.metadata:
+        data.metadata["is_source_anomaly"]["valueType"] = "int"
+        data.metadata["is_source_anomaly"]["description"] = (
+            "1 for a preserved upstream structure that violates the source file's declared grammar"
         )
     if "version_id" in data.metadata:
         data.metadata["version_id"]["description"] = (
