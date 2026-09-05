@@ -11,6 +11,9 @@ from pseudepigrapha_tf.source import load_source_directory
 from pseudepigrapha_tf.source_structure import KNOWN_BLANK_UNIT_ID_SOURCES
 
 
+PINNED_ADAM_EVE_SHA256 = "a63275351e2349ce8a31b7427a28b80db034be670ba545e2398832a3d9ac6358"
+
+
 def _adam_eve_xml(*, version_title: str = "Latin (Mozley)", inner_div: str = "0") -> bytes:
     return f'''<book filename="AdamEve" title="Life of Adam and Eve">
   <version title="{version_title}" author="" language="Latin">
@@ -117,7 +120,8 @@ def test_missing_unit_id_audit_rejects_spurious_marker(
     assert report["semantic_checks"]["missing_unit_ids"] is False
 
 
-def test_direct_model_cannot_spoof_known_blank_unit_with_source_path():
+@pytest.mark.parametrize("source_sha256", ["", PINNED_ADAM_EVE_SHA256])
+def test_direct_model_cannot_spoof_known_blank_unit_with_public_provenance(source_sha256: str):
     reading = Reading(
         option="0",
         witnesses=(),
@@ -151,6 +155,7 @@ def test_direct_model_cannot_spoof_known_blank_unit_with_source_path():
         text_structure="",
         versions=(version,),
         source_path="AdamEve.xml",
+        source_sha256=source_sha256,
     )
 
     with pytest.raises(ValueError, match=r"blank unit id"):
