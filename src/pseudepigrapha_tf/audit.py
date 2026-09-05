@@ -247,7 +247,7 @@ def _node_index(data: TFData) -> dict[str, list[int]]:
 
     index: dict[str, list[int]] = {}
     for node, kind in data.node_features["otype"].items():
-        index.setdefault(str(kind), []).append(node)
+        index.setdefault(kind, []).append(node)
     for nodes in index.values():
         nodes.sort()
     return index
