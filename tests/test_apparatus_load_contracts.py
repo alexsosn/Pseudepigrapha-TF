@@ -84,3 +84,30 @@ def test_passage_does_not_require_optional_display_metadata(tmp_path):
     passage = Apparatus(api).passage("Sample", "1", "2")
     assert len(passage["units"]) == 1
     assert [reading["primary"] for reading in passage["units"][0]["readings"]] == [True, False]
+
+
+def test_work_passage_available_section_names_missing_is_primary(tmp_path):
+    api = _load(
+        tmp_path,
+        "ocp_book reading_text undefined_manuscript "
+        "reading_of witness manuscript_of",
+    )
+    with pytest.raises(ValueError, match="is_primary"):
+        Apparatus(api).work_passage("Sample", "1", "2")
+
+
+def test_work_passage_available_section_names_missing_witness(tmp_path):
+    api = _load(
+        tmp_path,
+        "ocp_book reading_text is_primary undefined_manuscript "
+        "reading_of manuscript_of",
+    )
+    with pytest.raises(ValueError, match="witness"):
+        Apparatus(api).work_passage("Sample", "1", "2")
+
+
+def test_work_passage_absent_section_does_not_require_passage_only_features(tmp_path):
+    api = _load(tmp_path, "ocp_book undefined_manuscript manuscript_of")
+    result = Apparatus(api).work_passage("Sample", "99", "1")
+    assert result["versions"]["Sample"]["status"] == "not_present"
+    assert result["versions"]["Sample"]["passage"] is None
