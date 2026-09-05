@@ -85,9 +85,9 @@ MODERN_ATTRIBUTES: dict[str, frozenset[str] | None] = {
 }
 
 # Presence requirements copied from the pinned modern Grammateus DTD. Known
-# pinned-source violations are listed separately and scoped to their exact file;
-# this keeps future modern sources on the DTD contract rather than weakening it
-# globally to accommodate one malformed upstream document.
+# pinned-source violations are listed separately and scoped by both exact source
+# basename and OCP book identity; merely renaming another source to a known file
+# must not weaken validation.
 MODERN_REQUIRED_ATTRIBUTES: dict[str, frozenset[str]] = {
     "book": frozenset({"filename", "title"}),
     "version": frozenset({"title", "author"}),
@@ -99,11 +99,14 @@ MODERN_REQUIRED_ATTRIBUTES: dict[str, frozenset[str]] = {
     "reading": frozenset({"option", "mss"}),
 }
 
-# ClMal.xml embeds a DTD declaring ms/@language #REQUIRED but omits the
-# attribute on both Niese and Mras. Preserve that absence as unknown manuscript
-# language; do not infer it from version/@language.
-MODERN_REQUIRED_ATTRIBUTE_EXCEPTIONS: dict[str, dict[str, frozenset[str]]] = {
-    "ClMal.xml": {"ms": frozenset({"language"})},
+# Both files embed a DTD declaring ms/@language #REQUIRED but contain at least
+# one manuscript declaration without it. Preserve the absence as unknown
+# manuscript language; never infer it from version/@language.
+MODERN_REQUIRED_ATTRIBUTE_EXCEPTIONS: dict[
+    tuple[str, str], dict[str, frozenset[str]]
+] = {
+    ("ClMal.xml", "ClMal"): {"ms": frozenset({"language"})},
+    ("Eup.xml", "Eup"): {"ms": frozenset({"language"})},
 }
 
 LEGACY_ATTRIBUTES: dict[str, frozenset[str] | None] = {
@@ -144,7 +147,8 @@ def validate_source_structure(
     allowed_attributes = LEGACY_ATTRIBUTES if legacy else MODERN_ATTRIBUTES
     location = source_path or "<memory>"
     source_name = source_path.replace("\\", "/").rsplit("/", 1)[-1] if source_path else ""
-    required_exceptions = MODERN_REQUIRED_ATTRIBUTE_EXCEPTIONS.get(source_name, {})
+    source_identity = (source_name, root.attrib.get("filename", ""))
+    required_exceptions = MODERN_REQUIRED_ATTRIBUTE_EXCEPTIONS.get(source_identity, {})
 
     stack: list[tuple[ET.Element, str]] = [(root, f"/{root.tag}")]
     while stack:
