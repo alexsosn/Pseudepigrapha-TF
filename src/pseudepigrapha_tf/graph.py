@@ -77,7 +77,7 @@ _EDGE_CARDINALITY_CONTRACTS = (
 @dataclass
 class TFData:
     node_features: dict[str, dict[int, str | int]]
-    edge_features: dict[str, dict[int, set[int]]]
+    edge_features: dict[str, dict[int, set[int]]
     metadata: dict[str, dict[str, str]]
     warnings: list[str] = field(default_factory=list)
 
@@ -444,11 +444,12 @@ def _add_version(builder: _Builder, book: Book, version: Version, book_id: str,
     manuscripts: dict[str, str] = {}
     for midx, ms in enumerate(version.manuscripts, 1):
         key = f"{vkey}:ms:{midx}"
-        if ms.abbrev in manuscripts:
+        if ms.abbrev and ms.abbrev in manuscripts:
             raise ValueError(
                 f"{book.filename}/{version.title}: duplicate manuscript abbreviation {ms.abbrev!r}"
             )
-        manuscripts[ms.abbrev] = key
+        if ms.abbrev:
+            manuscripts[ms.abbrev] = key
         builder.node(
             key, "manuscript", (), **_common(book, version), ms_abbrev=ms.abbrev,
             ms_name=ms.name, ms_name_xml=ms.name_xml, ms_language=ms.language, ms_show=ms.show,
