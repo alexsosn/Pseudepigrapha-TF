@@ -92,13 +92,13 @@ def test_raw_audit_rejects_blank_unit_identity(tmp_path: Path):
         audit._raw_inventory(tmp_path)
 
 
-def _manuscript(abbrev: str = "A") -> Manuscript:
+def _manuscript(abbrev: str = "A", name: str = "Witness A") -> Manuscript:
     return Manuscript(
         abbrev=abbrev,
         language="Greek",
         show="yes",
-        name="Witness A",
-        name_xml="Witness A",
+        name=name,
+        name_xml=name,
         bibliography=(),
         bibliography_xml=(),
     )
@@ -152,7 +152,6 @@ def _model_book(
     ("label", "kwargs"),
     [
         ("book filename", {"filename": "   "}),
-        ("manuscript abbreviation", {"ms_abbrev": "   "}),
         ("div number", {"div_number": "   "}),
         ("unit id", {"unit_id": "   "}),
         ("reading option", {"option": "   "}),
@@ -161,3 +160,26 @@ def _model_book(
 def test_graph_builder_rejects_blank_direct_model_identities(label, kwargs):
     with pytest.raises(ValueError, match=rf"blank {label}"):
         build_tf_data([_model_book(**kwargs)])
+
+
+def test_graph_builder_allows_whitespace_only_unaddressable_manuscript_metadata():
+    book = _model_book(ms_abbrev="")
+    book.versions[0].manuscripts = (
+        _manuscript("   ", "First metadata-only witness"),
+        _manuscript("   ", "Second metadata-only witness"),
+    )
+
+    data = build_tf_data([book])
+    manuscript_nodes = {
+        node
+        for node, kind in data.node_features["otype"].items()
+        if kind == "manuscript"
+    }
+    witness_targets = {
+        target
+        for targets in data.edge_features.get("witness", {}).values()
+        for target in targets
+    }
+
+    assert len(manuscript_nodes) == 2
+    assert manuscript_nodes.isdisjoint(witness_targets)
