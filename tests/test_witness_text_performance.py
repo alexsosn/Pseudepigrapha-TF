@@ -44,7 +44,7 @@ class Edge:
         return tuple(self.inverse.get(node, ()))
 
 
-def witness_text_api(*, duplicate=False, owner_mode="normal"):
+def witness_text_api(*, duplicate=False, owner_mode="normal", scrambled_witness=False):
     # Requested manuscript 100 cites reading 11 (text), 21 (explicit omission),
     # and 41 (text). Reading 31 belongs to another witness and must never be
     # scanned by the optimized global path.
@@ -61,12 +61,22 @@ def witness_text_api(*, duplicate=False, owner_mode="normal"):
     elif owner_mode == "multiple":
         reading_of[41] = (40, 30)
 
-    witness = {
-        11: (100,),
-        21: (100,),
-        31: (200,),
-        41: (100,),
-    }
+    if scrambled_witness:
+        # Deliberately disagree with source/unit order so the regression proves
+        # witness-edge iteration order cannot define reconstructed text order.
+        witness = {
+            41: (100,),
+            21: (100,),
+            11: (100,),
+            31: (200,),
+        }
+    else:
+        witness = {
+            11: (100,),
+            21: (100,),
+            31: (200,),
+            41: (100,),
+        }
     if duplicate:
         witness[12] = (100,)
 
@@ -92,6 +102,13 @@ def test_global_witness_text_uses_direct_reverse_edges_once_without_unit_scan():
     assert api.E.reading_of.f_calls == Counter({11: 1, 21: 1, 41: 1})
     assert api.E.reading_of.t_calls == Counter()
     assert api.E.witness.f_calls == Counter()
+    assert api.F.otype.s_calls == Counter()
+
+
+def test_global_witness_text_orders_by_unit_not_reverse_edge_iteration():
+    api = witness_text_api(scrambled_witness=True)
+    assert api.E.witness.inverse[100] == [41, 21, 11]
+    assert Apparatus(api).witness_text(100) == "alpha omega"
     assert api.F.otype.s_calls == Counter()
 
 
