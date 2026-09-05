@@ -84,15 +84,18 @@ MODERN_ATTRIBUTES: dict[str, frozenset[str] | None] = {
     "w": None,
 }
 
-# Presence requirements copied from the pinned modern Grammateus DTD. These are
-# deliberately separate from the allowed-attribute policy: optional attributes
-# remain accepted when present but are never invented when absent.
+# Presence requirements are copied from the pinned modern Grammateus DTD except
+# for one observed pinned-source deviation. ClMal.xml embeds the same declaration
+# of ms/@language as #REQUIRED but omits it on both manuscripts. Preserve that
+# absence as unknown metadata instead of rejecting the file or inferring language
+# from its version. The policy is separate from allowed attributes so optional
+# values remain accepted when present but are never invented when absent.
 MODERN_REQUIRED_ATTRIBUTES: dict[str, frozenset[str]] = {
     "book": frozenset({"filename", "title"}),
     "version": frozenset({"title", "author"}),
     "division": frozenset({"label"}),
     "resource": frozenset({"name"}),
-    "ms": frozenset({"abbrev", "language", "show"}),
+    "ms": frozenset({"abbrev", "show"}),
     "div": frozenset({"number"}),
     "unit": frozenset({"id"}),
     "reading": frozenset({"option", "mss"}),
@@ -146,7 +149,7 @@ def validate_source_structure(
             )
 
         if not legacy:
-            for attribute in MODERN_REQUIRED_ATTRIBUTES.get(parent.tag, ()):
+            for attribute in sorted(MODERN_REQUIRED_ATTRIBUTES.get(parent.tag, ())):
                 if attribute not in parent.attrib:
                     raise SourceStructureError(
                         f"{location}: missing required attribute {attribute} on <{parent.tag}> at {path}"
