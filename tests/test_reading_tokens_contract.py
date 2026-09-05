@@ -75,6 +75,13 @@ def test_nonprimary_text_without_variant_edge_fails_clearly():
         Apparatus(_api(variant_edge=False)).reading_tokens(12)
 
 
+def test_nonprimary_text_with_empty_variant_edge_fails_as_inconsistent_graph():
+    api = _api()
+    api.E.variant_word_of = Edge({})
+    with pytest.raises(ValueError, match="no variant_word tokens"):
+        Apparatus(api).reading_tokens(12)
+
+
 @pytest.mark.parametrize(("feature", "message"), [("reading_text", "reading_text"), ("is_primary", "is_primary")])
 def test_reading_tokens_reports_missing_required_feature(feature, message):
     kwargs = {feature: False}
