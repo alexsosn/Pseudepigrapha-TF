@@ -439,9 +439,10 @@ def _add_unit(builder: _Builder, book: Book, version: Version, vkey: str, unit: 
 
 
 def _add_version(builder: _Builder, book: Book, version: Version, book_id: str,
-                 book_index: int, version_index: int) -> None:
+                 book_index: int, version_index: int) -> dict[str, str]:
     vkey = f"book:{book_index}:version:{version_index}"
     manuscripts: dict[str, str] = {}
+    declared_manuscript_keys: list[str] = []
     for midx, ms in enumerate(version.manuscripts, 1):
         key = f"{vkey}:ms:{midx}"
         if ms.abbrev and ms.abbrev in manuscripts:
@@ -457,6 +458,7 @@ def _add_version(builder: _Builder, book: Book, version: Version, book_id: str,
             bibliography_xml=json.dumps(ms.bibliography_xml, ensure_ascii=False),
             manuscript_index=midx,
         )
+        declared_manuscript_keys.append(key)
 
     specs = version.divisions
     version_slots: set[int] = set()
@@ -592,10 +594,10 @@ def _add_version(builder: _Builder, book: Book, version: Version, book_id: str,
 
     # TF 13.1 serialization rejects empty oslots for non-slot nodes. Metadata-like
     # nodes therefore receive one O(1) technical anchor, never a fabricated span.
-    for obj in builder.objects:
-        if obj.key.startswith(f"{vkey}:ms:"):
-            obj.slots.update(technical_anchor)
-            builder.edge("manuscript_of", obj.key, bkey)
+    manuscript_keys = dict.fromkeys([*declared_manuscript_keys, *manuscripts.values()])
+    for mkey in manuscript_keys:
+        builder.by_key[mkey].slots.update(technical_anchor)
+        builder.edge("manuscript_of", mkey, bkey)
 
     for ridx, resource in enumerate(version.resources, 1):
         rkey = f"{vkey}:resource:{ridx}"
@@ -605,6 +607,8 @@ def _add_version(builder: _Builder, book: Book, version: Version, book_id: str,
             resource_index=ridx,
         )
         builder.edge("resource_of", rkey, bkey)
+
+    return manuscripts
 
 
 def build_tf_data(
