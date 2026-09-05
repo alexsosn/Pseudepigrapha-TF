@@ -56,11 +56,14 @@ class Locality:
 
 
 class Text:
-    def __init__(self):
+    def __init__(self, *, bad_book_heading=False):
         self.section_calls = Counter()
+        self.bad_book_heading = bad_book_heading
 
     def sectionFromNode(self, node):
         self.section_calls[node] += 1
+        if node == 1 and self.bad_book_heading:
+            return ()
         return {
             1: ("Work__A",),
             2: ("Work__B",),
@@ -74,7 +77,7 @@ class Text:
         return None
 
 
-def work_passage_api(*, verse_owners=(1,)):
+def work_passage_api(*, verse_owners=(1,), bad_book_heading=False):
     F = SimpleNamespace(
         otype=OtypeFeature({
             1: "book",
@@ -105,7 +108,12 @@ def work_passage_api(*, verse_owners=(1,)):
         witness=Edge({11: {32}}),
         manuscript_of=Edge({30: {1}, 32: {1}, 31: {2}}),
     )
-    return SimpleNamespace(F=F, E=E, L=Locality(verse_owners), T=Text())
+    return SimpleNamespace(
+        F=F,
+        E=E,
+        L=Locality(verse_owners),
+        T=Text(bad_book_heading=bad_book_heading),
+    )
 
 
 def test_work_passage_resolves_each_textual_version_without_word_traversal():
@@ -135,6 +143,15 @@ def test_work_passage_resolves_each_textual_version_without_word_traversal():
     assert api.L.d_calls[(2, "word")] == 0
     assert api.T.section_calls == Counter({1: 1, 2: 1})
     assert api.E.manuscript_of.t_calls == Counter({1: 1, 2: 1})
+
+
+def test_work_passage_rejects_missing_direct_book_heading():
+    api = work_passage_api(bad_book_heading=True)
+    with pytest.raises(
+        ValueError,
+        match=r"cannot resolve TF book section id for textual OCP version node 1",
+    ):
+        Apparatus(api).work_passage("Work", "1", "1")
 
 
 def test_work_passage_outer_witness_metadata_does_not_alias_nested_passage_state():
