@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<book filename="NoWitness" title="Witness-free work" textStructure="criticalApparatus">
+  <version title="Greek" author="Anonymous" language="Greek">
+    <divisions>
+      <division label="Chapter" delimiter=":"/>
+      <division label="Verse"/>
+    </divisions>
+    <manuscripts/>
+    <text>
+      <div number="1">
+        <div number="1">
+          <unit id="1"><reading option="0">alpha beta</reading></unit>
+        </div>
+      </div>
+    </text>
+  </version>
+</book>
