@@ -149,6 +149,12 @@ def test_undeclared_witness_manuscript_requires_exactly_one_owner():
     _assert_cardinality_error(errors, "manuscript_of", manuscript, "manuscript", 0, "exactly 1")
 
 
+def test_validate_does_not_depend_on_otype_dict_insertion_order():
+    data = _data()
+    data.node_features["otype"] = dict(reversed(tuple(data.node_features["otype"].items())))
+    assert data.validate() == []
+
+
 class NeverSaveFabric:
     def __init__(self, *args, **kwargs):
         pass
