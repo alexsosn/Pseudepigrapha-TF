@@ -55,6 +55,34 @@ def test_textual_versions_do_not_full_scan_global_objects_before_finalize(monkey
     assert data.node_features["version_id"][manuscripts["G"]] == "Multi__Greek"
 
 
+def test_finalize_groups_objects_with_one_global_iteration():
+    builder = _Builder()
+    builder.objects = _TrackingObjects()
+    builder.slot(g_word_utf8="slot")
+    builder.node("a1", "alpha", {1}, marker="a1")
+    builder.node("b1", "beta", {1}, marker="b1")
+    builder.node("a2", "alpha", {1}, marker="a2")
+
+    data = builder.finalize(
+        upstream_repository="https://example.invalid/source",
+        upstream_commit="",
+        converter_version="test",
+    )
+
+    assert builder.objects.full_iterations == 1
+    non_slots = range(data.max_slot + 1, data.max_node + 1)
+    assert [data.node_features["otype"][node] for node in non_slots] == [
+        "alpha",
+        "alpha",
+        "beta",
+    ]
+    assert [data.node_features["marker"][node] for node in non_slots] == [
+        "a1",
+        "a2",
+        "b1",
+    ]
+
+
 def test_core_undeclared_witness_is_reused_by_orphan_reading():
     book = parse_bytes(
         b'''<book filename="Reuse" title="Witness reuse">
