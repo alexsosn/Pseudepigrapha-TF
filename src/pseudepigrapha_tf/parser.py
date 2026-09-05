@@ -233,10 +233,16 @@ def parse_bytes(data: bytes, *, source_path: str = "") -> Book:
     if root.tag != "book":
         raise InvalidSourceError(f"expected <book> root in {source_path or '<memory>'}, found <{root.tag}>")
 
+    source_sha256 = hashlib.sha256(data).hexdigest()
     has_versions = bool(root.findall("version"))
     is_legacy = not has_versions and root.find("text/chapter") is not None
     try:
-        validate_source_structure(root, legacy=is_legacy, source_path=source_path)
+        validate_source_structure(
+            root,
+            legacy=is_legacy,
+            source_path=source_path,
+            source_sha256=source_sha256,
+        )
     except SourceStructureError as exc:
         raise InvalidSourceError(str(exc)) from exc
 
@@ -251,7 +257,7 @@ def parse_bytes(data: bytes, *, source_path: str = "") -> Book:
         text_structure=root.get("textStructure", ""),
         versions=versions,
         source_path=source_path,
-        source_sha256=hashlib.sha256(data).hexdigest(),
+        source_sha256=source_sha256,
     )
 
 
