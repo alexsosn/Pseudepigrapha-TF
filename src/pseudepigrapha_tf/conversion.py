@@ -11,6 +11,7 @@ from .graph import (
     _book_ids,
     _common,
     _ref_features,
+    _slug,
 )
 from .model import Book, Div, Ellipsis, OrphanReading, Unit, Version
 
@@ -69,6 +70,55 @@ def _textual_version_for_core_builder(version: Version) -> Version:
     )
 
 
+def _manuscript_keys(builder: _Builder, vkey: str) -> dict[str, str]:
+    """Return first-created manuscript keys, matching ordinary-reading semantics."""
+
+    result: dict[str, str] = {}
+    prefix = f"{vkey}:ms:"
+    for obj in builder.objects:
+        if not obj.key.startswith(prefix):
+            continue
+        abbrev = str(obj.features.get("ms_abbrev", ""))
+        if abbrev:
+            result.setdefault(abbrev, obj.key)
+    return result
+
+
+def _attach_orphan_witnesses(
+    builder: _Builder,
+    *,
+    source_key: str,
+    owner_key: str,
+    anchor: set[int],
+    book: Book,
+    version: Version,
+    vkey: str,
+    witnesses: tuple[str, ...],
+    manuscripts: dict[str, str],
+) -> None:
+    """Preserve orphan-reading witness citations without inventing a unit."""
+
+    for abbrev in witnesses:
+        mkey = manuscripts.get(abbrev)
+        if mkey is None:
+            mkey = f"{vkey}:ms:undefined:{_slug(abbrev)}"
+            if mkey not in builder.by_key:
+                builder.node(
+                    mkey,
+                    "manuscript",
+                    anchor,
+                    **_common(book, version),
+                    ms_abbrev=abbrev,
+                    undefined_manuscript=1,
+                )
+                builder.edge("manuscript_of", mkey, owner_key)
+                builder.warnings.append(
+                    f"{book.filename}/{version.title}: orphan reading cites undeclared manuscript {abbrev!r}"
+                )
+            manuscripts[abbrev] = mkey
+        builder.edge("witness", source_key, mkey)
+
+
 def _add_orphan_reading_node(
     builder: _Builder,
     *,
@@ -113,6 +163,8 @@ def _add_textual_source_anomalies(
 
     vkey = f"book:{book_index}:version:{version_index}"
     specs = version.divisions
+    manuscripts = _manuscript_keys(builder, vkey)
+    owner_key = f"{vkey}:book"
     div_serial = 0
     ellipsis_serial = 0
     orphan_serial = 0
@@ -147,9 +199,10 @@ def _add_textual_source_anomalies(
                 builder.edge("parent", ekey, dkey)
             elif isinstance(item, OrphanReading):
                 orphan_serial += 1
+                okey = f"{vkey}:orphan_reading:{orphan_serial}"
                 _add_orphan_reading_node(
                     builder,
-                    key=f"{vkey}:orphan_reading:{orphan_serial}",
+                    key=okey,
                     parent_key=dkey,
                     anchor=technical_anchor,
                     book=book,
@@ -157,6 +210,17 @@ def _add_textual_source_anomalies(
                     path=dpath,
                     source_child_index=child_position,
                     orphan=item,
+                )
+                _attach_orphan_witnesses(
+                    builder,
+                    source_key=okey,
+                    owner_key=owner_key,
+                    anchor=technical_anchor,
+                    book=book,
+                    version=version,
+                    vkey=vkey,
+                    witnesses=item.reading.witnesses,
+                    manuscripts=manuscripts,
                 )
 
     for div in version.divs:
@@ -188,6 +252,7 @@ def _add_metadata_version(
     div_serial = 0
     ellipsis_serial = 0
     orphan_serial = 0
+    pending_orphan_witnesses: list[tuple[str, OrphanReading]] = []
 
     def add_div(div: Div, level: int, sibling: int, path: tuple[str, ...], parent: str | None) -> None:
         nonlocal div_serial, ellipsis_serial, orphan_serial
@@ -232,9 +297,10 @@ def _add_metadata_version(
                 builder.edge("parent", ekey, dkey)
             elif isinstance(item, OrphanReading):
                 orphan_serial += 1
+                okey = f"{vkey}:orphan_reading:{orphan_serial}"
                 _add_orphan_reading_node(
                     builder,
-                    key=f"{vkey}:orphan_reading:{orphan_serial}",
+                    key=okey,
                     parent_key=dkey,
                     anchor=technical_anchor,
                     book=book,
@@ -244,6 +310,7 @@ def _add_metadata_version(
                     orphan=item,
                     is_metadata_only=1,
                 )
+                pending_orphan_witnesses.append((okey, item))
             else:
                 raise ValueError(
                     f"{book.filename}/{version.title}: metadata-only classification encountered textual unit"
@@ -253,6 +320,7 @@ def _add_metadata_version(
         add_div(div, 1, top_index, (), None)
 
     mkeys: list[str] = []
+    manuscripts: dict[str, str] = {}
     for midx, ms in enumerate(version.manuscripts, 1):
         mkey = f"{vkey}:ms:{midx}"
         builder.node(
@@ -271,6 +339,7 @@ def _add_metadata_version(
             is_metadata_only=1,
         )
         mkeys.append(mkey)
+        manuscripts.setdefault(ms.abbrev, mkey)
 
     target = f"{vkey}:metadata"
     builder.node(
@@ -294,6 +363,19 @@ def _add_metadata_version(
     )
     for mkey in mkeys:
         builder.edge("manuscript_of", mkey, target)
+
+    for okey, orphan in pending_orphan_witnesses:
+        _attach_orphan_witnesses(
+            builder,
+            source_key=okey,
+            owner_key=target,
+            anchor=technical_anchor,
+            book=book,
+            version=version,
+            vkey=vkey,
+            witnesses=orphan.reading.witnesses,
+            manuscripts=manuscripts,
+        )
 
     for ridx, resource in enumerate(version.resources, 1):
         rkey = f"{vkey}:resource:{ridx}"
