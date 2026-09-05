@@ -77,7 +77,7 @@ _EDGE_CARDINALITY_CONTRACTS = (
 @dataclass
 class TFData:
     node_features: dict[str, dict[int, str | int]]
-    edge_features: dict[str, dict[int, set[int]]
+    edge_features: dict[str, dict[int, set[int]]]
     metadata: dict[str, dict[str, str]]
     warnings: list[str] = field(default_factory=list)
 
