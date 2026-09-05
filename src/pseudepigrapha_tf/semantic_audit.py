@@ -160,6 +160,7 @@ def _graph_ellipsis_inventory(data: TFData) -> list[dict]:
 
 def _graph_orphan_reading_inventory(data: TFData) -> list[dict]:
     records: list[dict] = []
+    witness_edges = data.edge_features.get("witness", {})
     for node in base._nodes(data, "orphan_reading"):
         mss = str(base._feature(data, "mss", node))
         records.append(
@@ -172,7 +173,10 @@ def _graph_orphan_reading_inventory(data: TFData) -> list[dict]:
                 "source_child_index": base._feature(data, "source_child_index", node, 0),
                 "option": base._feature(data, "reading_option_source", node),
                 "mss": mss,
-                "witnesses": sorted(part for part in mss.split() if part),
+                "witnesses": sorted(
+                    str(base._feature(data, "ms_abbrev", target))
+                    for target in witness_edges.get(node, set())
+                ),
                 "linebreak": base._feature(data, "linebreak", node),
                 "indent": base._feature(data, "indent", node),
                 "text": base._feature(data, "reading_text", node),
@@ -194,6 +198,22 @@ def _technical_parent_anchors_ok(data: TFData, node_type: str) -> bool:
         parent = next(iter(targets))
         if otype.get(parent) != "div" or not slots.issubset(oslots.get(parent, set())):
             return False
+    return True
+
+
+def _witness_targets_owned_by_source_version(data: TFData, node_type: str) -> bool:
+    """Require anomaly witness edges to stay inside their exact source version."""
+
+    witness_edges = data.edge_features.get("witness", {})
+    otype = data.node_features.get("otype", {})
+    version_ids = data.node_features.get("version_id", {})
+    for node in base._nodes(data, node_type):
+        source_version = version_ids.get(node, "")
+        if not source_version:
+            return False
+        for target in witness_edges.get(node, set()):
+            if otype.get(target) != "manuscript" or version_ids.get(target, "") != source_version:
+                return False
     return True
 
 
@@ -351,6 +371,7 @@ def build_conversion_report(source_dir: str | Path, books: list[Book], data: TFD
         "ellipsis_anchors": _technical_parent_anchors_ok(data, "ellipsis"),
         "orphan_readings": base._canonical(raw_orphan_readings) == base._canonical(graph_orphan_readings),
         "orphan_reading_anchors": _technical_parent_anchors_ok(data, "orphan_reading"),
+        "orphan_witness_ownership": _witness_targets_owned_by_source_version(data, "orphan_reading"),
         "primary_reconstruction": primary_ok,
         "alternative_reconstruction": alternative_ok,
         "unit_parent_linkage": base._parent_linkage_ok(data),
