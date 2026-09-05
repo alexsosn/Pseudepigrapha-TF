@@ -162,6 +162,11 @@ def test_direct_model_cannot_spoof_known_blank_unit_with_public_provenance(sourc
         build_tf_data([book])
 
 
+def test_blank_unit_id_exception_requires_exact_pinned_source_bytes():
+    with pytest.raises(InvalidSourceError, match=r"blank required identity attribute id"):
+        parse_bytes(_adam_eve_xml(), source_path="AdamEve.xml")
+
+
 @pytest.mark.parametrize(
     ("source_path", "version_title", "inner_div"),
     [
