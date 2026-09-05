@@ -49,3 +49,29 @@ def test_writer_delegates_validated_features_to_text_fabric(tmp_path):
     assert saved["metaData"]["otext"] == data.metadata["otext"]
     assert saved["location"] == str(tmp_path / "tf")
     assert saved["module"] == ""
+
+
+def test_default_writer_reuses_graph_feature_payloads_without_mutation(monkeypatch, tmp_path):
+    import tf.fabric
+
+    data = build_tf_data([parse_file(FIXTURES / "sample.xml")])
+    node_snapshot = {name: dict(values) for name, values in data.node_features.items()}
+    edge_snapshot = {
+        name: {source: set(targets) for source, targets in values.items()}
+        for name, values in data.edge_features.items()
+    }
+    monkeypatch.setattr(tf.fabric, "Fabric", FakeFabric)
+
+    assert write_tf(data, tmp_path / "tf")
+    saved = FakeFabric.instances[-1].saved
+
+    assert saved["nodeFeatures"] is not data.node_features
+    for name, values in data.node_features.items():
+        assert saved["nodeFeatures"][name] is values
+
+    assert saved["edgeFeatures"] is not data.edge_features
+    for name, values in data.edge_features.items():
+        assert saved["edgeFeatures"][name] is values
+
+    assert data.node_features == node_snapshot
+    assert data.edge_features == edge_snapshot
