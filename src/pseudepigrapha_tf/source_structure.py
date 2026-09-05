@@ -108,6 +108,16 @@ MODERN_NONBLANK_IDENTITY_ATTRIBUTES: dict[str, frozenset[str]] = {
     "reading": frozenset({"option"}),
 }
 
+# AdamEve.xml in the pinned corpus contains exactly one source-declared blank
+# unit id: Latin (Mozley), source div path 26:0. Preserve that absence rather
+# than inventing the neighboring logical value 27. The exception is deliberately
+# scoped to literal id=""; whitespace-only values remain invalid.
+KNOWN_BLANK_UNIT_IDS: frozenset[tuple[str, str, str, tuple[str, ...]]] = frozenset(
+    {
+        ("AdamEve.xml", "AdamEve", "Latin (Mozley)", ("26", "0")),
+    }
+)
+
 # These exact pinned manuscript records embed/inhabit DTDs declaring
 # ms/@language #REQUIRED while omitting it in the source. Scope the exception
 # to source basename + OCP book identity + version title + manuscript abbrev;
@@ -163,13 +173,18 @@ def validate_source_structure(
     source_name = source_path.replace("\\", "/").rsplit("/", 1)[-1] if source_path else ""
     book_filename = root.attrib.get("filename", "")
 
-    # Carry the containing version title through the iterative traversal so
-    # record-specific exceptions remain linear and do not require ancestor scans.
-    stack: list[tuple[ET.Element, str, str]] = [(root, f"/{root.tag}", "")]
+    # Carry the containing version title and source div path through the
+    # iterative traversal so record-specific exceptions remain linear and do
+    # not require parent pointers or repeated ancestor scans.
+    stack: list[tuple[ET.Element, str, str, tuple[str, ...]]] = [
+        (root, f"/{root.tag}", "", ())
+    ]
     while stack:
-        parent, path, version_title = stack.pop()
+        parent, path, version_title, div_path = stack.pop()
         if parent.tag == "version":
             version_title = parent.attrib.get("title", "")
+        if parent.tag == "div":
+            div_path = div_path + (parent.attrib.get("number", ""),)
 
         allowed = allowed_children.get(parent.tag)
         if allowed is None:
@@ -199,9 +214,17 @@ def validate_source_structure(
             ):
                 value = parent.attrib.get(attribute)
                 if value is not None and not value.strip():
-                    raise SourceStructureError(
-                        f"{location}: blank required identity attribute {attribute} on <{parent.tag}> at {path}"
+                    known_blank_unit = (
+                        parent.tag == "unit"
+                        and attribute == "id"
+                        and value == ""
+                        and (source_name, book_filename, version_title, div_path)
+                        in KNOWN_BLANK_UNIT_IDS
                     )
+                    if not known_blank_unit:
+                        raise SourceStructureError(
+                            f"{location}: blank required identity attribute {attribute} on <{parent.tag}> at {path}"
+                        )
 
         if parent.tag == "manuscripts":
             seen_abbrevs: set[str] = set()
@@ -241,4 +264,4 @@ def validate_source_structure(
                     f"{location}: unsupported <{child.tag}> child of <{parent.tag}> at {path}"
                 )
         for child in reversed(children):
-            stack.append((child, f"{path}/{child.tag}", version_title))
+            stack.append((child, f"{path}/{child.tag}", version_title, div_path))
