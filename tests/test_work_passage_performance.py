@@ -1,6 +1,8 @@
 from collections import Counter
 from types import SimpleNamespace
 
+import pytest
+
 from pseudepigrapha_tf.apparatus import Apparatus
 
 
@@ -35,8 +37,9 @@ class Edge:
 
 
 class Locality:
-    def __init__(self):
+    def __init__(self, verse_owners=(1,)):
         self.d_calls = Counter()
+        self.verse_owners = tuple(verse_owners)
 
     def d(self, node, otype=None):
         self.d_calls[(node, otype)] += 1
@@ -48,7 +51,7 @@ class Locality:
 
     def u(self, node, otype=None):
         if (node, otype) == (1000, "book"):
-            return (1,)
+            return self.verse_owners
         return ()
 
 
@@ -69,7 +72,7 @@ class Text:
         return None
 
 
-def work_passage_api():
+def work_passage_api(*, verse_owners=(1,)):
     F = SimpleNamespace(
         otype=OtypeFeature({
             1: "book",
@@ -100,7 +103,7 @@ def work_passage_api():
         witness=Edge({11: {32}}),
         manuscript_of=Edge({30: {1}, 32: {1}, 31: {2}}),
     )
-    return SimpleNamespace(F=F, E=E, L=Locality(), T=Text())
+    return SimpleNamespace(F=F, E=E, L=Locality(verse_owners), T=Text())
 
 
 def test_work_passage_resolves_each_textual_version_and_witness_inventory_once():
@@ -142,3 +145,23 @@ def test_work_passage_outer_witness_metadata_does_not_alias_nested_passage_state
     assert inner["name"] == "Citation only"
     assert "segments" not in outer
     assert "segments" in inner
+
+
+def test_public_passage_still_rejects_multiple_containing_books():
+    api = work_passage_api(verse_owners=(1, 2))
+
+    with pytest.raises(
+        ValueError,
+        match=r"expected one containing book for \('Work__A', '1', '1'\), found \(1, 2\)",
+    ):
+        Apparatus(api).passage("Work__A", "1", "1")
+
+
+def test_work_passage_uses_actual_owner_witnesses_for_mismatched_section_owner():
+    api = work_passage_api(verse_owners=(2,))
+    result = Apparatus(api).work_passage("Work", "1", "1")
+
+    version = result["versions"]["Work__A"]
+    assert set(version["witnesses"]) == {"A", "X"}
+    assert set(version["passage"]["witnesses"]) == {"B"}
+    assert api.E.manuscript_of.t_calls == Counter({1: 1, 2: 2})
