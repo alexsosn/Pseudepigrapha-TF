@@ -7,6 +7,7 @@ from pseudepigrapha_tf.conversion import build_tf_data
 from pseudepigrapha_tf.parser import InvalidSourceError, parse_bytes
 from pseudepigrapha_tf.semantic_audit import build_conversion_report
 from pseudepigrapha_tf.source import load_source_directory
+from pseudepigrapha_tf.source_structure import LEGACY_ATTRIBUTES, MODERN_ATTRIBUTES
 
 
 def _modern_xml() -> bytes:
@@ -60,6 +61,12 @@ def test_raw_audit_rejects_same_unknown_attribute(tmp_path):
 
     with pytest.raises(InvalidSourceError, match=r"unsupported attribute future on <unit>"):
         audit._raw_inventory(tmp_path)
+
+
+def test_only_fully_preserved_mixed_xml_elements_allow_arbitrary_attributes():
+    expected = {"w", "sup", "booktitle"}
+    assert {name for name, policy in MODERN_ATTRIBUTES.items() if policy is None} == expected
+    assert {name for name, policy in LEGACY_ATTRIBUTES.items() if policy is None} == expected
 
 
 def test_all_modeled_modern_attributes_and_unit_linebreak_remain_supported():
