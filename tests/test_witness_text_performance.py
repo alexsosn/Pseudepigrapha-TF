@@ -65,8 +65,11 @@ def witness_text_api(*, duplicate=False, owner_mode="normal"):
     if duplicate:
         witness[12] = (100,)
 
+    reading_nodes = {11: "reading", 21: "reading", 31: "reading", 41: "reading"}
+    if duplicate:
+        reading_nodes[12] = "reading"
     F = SimpleNamespace(
-        otype=OtypeFeature({}),
+        otype=OtypeFeature(reading_nodes),
         reading_text=Feature({11: "alpha", 12: "alt", 21: "", 31: "other", 41: "omega"}),
     )
     E = SimpleNamespace(
