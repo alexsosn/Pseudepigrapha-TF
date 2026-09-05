@@ -37,17 +37,20 @@ def _version_has_units(version: Version) -> bool:
 
 
 def _validate_unique_manuscript_abbreviations(books: Iterable[Book]) -> None:
-    """Reject ambiguous witness identity before any graph mutation occurs."""
+    """Reject ambiguous non-empty witness identity before graph mutation."""
 
     for book in books:
         for version in book.versions:
             seen: set[str] = set()
             for manuscript in version.manuscripts:
-                if manuscript.abbrev in seen:
+                abbrev = manuscript.abbrev
+                if not abbrev:
+                    continue
+                if abbrev in seen:
                     raise ValueError(
-                        f"{book.filename}/{version.title}: duplicate manuscript abbreviation {manuscript.abbrev!r}"
+                        f"{book.filename}/{version.title}: duplicate manuscript abbreviation {abbrev!r}"
                     )
-                seen.add(manuscript.abbrev)
+                seen.add(abbrev)
 
 
 def _stamp_version_identity(builder: _Builder, start: int, version_id: str) -> None:
@@ -339,7 +342,7 @@ def _add_metadata_version(
     mkeys: list[str] = []
     manuscripts: dict[str, str] = {}
     for midx, ms in enumerate(version.manuscripts, 1):
-        if ms.abbrev in manuscripts:
+        if ms.abbrev and ms.abbrev in manuscripts:
             raise ValueError(
                 f"{book.filename}/{version.title}: duplicate manuscript abbreviation {ms.abbrev!r}"
             )
@@ -360,7 +363,8 @@ def _add_metadata_version(
             is_metadata_only=1,
         )
         mkeys.append(mkey)
-        manuscripts[ms.abbrev] = mkey
+        if ms.abbrev:
+            manuscripts[ms.abbrev] = mkey
 
     target = f"{vkey}:metadata"
     builder.node(
