@@ -81,14 +81,17 @@ def test_passage_names_missing_witness_edge(tmp_path):
         Apparatus(api).passage("Sample", "1", "2")
 
 
-def test_passage_names_missing_ms_abbrev_instead_of_using_node_ids(tmp_path):
+def test_passage_ms_abbrev_is_auto_loaded_by_manuscript_default_format(tmp_path):
     api = _load(
         tmp_path,
         "reading_text is_primary undefined_manuscript unit_id "
         "reading_of witness manuscript_of",
     )
-    with pytest.raises(ValueError, match="ms_abbrev"):
-        Apparatus(api).passage("Sample", "1", "2")
+    # Text-Fabric compiles fmt:manuscript-default={ms_abbrev}, so generated
+    # corpora expose this format dependency even when it is omitted above.
+    assert getattr(api.F, "ms_abbrev", None) is not None
+    passage = Apparatus(api).passage("Sample", "1", "2")
+    assert set(passage["witnesses"]) == {"A", "B", "C"}
 
 
 def test_passage_names_missing_unit_id_instead_of_using_node_ids(tmp_path):
@@ -134,16 +137,6 @@ def test_work_passage_available_section_names_missing_witness(tmp_path):
         "reading_of manuscript_of",
     )
     with pytest.raises(ValueError, match="witness"):
-        Apparatus(api).work_passage("Sample", "1", "2")
-
-
-def test_work_passage_available_section_names_missing_ms_abbrev(tmp_path):
-    api = _load(
-        tmp_path,
-        "ocp_book reading_text is_primary undefined_manuscript unit_id "
-        "reading_of witness manuscript_of",
-    )
-    with pytest.raises(ValueError, match="ms_abbrev"):
         Apparatus(api).work_passage("Sample", "1", "2")
 
 
