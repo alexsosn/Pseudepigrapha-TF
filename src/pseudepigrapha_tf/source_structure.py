@@ -60,7 +60,10 @@ MODERN_ATTRIBUTES: dict[str, frozenset[str] | None] = {
     "book": frozenset({"filename", "title", "textStructure"}),
     "version": frozenset({"title", "author", "fragment", "language"}),
     "divisions": frozenset(),
-    "division": frozenset({"label", "delimiter"}),
+    # ApocrEzek.xml in the pinned corpus uses capitalized Delimiter in several
+    # later versions. Parser and raw audit normalize it to the same semantic
+    # delimiter field; allowing the spelling here is therefore lossless.
+    "division": frozenset({"label", "delimiter", "Delimiter"}),
     "resources": frozenset(),
     "resource": frozenset({"name"}),
     "info": frozenset(),
