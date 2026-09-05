@@ -113,6 +113,13 @@ def test_parent_edge_metadata_describes_all_canonical_source_types():
     )
 
 
+def test_witness_edge_metadata_describes_standard_and_orphan_sources():
+    data = build_tf_data([parse_file(FIXTURES / "orphan_reading.xml")])
+    assert data.metadata["witness"]["description"] == (
+        "reading/orphan_reading node to cited manuscript nodes"
+    )
+
+
 def test_unregistered_custom_edge_keeps_generic_existing_node_contract():
     data = _data()
     reading = _node(data, "reading")
