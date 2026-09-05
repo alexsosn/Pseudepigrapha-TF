@@ -23,9 +23,10 @@ MODERN_CHILDREN: dict[str, frozenset[str]] = {
     "bibliography": frozenset({"booktitle"}),
     "booktitle": frozenset(),
     "text": frozenset({"div"}),
-    # Aristob.xml in the pinned corpus carries an embedded DTD extension that
-    # adds the upstream-spelled <elipsis> omission marker to div content.
-    "div": frozenset({"div", "unit", "elipsis"}),
+    # Pinned OCP has two known deviations from the shared DTD. Aristob.xml
+    # declares <elipsis> in an embedded DTD; PssSol.xml contains direct <reading>
+    # children of <div> despite its embedded DTD. Both are preserved explicitly.
+    "div": frozenset({"div", "unit", "elipsis", "reading"}),
     "elipsis": frozenset(),
     "unit": frozenset({"reading"}),
     "reading": frozenset({"w"}),
