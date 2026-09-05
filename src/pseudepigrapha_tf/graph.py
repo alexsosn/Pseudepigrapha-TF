@@ -38,7 +38,7 @@ EDGE_DESCRIPTIONS = {
     "parent": "OCP structural parent relation from div/unit/ellipsis/orphan_reading nodes to div",
     "reading_of": "reading node to its OCP unit",
     "variant_word_of": "variant_word node to its reading",
-    "witness": "reading node to cited manuscript nodes",
+    "witness": "reading/orphan_reading node to cited manuscript nodes",
     "manuscript_of": "manuscript node to its TF book/version",
     "resource_of": "resource node to its TF book/version",
 }
