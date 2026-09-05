@@ -154,6 +154,12 @@ def _parse_resource(element: ET.Element) -> Resource:
     )
 
 
+def _division_delimiter(element: ET.Element) -> str:
+    """Normalize the two delimiter spellings present in pinned OCP XML."""
+
+    return element.get("delimiter", element.get("Delimiter", ""))
+
+
 def _parse_version(element: ET.Element) -> Version:
     divisions_el = element.find("divisions")
     manuscripts_el = element.find("manuscripts")
@@ -169,7 +175,7 @@ def _parse_version(element: ET.Element) -> Version:
         language=element.get("language", ""),
         fragment=element.get("fragment", ""),
         divisions=tuple(
-            DivisionSpec(d.get("label", ""), d.get("delimiter", ""), _plain_text(d))
+            DivisionSpec(d.get("label", ""), _division_delimiter(d), _plain_text(d))
             for d in divisions_el.findall("division")
         ),
         resources=tuple(resources),
