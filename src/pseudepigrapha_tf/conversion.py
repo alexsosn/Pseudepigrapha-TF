@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Iterable
 
 from .graph import (
@@ -36,15 +36,45 @@ def _version_has_units(version: Version) -> bool:
     return any(_div_has_units(div) for div in version.divs)
 
 
+def _validate_model_identities(books: Iterable[Book]) -> None:
+    """Reject blank graph identities before any graph mutation occurs."""
+
+    for book in books:
+        if not book.filename.strip():
+            raise ValueError("blank book filename")
+        for version in book.versions:
+            stack = list(version.divs)
+            while stack:
+                div = stack.pop()
+                if not div.number.strip():
+                    raise ValueError(f"{book.filename}/{version.title}: blank div number")
+                for item in div.items:
+                    if isinstance(item, Div):
+                        stack.append(item)
+                    elif isinstance(item, Unit):
+                        if not item.unit_id.strip():
+                            raise ValueError(f"{book.filename}/{version.title}: blank unit id")
+                        for reading in item.readings:
+                            if not reading.option.strip():
+                                raise ValueError(
+                                    f"{book.filename}/{version.title}: blank reading option"
+                                )
+                    elif isinstance(item, OrphanReading):
+                        if not item.reading.option.strip():
+                            raise ValueError(
+                                f"{book.filename}/{version.title}: blank reading option"
+                            )
+
+
 def _validate_unique_manuscript_abbreviations(books: Iterable[Book]) -> None:
-    """Reject ambiguous non-empty witness identity before graph mutation."""
+    """Reject ambiguous non-blank witness identity before graph mutation."""
 
     for book in books:
         for version in book.versions:
             seen: set[str] = set()
             for manuscript in version.manuscripts:
                 abbrev = manuscript.abbrev
-                if not abbrev:
+                if not abbrev.strip():
                     continue
                 if abbrev in seen:
                     raise ValueError(
@@ -82,7 +112,10 @@ def _textual_version_for_core_builder(version: Version) -> Version:
         fragment=version.fragment,
         divisions=version.divisions,
         resources=version.resources,
-        manuscripts=version.manuscripts,
+        manuscripts=tuple(
+            replace(ms, abbrev="") if not ms.abbrev.strip() else ms
+            for ms in version.manuscripts
+        ),
         divs=tuple(_without_special_div_items(div) for div in version.divs),
     )
 
@@ -96,7 +129,7 @@ def _manuscript_keys(builder: _Builder, vkey: str) -> dict[str, str]:
         if not obj.key.startswith(prefix):
             continue
         abbrev = str(obj.features.get("ms_abbrev", ""))
-        if not abbrev:
+        if not abbrev.strip():
             continue
         if abbrev in result and result[abbrev] != obj.key:
             raise ValueError(f"{vkey}: duplicate manuscript abbreviation {abbrev!r}")
@@ -342,7 +375,7 @@ def _add_metadata_version(
     mkeys: list[str] = []
     manuscripts: dict[str, str] = {}
     for midx, ms in enumerate(version.manuscripts, 1):
-        if ms.abbrev and ms.abbrev in manuscripts:
+        if ms.abbrev.strip() and ms.abbrev in manuscripts:
             raise ValueError(
                 f"{book.filename}/{version.title}: duplicate manuscript abbreviation {ms.abbrev!r}"
             )
@@ -363,7 +396,7 @@ def _add_metadata_version(
             is_metadata_only=1,
         )
         mkeys.append(mkey)
-        if ms.abbrev:
+        if ms.abbrev.strip():
             manuscripts[ms.abbrev] = mkey
 
     target = f"{vkey}:metadata"
@@ -430,6 +463,7 @@ def build_tf_data(
     """Build TF while preserving declared upstream versions that contain no text."""
 
     books = list(books)
+    _validate_model_identities(books)
     _validate_unique_manuscript_abbreviations(books)
     builder = _Builder()
     pending: list[_PendingMetadataVersion] = []
