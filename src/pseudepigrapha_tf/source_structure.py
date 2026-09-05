@@ -99,7 +99,7 @@ MODERN_REQUIRED_ATTRIBUTES: dict[str, frozenset[str]] = {
     "reading": frozenset({"option", "mss"}),
 }
 
-# Both files embed a DTD declaring ms/@language #REQUIRED but contain at least
+# These files embed DTDs declaring ms/@language #REQUIRED but contain at least
 # one manuscript declaration without it. Preserve the absence as unknown
 # manuscript language; never infer it from version/@language.
 MODERN_REQUIRED_ATTRIBUTE_EXCEPTIONS: dict[
@@ -107,6 +107,7 @@ MODERN_REQUIRED_ATTRIBUTE_EXCEPTIONS: dict[
 ] = {
     ("ClMal.xml", "ClMal"): {"ms": frozenset({"language"})},
     ("Eup.xml", "Eup"): {"ms": frozenset({"language"})},
+    ("Ps-Eup.xml", "Ps-Eup"): {"ms": frozenset({"language"})},
 }
 
 LEGACY_ATTRIBUTES: dict[str, frozenset[str] | None] = {
