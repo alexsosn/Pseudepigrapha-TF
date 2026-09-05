@@ -13,7 +13,7 @@
       <div number="1">
         <div number="1">
           <unit id="1"><reading option="0" mss="A ">alpha</reading></unit>
-          <reading option="2" mss="B " linebreak="following" indent="1">orphan <w lex="x" morph="N">beta</w></reading>
+          <reading option="2" mss="B X " linebreak="following" indent="1">orphan <w lex="x" morph="N">beta</w></reading>
           <unit id="2"><reading option="0" mss="A ">omega</reading></unit>
         </div>
       </div>
