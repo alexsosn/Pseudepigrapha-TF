@@ -15,8 +15,13 @@ class Feature:
 
 
 class OtypeFeature(Feature):
+    def __init__(self, values):
+        super().__init__(values)
+        self.s_calls = Counter()
+
     def s(self, kind):
         assert kind == "unit"
+        self.s_calls[kind] += 1
         return (10, 20, 30, 40)
 
 
@@ -79,7 +84,7 @@ def witness_text_api(*, duplicate=False, owner_mode="normal"):
     return SimpleNamespace(F=F, E=E)
 
 
-def test_global_witness_text_uses_direct_reverse_edges_once():
+def test_global_witness_text_uses_direct_reverse_edges_once_without_unit_scan():
     api = witness_text_api()
     assert Apparatus(api).witness_text(100) == "alpha omega"
 
@@ -87,6 +92,21 @@ def test_global_witness_text_uses_direct_reverse_edges_once():
     assert api.E.reading_of.f_calls == Counter({11: 1, 21: 1, 41: 1})
     assert api.E.reading_of.t_calls == Counter()
     assert api.E.witness.f_calls == Counter()
+    assert api.F.otype.s_calls == Counter()
+
+
+def test_global_witness_text_unattested_manuscript_does_not_scan_units():
+    api = witness_text_api()
+    assert Apparatus(api).witness_text(999) == ""
+    assert api.E.witness.t_calls == Counter({999: 1})
+    assert api.E.reading_of.f_calls == Counter()
+    assert api.F.otype.s_calls == Counter()
+
+
+def test_global_witness_text_needs_type_lookup_but_not_type_selector():
+    api = witness_text_api()
+    api.F.otype = Feature(api.F.otype.values)
+    assert Apparatus(api).witness_text(100) == "alpha omega"
 
 
 def test_global_witness_text_rejects_two_readings_for_same_unit():
