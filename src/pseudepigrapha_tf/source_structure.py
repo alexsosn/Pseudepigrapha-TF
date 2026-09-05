@@ -186,6 +186,8 @@ def validate_source_structure(
             seen_abbrevs: set[str] = set()
             for manuscript in parent.findall("ms"):
                 abbrev = manuscript.get("abbrev", "")
+                if not abbrev:
+                    continue
                 if abbrev in seen_abbrevs:
                     owner = f"version {version_title!r}" if not legacy else "legacy version"
                     raise SourceStructureError(
