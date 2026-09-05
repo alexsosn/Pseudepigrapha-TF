@@ -84,6 +84,20 @@ MODERN_ATTRIBUTES: dict[str, frozenset[str] | None] = {
     "w": None,
 }
 
+# Presence requirements copied from the pinned modern Grammateus DTD. These are
+# deliberately separate from the allowed-attribute policy: optional attributes
+# remain accepted when present but are never invented when absent.
+MODERN_REQUIRED_ATTRIBUTES: dict[str, frozenset[str]] = {
+    "book": frozenset({"filename", "title"}),
+    "version": frozenset({"title", "author"}),
+    "division": frozenset({"label"}),
+    "resource": frozenset({"name"}),
+    "ms": frozenset({"abbrev", "language", "show"}),
+    "div": frozenset({"number"}),
+    "unit": frozenset({"id"}),
+    "reading": frozenset({"option", "mss"}),
+}
+
 LEGACY_ATTRIBUTES: dict[str, frozenset[str] | None] = {
     "book": frozenset({"filename", "title", "textStructure", "language"}),
     "resources": frozenset(),
@@ -130,6 +144,13 @@ def validate_source_structure(
             raise SourceStructureError(
                 f"{location}: unsupported <{parent.tag}> element at {path}"
             )
+
+        if not legacy:
+            for attribute in MODERN_REQUIRED_ATTRIBUTES.get(parent.tag, ()):
+                if attribute not in parent.attrib:
+                    raise SourceStructureError(
+                        f"{location}: missing required attribute {attribute} on <{parent.tag}> at {path}"
+                    )
 
         if (
             not legacy
