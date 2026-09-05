@@ -2,11 +2,10 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from xml.etree import ElementTree as ET
 
 from . import audit as base
 from .graph import TFData
-from .model import Book, DivisionSpec
+from .model import Book
 
 
 def _metadata_version_inventory(data: TFData) -> tuple[list[dict], list[dict]]:
@@ -43,93 +42,6 @@ def _metadata_version_inventory(data: TFData) -> tuple[list[dict], list[dict]]:
                 }
             )
     return versions, division_specs
-
-
-def _raw_special_structure_inventory(source_dir: Path) -> tuple[list[dict], list[dict]]:
-    """Read preserved source anomalies independently of the parsed model.
-
-    The source tree is scanned once for both supported anomalies so adding
-    parity checks does not introduce one full XML pass per anomaly type.
-    """
-
-    ellipses: list[dict] = []
-    orphan_readings: list[dict] = []
-
-    def walk_div(
-        div: ET.Element,
-        *,
-        ocp_book: str,
-        version_title: str,
-        specs: tuple[DivisionSpec, ...],
-        path: tuple[str, ...],
-    ) -> None:
-        dpath = path + (div.get("number", ""),)
-        source_ref = base._reference(dpath, specs)
-        for child_index, child in enumerate(list(div), 1):
-            if child.tag == "elipsis":
-                ellipses.append(
-                    {
-                        "ocp_book": ocp_book,
-                        "version_title": version_title,
-                        "source_ref": source_ref,
-                        "parent_source_ref": source_ref,
-                        "source_tag": child.tag,
-                        "text": base._plain_text(child),
-                        "source_child_index": child_index,
-                    }
-                )
-            elif child.tag == "reading":
-                mss = child.get("mss", "")
-                orphan_readings.append(
-                    {
-                        "ocp_book": ocp_book,
-                        "version_title": version_title,
-                        "source_ref": source_ref,
-                        "parent_source_ref": source_ref,
-                        "source_tag": child.tag,
-                        "source_child_index": child_index,
-                        "option": child.get("option", ""),
-                        "mss": mss.strip(),
-                        "witnesses": sorted(part for part in mss.split() if part),
-                        "linebreak": child.get("linebreak", ""),
-                        "indent": child.get("indent", ""),
-                        "text": base._plain_text(child),
-                        "xml": base._inner_xml(child),
-                    }
-                )
-            elif child.tag == "div":
-                walk_div(
-                    child,
-                    ocp_book=ocp_book,
-                    version_title=version_title,
-                    specs=specs,
-                    path=dpath,
-                )
-
-    for path in sorted(source_dir.glob("*.xml")):
-        data = path.read_bytes()
-        if path.name.startswith(".") or not data.strip():
-            continue
-        root = ET.fromstring(data)
-        ocp_book = root.get("filename", "")
-        for version in root.findall("version"):
-            divisions = version.find("divisions")
-            specs = tuple(
-                DivisionSpec(d.get("label", ""), d.get("delimiter", ""), base._plain_text(d))
-                for d in (divisions.findall("division") if divisions is not None else [])
-            )
-            text = version.find("text")
-            if text is None:
-                continue
-            for div in text.findall("div"):
-                walk_div(
-                    div,
-                    ocp_book=ocp_book,
-                    version_title=version.get("title", ""),
-                    specs=specs,
-                    path=(),
-                )
-    return ellipses, orphan_readings
 
 
 def _parent_source_ref(data: TFData, node: int) -> str:
@@ -383,7 +295,8 @@ def build_conversion_report(source_dir: str | Path, books: list[Book], data: TFD
     metadata_versions, metadata_specs = _metadata_version_inventory(data)
     graph["versions"].extend(metadata_versions)
     graph["division_specs"].extend(metadata_specs)
-    raw_ellipses, raw_orphan_readings = _raw_special_structure_inventory(source_dir)
+    raw_ellipses = raw["ellipses"]
+    raw_orphan_readings = raw["orphan_readings"]
     graph_ellipses = _graph_ellipsis_inventory(data)
     graph_orphan_readings = _graph_orphan_reading_inventory(data)
     raw_missing_unit_ids = _raw_missing_unit_id_inventory(raw["units"])
