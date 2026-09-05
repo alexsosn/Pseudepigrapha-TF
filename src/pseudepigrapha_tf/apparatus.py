@@ -156,7 +156,45 @@ class Apparatus:
             selector = getattr(self.api.F.otype, "s", None)
             if selector is None:
                 raise ValueError("units must be supplied when the TF otype feature has no selector")
-            units = selector("unit")
+
+            witness = getattr(self.api.E, "witness", None)
+            witness_sources = getattr(witness, "t", None) if witness is not None else None
+            if witness_sources is None:
+                raise ValueError(
+                    "witness edge feature with reverse lookup must be loaded for global witness_text()"
+                )
+            reading_of = getattr(self.api.E, "reading_of", None)
+            reading_owner = getattr(reading_of, "f", None) if reading_of is not None else None
+            if reading_owner is None:
+                raise ValueError(
+                    "reading_of edge feature with forward lookup must be loaded for global witness_text()"
+                )
+
+            reading_by_unit: dict[int, int] = {}
+            for reading in witness_sources(manuscript):
+                owners = tuple(reading_owner(reading))
+                if not owners:
+                    raise ValueError(f"reading {reading} has no reading_of unit")
+                if len(owners) != 1:
+                    raise ValueError(f"reading {reading} has multiple reading_of units: {owners}")
+                unit = owners[0]
+                previous = reading_by_unit.get(unit)
+                if previous is not None:
+                    matches = sorted((previous, reading))
+                    raise ValueError(
+                        f"manuscript {manuscript} has multiple readings at unit {unit}: {matches}"
+                    )
+                reading_by_unit[unit] = reading
+
+            chunks: list[str] = []
+            for unit in selector("unit"):
+                reading = reading_by_unit.get(unit)
+                if reading is not None:
+                    text = self.reading_text(reading)
+                    if text:
+                        chunks.append(text)
+            return " ".join(chunks)
+
         chunks: list[str] = []
         for unit in units:
             reading = self.witness_reading(unit, manuscript)
