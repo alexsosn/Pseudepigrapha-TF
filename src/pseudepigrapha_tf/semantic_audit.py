@@ -2,10 +2,11 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from xml.etree import ElementTree as ET
 
 from . import audit as base
 from .graph import TFData
-from .model import Book
+from .model import Book, DivisionSpec
 
 
 def _metadata_version_inventory(data: TFData) -> tuple[list[dict], list[dict]]:
@@ -42,6 +43,109 @@ def _metadata_version_inventory(data: TFData) -> tuple[list[dict], list[dict]]:
                 }
             )
     return versions, division_specs
+
+
+def _raw_ellipsis_inventory(source_dir: Path) -> list[dict]:
+    """Read upstream <elipsis> markers independently of the parsed model."""
+
+    records: list[dict] = []
+
+    def walk_div(
+        div: ET.Element,
+        *,
+        ocp_book: str,
+        version_title: str,
+        specs: tuple[DivisionSpec, ...],
+        path: tuple[str, ...],
+    ) -> None:
+        dpath = path + (div.get("number", ""),)
+        source_ref = base._reference(dpath, specs)
+        for child_index, child in enumerate(list(div), 1):
+            if child.tag == "elipsis":
+                records.append(
+                    {
+                        "ocp_book": ocp_book,
+                        "version_title": version_title,
+                        "source_ref": source_ref,
+                        "parent_source_ref": source_ref,
+                        "source_tag": child.tag,
+                        "text": base._plain_text(child),
+                        "source_child_index": child_index,
+                    }
+                )
+            elif child.tag == "div":
+                walk_div(
+                    child,
+                    ocp_book=ocp_book,
+                    version_title=version_title,
+                    specs=specs,
+                    path=dpath,
+                )
+
+    for path in sorted(source_dir.glob("*.xml")):
+        data = path.read_bytes()
+        if path.name.startswith(".") or not data.strip():
+            continue
+        root = ET.fromstring(data)
+        ocp_book = root.get("filename", "")
+        for version in root.findall("version"):
+            divisions = version.find("divisions")
+            specs = tuple(
+                DivisionSpec(d.get("label", ""), d.get("delimiter", ""), base._plain_text(d))
+                for d in (divisions.findall("division") if divisions is not None else [])
+            )
+            text = version.find("text")
+            if text is None:
+                continue
+            for div in text.findall("div"):
+                walk_div(
+                    div,
+                    ocp_book=ocp_book,
+                    version_title=version.get("title", ""),
+                    specs=specs,
+                    path=(),
+                )
+    return records
+
+
+def _graph_ellipsis_inventory(data: TFData) -> list[dict]:
+    parent_edge = data.edge_features.get("parent", {})
+    otype = data.node_features.get("otype", {})
+    records: list[dict] = []
+    for node in base._nodes(data, "ellipsis"):
+        targets = parent_edge.get(node, set())
+        parent_source_ref = "__INVALID_PARENT__"
+        if len(targets) == 1:
+            target = next(iter(targets))
+            if otype.get(target) == "div":
+                parent_source_ref = str(base._feature(data, "source_ref", target))
+        records.append(
+            {
+                "ocp_book": base._feature(data, "ocp_book", node),
+                "version_title": base._feature(data, "version_title", node),
+                "source_ref": base._feature(data, "source_ref", node),
+                "parent_source_ref": parent_source_ref,
+                "source_tag": base._feature(data, "source_tag", node),
+                "text": base._feature(data, "ellipsis_text", node),
+                "source_child_index": base._feature(data, "source_child_index", node, 0),
+            }
+        )
+    return records
+
+
+def _ellipsis_anchors_ok(data: TFData) -> bool:
+    parent_edge = data.edge_features.get("parent", {})
+    oslots = data.edge_features.get("oslots", {})
+    otype = data.node_features.get("otype", {})
+    for node in base._nodes(data, "ellipsis"):
+        slots = oslots.get(node, set())
+        targets = parent_edge.get(node, set())
+        if len(slots) != 1 or len(targets) != 1:
+            return False
+        parent = next(iter(targets))
+        if otype.get(parent) != "div" or not slots.issubset(oslots.get(parent, set())):
+            return False
+    return True
 
 
 def _ownership_edge_ok(
@@ -172,11 +276,14 @@ def _section_addresses_unique(data: TFData) -> bool:
 def build_conversion_report(source_dir: str | Path, books: list[Book], data: TFData) -> dict:
     """Build an independent source→TF parity report, including metadata-only versions."""
 
-    raw = base._raw_inventory(Path(source_dir))
+    source_dir = Path(source_dir)
+    raw = base._raw_inventory(source_dir)
     graph = base._graph_inventory(data)
     metadata_versions, metadata_specs = _metadata_version_inventory(data)
     graph["versions"].extend(metadata_versions)
     graph["division_specs"].extend(metadata_specs)
+    raw_ellipses = _raw_ellipsis_inventory(source_dir)
+    graph_ellipses = _graph_ellipsis_inventory(data)
 
     primary_ok, alternative_ok = base._reconstruction_checks(data)
     source_hashes = {record["file"]: record["sha256"] for record in raw["files"]}
@@ -193,6 +300,8 @@ def build_conversion_report(source_dir: str | Path, books: list[Book], data: TFD
         "manuscripts": base._canonical(raw["manuscripts"]) == base._canonical(graph["manuscripts"]),
         "resources": base._canonical(raw["resources"]) == base._canonical(graph["resources"]),
         "annotated_words": base._canonical(raw["annotated_words"]) == base._canonical(graph["annotated_words"]),
+        "ellipses": base._canonical(raw_ellipses) == base._canonical(graph_ellipses),
+        "ellipsis_anchors": _ellipsis_anchors_ok(data),
         "primary_reconstruction": primary_ok,
         "alternative_reconstruction": alternative_ok,
         "unit_parent_linkage": base._parent_linkage_ok(data),
@@ -230,6 +339,7 @@ def build_conversion_report(source_dir: str | Path, books: list[Book], data: TFD
         "manuscripts": len(raw["manuscripts"]),
         "resources": len(raw["resources"]),
         "annotated_words": len(raw["annotated_words"]),
+        "ellipses": len(raw_ellipses),
     }
     metadata_count = len(base._nodes(data, "version_metadata"))
     graph_counts = {
@@ -242,6 +352,7 @@ def build_conversion_report(source_dir: str | Path, books: list[Book], data: TFD
         "units": len(base._nodes(data, "unit")),
         "readings": len(base._nodes(data, "reading")),
         "variant_words": len(base._nodes(data, "variant_word")),
+        "ellipses": len(base._nodes(data, "ellipsis")),
         "manuscripts": len(
             [
                 node
