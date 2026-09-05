@@ -90,12 +90,24 @@ def test_parser_rejects_missing_modern_dtd_required_attribute(element, element_s
         )
 
 
-def test_pinned_missing_manuscript_language_stays_unknown_and_audited(tmp_path):
+def test_non_clmal_missing_manuscript_language_is_rejected():
     data = _without_attribute(
         b'<ms abbrev="A" language="Greek" show="yes">',
         b'language="Greek"',
     )
-    path = tmp_path / "clmal-style.xml"
+    with pytest.raises(
+        InvalidSourceError,
+        match=r"Other.xml: missing required attribute language on <ms> at /book/version/manuscripts/ms",
+    ):
+        parse_bytes(data, source_path="Other.xml")
+
+
+def test_pinned_clmal_missing_manuscript_language_stays_unknown_and_audited(tmp_path):
+    data = _without_attribute(
+        b'<ms abbrev="A" language="Greek" show="yes">',
+        b'language="Greek"',
+    )
+    path = tmp_path / "ClMal.xml"
     path.write_bytes(data)
 
     books, warnings = load_source_directory(tmp_path)
