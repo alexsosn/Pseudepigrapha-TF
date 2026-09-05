@@ -118,7 +118,7 @@ def test_work_passage_resolves_each_textual_version_and_witness_inventory_once()
         "node", "abbrev", "declared", "language", "name", "show"
     }
     nested_x = available["passage"]["witnesses"]["X"]
-    assert nested_x["status"] if "status" in nested_x else nested_x["segments"][0]["status"] == "reading"
+    assert nested_x["segments"][0]["status"] == "reading"
     assert available["witnesses"]["X"] is not nested_x
 
     absent = result["versions"]["Work__B"]
