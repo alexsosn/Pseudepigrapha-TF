@@ -105,6 +105,14 @@ def test_same_manuscript_abbreviation_in_different_versions_is_allowed():
     )
 
     assert [version.manuscripts[0].abbrev for version in book.versions] == ["A", "A"]
+    graph = build_tf_data([book])
+    manuscript_nodes = [
+        node
+        for node, kind in graph.node_features["otype"].items()
+        if kind == "manuscript"
+    ]
+    assert len(manuscript_nodes) == 2
+    assert [graph.node_features["ms_abbrev"].get(node, "") for node in manuscript_nodes] == ["A", "A"]
 
 
 def test_modern_missing_abbreviation_reports_required_attribute_not_duplicate():
