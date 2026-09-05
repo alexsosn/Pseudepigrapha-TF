@@ -108,15 +108,19 @@ MODERN_NONBLANK_IDENTITY_ATTRIBUTES: dict[str, frozenset[str]] = {
     "reading": frozenset({"option"}),
 }
 
-# AdamEve.xml in the pinned corpus contains exactly one source-declared blank
-# unit id: Latin (Mozley), source div path 26:0. Preserve that absence rather
-# than inventing the neighboring logical value 27. The exception is deliberately
-# scoped to literal id=""; whitespace-only values remain invalid.
-KNOWN_BLANK_UNIT_IDS: frozenset[tuple[str, str, str, tuple[str, ...]]] = frozenset(
-    {
-        ("AdamEve.xml", "AdamEve", "Latin (Mozley)", ("26", "0")),
-    }
-)
+# AdamEve.xml at the pinned OCP revision contains exactly one source-declared
+# blank unit id: Latin (Mozley), source div path 26:0. Bind the exception to the
+# exact source bytes, not merely to a filename-shaped path supplied by a caller.
+KNOWN_BLANK_UNIT_ID_SOURCES: dict[
+    tuple[str, str, str, tuple[str, ...]], str
+] = {
+    (
+        "AdamEve.xml",
+        "AdamEve",
+        "Latin (Mozley)",
+        ("26", "0"),
+    ): "a63275351e2349ce8a31b7427a28b80db034be670ba545e2398832a3d9ac6358",
+}
 
 # These exact pinned manuscript records embed/inhabit DTDs declaring
 # ms/@language #REQUIRED while omitting it in the source. Scope the exception
@@ -158,6 +162,7 @@ def validate_source_structure(
     *,
     legacy: bool,
     source_path: str = "",
+    source_sha256: str = "",
 ) -> None:
     """Reject source structure that cannot be mapped without ambiguity or loss.
 
@@ -214,12 +219,14 @@ def validate_source_structure(
             ):
                 value = parent.attrib.get(attribute)
                 if value is not None and not value.strip():
+                    anomaly_key = (source_name, book_filename, version_title, div_path)
+                    expected_digest = KNOWN_BLANK_UNIT_ID_SOURCES.get(anomaly_key)
                     known_blank_unit = (
                         parent.tag == "unit"
                         and attribute == "id"
                         and value == ""
-                        and (source_name, book_filename, version_title, div_path)
-                        in KNOWN_BLANK_UNIT_IDS
+                        and expected_digest is not None
+                        and source_sha256 == expected_digest
                     )
                     if not known_blank_unit:
                         raise SourceStructureError(
