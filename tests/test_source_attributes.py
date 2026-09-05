@@ -22,7 +22,11 @@ def _modern_xml() -> bytes:
 
 def _with_attribute(element_start: bytes, attribute: bytes) -> bytes:
     data = _modern_xml()
-    return data.replace(element_start, element_start[:-1] + b" " + attribute + b">", 1)
+    if element_start.endswith(b"/>"):
+        replacement = element_start[:-2] + b" " + attribute + b"/>"
+    else:
+        replacement = element_start[:-1] + b" " + attribute + b">"
+    return data.replace(element_start, replacement, 1)
 
 
 @pytest.mark.parametrize(
