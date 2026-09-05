@@ -180,11 +180,10 @@ class Apparatus:
     def witness_text(self, manuscript: int, units: Iterable[int] | None = None) -> str:
         if units is None:
             otype = getattr(self.api.F, "otype", None)
-            selector = getattr(otype, "s", None) if otype is not None else None
             node_type = getattr(otype, "v", None) if otype is not None else None
-            if selector is None or node_type is None:
+            if node_type is None:
                 raise ValueError(
-                    "units must be supplied when the TF otype feature has no selector/type lookup"
+                    "units must be supplied when the TF otype feature has no type lookup"
                 )
 
             witness = getattr(self.api.E, "witness", None)
@@ -224,12 +223,10 @@ class Apparatus:
                 reading_by_unit[unit] = reading
 
             chunks: list[str] = []
-            for unit in selector("unit"):
-                reading = reading_by_unit.get(unit)
-                if reading is not None:
-                    text = self.reading_text(reading)
-                    if text:
-                        chunks.append(text)
+            for unit in sorted(reading_by_unit):
+                text = self.reading_text(reading_by_unit[unit])
+                if text:
+                    chunks.append(text)
             return " ".join(chunks)
 
         chunks: list[str] = []
