@@ -3,6 +3,7 @@ from pathlib import Path
 import pytest
 
 from pseudepigrapha_tf import audit as compatibility_audit
+from pseudepigrapha_tf import semantic_audit
 from pseudepigrapha_tf.conversion import build_tf_data
 from pseudepigrapha_tf.graph import TFData
 from pseudepigrapha_tf.parser import parse_file
@@ -45,6 +46,43 @@ def test_conversion_report_proves_semantic_parity_against_raw_xml(tmp_path):
     assert report["graph"]["oslots_edges"] == data.oslots_edge_count
     assert report["source"]["readings"] == len([n for n, kind in data.node_features["otype"].items() if kind == "reading"])
     assert report["provenance"]["upstream_commit"] == "abc123"
+
+
+def test_conversion_report_reuses_section_address_resolution(monkeypatch, tmp_path):
+    source = FIXTURES / "three_divisions.xml"
+    (tmp_path / source.name).write_text(source.read_text(encoding="utf-8"), encoding="utf-8")
+    books, warnings = load_source_directory(tmp_path)
+    assert warnings == []
+    data = build_tf_data(books)
+
+    calls = 0
+    original = semantic_audit._section_address_records
+
+    def counted(records_data):
+        nonlocal calls
+        calls += 1
+        return original(records_data)
+
+    monkeypatch.setattr(semantic_audit, "_section_address_records", counted)
+    report = semantic_audit.build_conversion_report(tmp_path, books, data)
+
+    assert report["status"] == "ok", report["failed_checks"]
+    assert calls == 1
+
+
+def test_conversion_report_preserves_invalid_section_address_semantics(monkeypatch, tmp_path):
+    source = FIXTURES / "three_divisions.xml"
+    (tmp_path / source.name).write_text(source.read_text(encoding="utf-8"), encoding="utf-8")
+    books, warnings = load_source_directory(tmp_path)
+    assert warnings == []
+    data = build_tf_data(books)
+
+    monkeypatch.setattr(semantic_audit, "_section_address_records", lambda _: None)
+    report = semantic_audit.build_conversion_report(tmp_path, books, data)
+
+    assert report["status"] == "failed"
+    assert report["semantic_checks"]["section_addresses_unique"] is False
+    assert report["diagnostics"]["duplicate_section_addresses"] == []
 
 
 def test_conversion_report_preserves_empty_source_division_without_section_fabrication(tmp_path):

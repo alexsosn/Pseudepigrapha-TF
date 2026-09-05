@@ -252,10 +252,11 @@ def _section_address_records(data: TFData) -> list[tuple[tuple[str, str, str], i
     return records
 
 
-def _section_address_collisions(data: TFData) -> list[dict]:
-    """Return duplicate TF section addresses with enough provenance to debug them."""
+def _section_address_collisions_from_records(
+    records: list[tuple[tuple[str, str, str], int, str]] | None,
+) -> list[dict]:
+    """Project duplicate-address diagnostics from already-resolved records."""
 
-    records = _section_address_records(data)
     if records is None:
         return []
     grouped: dict[tuple[str, str, str], list[tuple[int, str]]] = {}
@@ -272,10 +273,17 @@ def _section_address_collisions(data: TFData) -> list[dict]:
     ]
 
 
-def _section_addresses_unique(data: TFData) -> bool:
-    """Verify every textual section has a unique TF address."""
+def _section_address_collisions(data: TFData) -> list[dict]:
+    """Return duplicate TF section addresses with enough provenance to debug them."""
 
-    records = _section_address_records(data)
+    return _section_address_collisions_from_records(_section_address_records(data))
+
+
+def _section_addresses_unique_from_records(
+    records: list[tuple[tuple[str, str, str], int, str]] | None,
+) -> bool:
+    """Verify uniqueness from already-resolved textual section addresses."""
+
     if records is None:
         return False
     seen: set[tuple[str, str, str]] = set()
@@ -284,6 +292,12 @@ def _section_addresses_unique(data: TFData) -> bool:
             return False
         seen.add(address)
     return True
+
+
+def _section_addresses_unique(data: TFData) -> bool:
+    """Verify every textual section has a unique TF address."""
+
+    return _section_addresses_unique_from_records(_section_address_records(data))
 
 
 def build_conversion_report(source_dir: str | Path, books: list[Book], data: TFData) -> dict:
@@ -305,7 +319,8 @@ def build_conversion_report(source_dir: str | Path, books: list[Book], data: TFD
     primary_ok, alternative_ok = base._reconstruction_checks(data)
     source_hashes = {record["file"]: record["sha256"] for record in raw["files"]}
     model_hashes = {book.source_path: book.source_sha256 for book in books}
-    section_address_collisions = _section_address_collisions(data)
+    section_address_records = _section_address_records(data)
+    section_address_collisions = _section_address_collisions_from_records(section_address_records)
 
     checks = {
         "source_hashes": source_hashes == model_hashes,
@@ -349,7 +364,7 @@ def build_conversion_report(source_dir: str | Path, books: list[Book], data: TFD
             identity_features=("ocp_book", "version_title"),
         ),
         "section_coverage": _section_coverage_ok(data),
-        "section_addresses_unique": _section_addresses_unique(data),
+        "section_addresses_unique": _section_addresses_unique_from_records(section_address_records),
     }
 
     source_counts = {
