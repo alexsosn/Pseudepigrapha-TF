@@ -35,7 +35,7 @@ FEATURE_DESCRIPTIONS = {
 
 EDGE_DESCRIPTIONS = {
     "oslots": "Text-Fabric warp edge to occupied/technical anchor word slots",
-    "parent": "OCP structural parent relation (div-to-div or unit-to-div)",
+    "parent": "OCP structural parent relation from div/unit/ellipsis/orphan_reading nodes to div",
     "reading_of": "reading node to its OCP unit",
     "variant_word_of": "variant_word node to its reading",
     "witness": "reading node to cited manuscript nodes",
