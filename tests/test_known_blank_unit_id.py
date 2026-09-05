@@ -6,7 +6,17 @@ from pathlib import Path
 import pytest
 
 from pseudepigrapha_tf.conversion import build_tf_data
-from pseudepigrapha_tf.model import Book, Div, DivisionSpec, Reading, Token, Unit, Version
+from pseudepigrapha_tf.model import (
+    Book,
+    Div,
+    DivisionSpec,
+    Reading,
+    Token,
+    Unit,
+    Version,
+    _ValidatedBlankUnitId,
+    _is_validated_blank_unit_id,
+)
 from pseudepigrapha_tf.parser import InvalidSourceError, parse_bytes
 from pseudepigrapha_tf.semantic_audit import build_conversion_report
 from pseudepigrapha_tf.source import load_source_directory
@@ -153,6 +163,14 @@ def test_validated_blank_unit_marker_survives_model_copy_and_serialization(
     )
     assert data.node_features["source_ref"][missing] == "26:0", copy_kind
     assert missing not in data.node_features.get("unit_id", {})
+
+
+def test_copy_and_pickle_do_not_authorize_counterfeit_private_marker():
+    counterfeit = _ValidatedBlankUnitId("")
+    assert not _is_validated_blank_unit_id(counterfeit)
+    assert not _is_validated_blank_unit_id(copy.copy(counterfeit))
+    assert not _is_validated_blank_unit_id(copy.deepcopy(counterfeit))
+    assert not _is_validated_blank_unit_id(pickle.loads(pickle.dumps(counterfeit)))
 
 
 @pytest.mark.parametrize("source_sha256", ["", PINNED_ADAM_EVE_SHA256])
