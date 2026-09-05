@@ -8,10 +8,13 @@ from .graph import TFData
 from .model import Book
 
 
-def _metadata_version_inventory(data: TFData) -> tuple[list[dict], list[dict]]:
+def _metadata_version_inventory(
+    data: TFData,
+    node_index: dict[str, list[int]] | None = None,
+) -> tuple[list[dict], list[dict]]:
     versions: list[dict] = []
     division_specs: list[dict] = []
-    for node in base._nodes(data, "version_metadata"):
+    for node in base._nodes(data, "version_metadata", node_index):
         ocp_book = base._feature(data, "ocp_book", node)
         version_title = base._feature(data, "version_title", node)
         versions.append(
@@ -55,7 +58,10 @@ def _parent_source_ref(data: TFData, node: int) -> str:
     return str(base._feature(data, "source_ref", target))
 
 
-def _graph_ellipsis_inventory(data: TFData) -> list[dict]:
+def _graph_ellipsis_inventory(
+    data: TFData,
+    node_index: dict[str, list[int]] | None = None,
+) -> list[dict]:
     return [
         {
             "ocp_book": base._feature(data, "ocp_book", node),
@@ -66,14 +72,17 @@ def _graph_ellipsis_inventory(data: TFData) -> list[dict]:
             "text": base._feature(data, "ellipsis_text", node),
             "source_child_index": base._feature(data, "source_child_index", node, 0),
         }
-        for node in base._nodes(data, "ellipsis")
+        for node in base._nodes(data, "ellipsis", node_index)
     ]
 
 
-def _graph_orphan_reading_inventory(data: TFData) -> list[dict]:
+def _graph_orphan_reading_inventory(
+    data: TFData,
+    node_index: dict[str, list[int]] | None = None,
+) -> list[dict]:
     records: list[dict] = []
     witness_edges = data.edge_features.get("witness", {})
-    for node in base._nodes(data, "orphan_reading"):
+    for node in base._nodes(data, "orphan_reading", node_index):
         mss = str(base._feature(data, "mss", node))
         records.append(
             {
@@ -113,9 +122,12 @@ def _raw_missing_unit_id_inventory(raw_units: list[dict]) -> list[dict]:
     ]
 
 
-def _graph_missing_unit_id_inventory(data: TFData) -> list[dict]:
+def _graph_missing_unit_id_inventory(
+    data: TFData,
+    node_index: dict[str, list[int]] | None = None,
+) -> list[dict]:
     records: list[dict] = []
-    for node in base._nodes(data, "unit"):
+    for node in base._nodes(data, "unit", node_index):
         missing = base._feature(data, "is_missing_unit_id", node, 0)
         anomaly = base._feature(data, "is_source_anomaly", node, 0)
         if not missing and not anomaly:
@@ -133,11 +145,15 @@ def _graph_missing_unit_id_inventory(data: TFData) -> list[dict]:
     return records
 
 
-def _technical_parent_anchors_ok(data: TFData, node_type: str) -> bool:
+def _technical_parent_anchors_ok(
+    data: TFData,
+    node_type: str,
+    node_index: dict[str, list[int]] | None = None,
+) -> bool:
     parent_edge = data.edge_features.get("parent", {})
     oslots = data.edge_features.get("oslots", {})
     otype = data.node_features.get("otype", {})
-    for node in base._nodes(data, node_type):
+    for node in base._nodes(data, node_type, node_index):
         slots = oslots.get(node, set())
         targets = parent_edge.get(node, set())
         if len(slots) != 1 or len(targets) != 1:
@@ -148,13 +164,17 @@ def _technical_parent_anchors_ok(data: TFData, node_type: str) -> bool:
     return True
 
 
-def _witness_targets_owned_by_source_version(data: TFData, node_type: str) -> bool:
+def _witness_targets_owned_by_source_version(
+    data: TFData,
+    node_type: str,
+    node_index: dict[str, list[int]] | None = None,
+) -> bool:
     """Require anomaly witness edges to stay inside their exact source version."""
 
     witness_edges = data.edge_features.get("witness", {})
     otype = data.node_features.get("otype", {})
     version_ids = data.node_features.get("version_id", {})
-    for node in base._nodes(data, node_type):
+    for node in base._nodes(data, node_type, node_index):
         source_version = version_ids.get(node, "")
         if not source_version:
             return False
@@ -171,6 +191,7 @@ def _ownership_edge_ok(
     edge_name: str,
     target_types: frozenset[str],
     identity_features: tuple[str, ...],
+    node_index: dict[str, list[int]] | None = None,
 ) -> bool:
     """Validate exact one-owner edges against independently stamped identity."""
 
@@ -178,7 +199,7 @@ def _ownership_edge_ok(
     edge = data.edge_features.get(edge_name, {})
     version_ids = data.node_features.get("version_id", {})
 
-    for source in base._nodes(data, source_type):
+    for source in base._nodes(data, source_type, node_index):
         targets = edge.get(source, set())
         if len(targets) != 1:
             return False
@@ -196,14 +217,17 @@ def _ownership_edge_ok(
     return True
 
 
-def _section_coverage_ok(data: TFData) -> bool:
+def _section_coverage_ok(
+    data: TFData,
+    node_index: dict[str, list[int]] | None = None,
+) -> bool:
     """Verify exactly one book/chapter/verse per primary slot in linear time."""
 
     oslots = data.edge_features.get("oslots", {})
     max_slot = data.max_slot
     for kind in ("book", "chapter", "verse"):
         coverage = bytearray(max_slot + 1)
-        for node in base._nodes(data, kind):
+        for node in base._nodes(data, kind, node_index):
             for slot in oslots.get(node, set()):
                 if slot > max_slot:
                     return False
@@ -214,26 +238,29 @@ def _section_coverage_ok(data: TFData) -> bool:
     return True
 
 
-def _section_address_records(data: TFData) -> list[tuple[tuple[str, str, str], int, str]] | None:
+def _section_address_records(
+    data: TFData,
+    node_index: dict[str, list[int]] | None = None,
+) -> list[tuple[tuple[str, str, str], int, str]] | None:
     """Resolve every verse to its TF address and exact upstream source ref."""
 
     oslots = data.edge_features.get("oslots", {})
     slot_book: dict[int, int] = {}
     slot_chapter: dict[int, int] = {}
 
-    for node in base._nodes(data, "book"):
+    for node in base._nodes(data, "book", node_index):
         for slot in oslots.get(node, set()):
             if slot in slot_book:
                 return None
             slot_book[slot] = node
-    for node in base._nodes(data, "chapter"):
+    for node in base._nodes(data, "chapter", node_index):
         for slot in oslots.get(node, set()):
             if slot in slot_chapter:
                 return None
             slot_chapter[slot] = node
 
     records: list[tuple[tuple[str, str, str], int, str]] = []
-    for verse in base._nodes(data, "verse"):
+    for verse in base._nodes(data, "verse", node_index):
         slots = oslots.get(verse, set())
         if not slots:
             continue
@@ -273,10 +300,13 @@ def _section_address_collisions_from_records(
     ]
 
 
-def _section_address_collisions(data: TFData) -> list[dict]:
+def _section_address_collisions(
+    data: TFData,
+    node_index: dict[str, list[int]] | None = None,
+) -> list[dict]:
     """Return duplicate TF section addresses with enough provenance to debug them."""
 
-    return _section_address_collisions_from_records(_section_address_records(data))
+    return _section_address_collisions_from_records(_section_address_records(data, node_index))
 
 
 def _section_addresses_unique_from_records(
@@ -294,32 +324,36 @@ def _section_addresses_unique_from_records(
     return True
 
 
-def _section_addresses_unique(data: TFData) -> bool:
+def _section_addresses_unique(
+    data: TFData,
+    node_index: dict[str, list[int]] | None = None,
+) -> bool:
     """Verify every textual section has a unique TF address."""
 
-    return _section_addresses_unique_from_records(_section_address_records(data))
+    return _section_addresses_unique_from_records(_section_address_records(data, node_index))
 
 
 def build_conversion_report(source_dir: str | Path, books: list[Book], data: TFData) -> dict:
     """Build an independent source→TF parity report, including source anomalies."""
 
     source_dir = Path(source_dir)
+    node_index = base._node_index(data)
     raw = base._raw_inventory(source_dir)
-    graph = base._graph_inventory(data)
-    metadata_versions, metadata_specs = _metadata_version_inventory(data)
+    graph = base._graph_inventory(data, node_index)
+    metadata_versions, metadata_specs = _metadata_version_inventory(data, node_index)
     graph["versions"].extend(metadata_versions)
     graph["division_specs"].extend(metadata_specs)
     raw_ellipses = raw["ellipses"]
     raw_orphan_readings = raw["orphan_readings"]
-    graph_ellipses = _graph_ellipsis_inventory(data)
-    graph_orphan_readings = _graph_orphan_reading_inventory(data)
+    graph_ellipses = _graph_ellipsis_inventory(data, node_index)
+    graph_orphan_readings = _graph_orphan_reading_inventory(data, node_index)
     raw_missing_unit_ids = _raw_missing_unit_id_inventory(raw["units"])
-    graph_missing_unit_ids = _graph_missing_unit_id_inventory(data)
+    graph_missing_unit_ids = _graph_missing_unit_id_inventory(data, node_index)
 
-    primary_ok, alternative_ok = base._reconstruction_checks(data)
+    primary_ok, alternative_ok = base._reconstruction_checks(data, node_index)
     source_hashes = {record["file"]: record["sha256"] for record in raw["files"]}
     model_hashes = {book.source_path: book.source_sha256 for book in books}
-    section_address_records = _section_address_records(data)
+    section_address_records = _section_address_records(data, node_index)
     section_address_collisions = _section_address_collisions_from_records(section_address_records)
 
     checks = {
@@ -335,19 +369,22 @@ def build_conversion_report(source_dir: str | Path, books: list[Book], data: TFD
         "resources": base._canonical(raw["resources"]) == base._canonical(graph["resources"]),
         "annotated_words": base._canonical(raw["annotated_words"]) == base._canonical(graph["annotated_words"]),
         "ellipses": base._canonical(raw_ellipses) == base._canonical(graph_ellipses),
-        "ellipsis_anchors": _technical_parent_anchors_ok(data, "ellipsis"),
+        "ellipsis_anchors": _technical_parent_anchors_ok(data, "ellipsis", node_index),
         "orphan_readings": base._canonical(raw_orphan_readings) == base._canonical(graph_orphan_readings),
-        "orphan_reading_anchors": _technical_parent_anchors_ok(data, "orphan_reading"),
-        "orphan_witness_ownership": _witness_targets_owned_by_source_version(data, "orphan_reading"),
+        "orphan_reading_anchors": _technical_parent_anchors_ok(data, "orphan_reading", node_index),
+        "orphan_witness_ownership": _witness_targets_owned_by_source_version(
+            data, "orphan_reading", node_index
+        ),
         "primary_reconstruction": primary_ok,
         "alternative_reconstruction": alternative_ok,
-        "unit_parent_linkage": base._parent_linkage_ok(data),
+        "unit_parent_linkage": base._parent_linkage_ok(data, node_index),
         "reading_ownership": _ownership_edge_ok(
             data,
             source_type="reading",
             edge_name="reading_of",
             target_types=frozenset({"unit"}),
             identity_features=("ocp_book", "version_title", "source_ref", "unit_id"),
+            node_index=node_index,
         ),
         "manuscript_ownership": _ownership_edge_ok(
             data,
@@ -355,6 +392,7 @@ def build_conversion_report(source_dir: str | Path, books: list[Book], data: TFD
             edge_name="manuscript_of",
             target_types=frozenset({"book", "version_metadata"}),
             identity_features=("ocp_book", "version_title"),
+            node_index=node_index,
         ),
         "resource_ownership": _ownership_edge_ok(
             data,
@@ -362,8 +400,9 @@ def build_conversion_report(source_dir: str | Path, books: list[Book], data: TFD
             edge_name="resource_of",
             target_types=frozenset({"book", "version_metadata"}),
             identity_features=("ocp_book", "version_title"),
+            node_index=node_index,
         ),
-        "section_coverage": _section_coverage_ok(data),
+        "section_coverage": _section_coverage_ok(data, node_index),
         "section_addresses_unique": _section_addresses_unique_from_records(section_address_records),
     }
 
@@ -380,28 +419,28 @@ def build_conversion_report(source_dir: str | Path, books: list[Book], data: TFD
         "ellipses": len(raw_ellipses),
         "orphan_readings": len(raw_orphan_readings),
     }
-    metadata_count = len(base._nodes(data, "version_metadata"))
+    metadata_count = len(node_index.get("version_metadata", []))
     graph_counts = {
         "slots": data.max_slot,
         "nodes": data.max_node,
         "oslots_edges": data.oslots_edge_count,
-        "versions": len(base._nodes(data, "book")) + metadata_count,
+        "versions": len(node_index.get("book", [])) + metadata_count,
         "metadata_only_versions": metadata_count,
-        "divisions": len(base._nodes(data, "div")),
-        "units": len(base._nodes(data, "unit")),
+        "divisions": len(node_index.get("div", [])),
+        "units": len(node_index.get("unit", [])),
         "missing_unit_ids": len(graph_missing_unit_ids),
-        "readings": len(base._nodes(data, "reading")),
-        "variant_words": len(base._nodes(data, "variant_word")),
-        "ellipses": len(base._nodes(data, "ellipsis")),
-        "orphan_readings": len(base._nodes(data, "orphan_reading")),
+        "readings": len(node_index.get("reading", [])),
+        "variant_words": len(node_index.get("variant_word", [])),
+        "ellipses": len(node_index.get("ellipsis", [])),
+        "orphan_readings": len(node_index.get("orphan_reading", [])),
         "manuscripts": len(
             [
                 node
-                for node in base._nodes(data, "manuscript")
+                for node in node_index.get("manuscript", [])
                 if base._feature(data, "undefined_manuscript", node, 0) != 1
             ]
         ),
-        "resources": len(base._nodes(data, "resource")),
+        "resources": len(node_index.get("resource", [])),
         "witness_edges": sum(
             len(targets) for targets in data.edge_features.get("witness", {}).values()
         ),
