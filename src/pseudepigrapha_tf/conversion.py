@@ -33,15 +33,30 @@ class _PendingMetadataVersion:
     version_index: int
 
 
-def _div_has_units(div: Div) -> bool:
-    return any(
-        isinstance(item, Unit) or (isinstance(item, Div) and _div_has_units(item))
-        for item in div.items
-    )
+@dataclass(frozen=True)
+class _VersionTreeShape:
+    has_units: bool
+    has_non_core_items: bool
 
 
-def _version_has_units(version: Version) -> bool:
-    return any(_div_has_units(div) for div in version.divs)
+def _classify_version_tree(version: Version) -> _VersionTreeShape:
+    """Classify one source tree without allocating replacement Div objects."""
+
+    has_units = False
+    has_non_core_items = False
+    stack = list(version.divs)
+    while stack:
+        div = stack.pop()
+        for item in div.items:
+            if isinstance(item, Div):
+                stack.append(item)
+            elif isinstance(item, Unit):
+                has_units = True
+            else:
+                # Keep future/non-core model item types away from _add_version,
+                # which intentionally understands only Div and Unit children.
+                has_non_core_items = True
+    return _VersionTreeShape(has_units, has_non_core_items)
 
 
 def _is_known_blank_unit_id(unit: Unit) -> bool:
@@ -119,20 +134,29 @@ def _without_special_div_items(div: Div) -> Div:
     )
 
 
-def _textual_version_for_core_builder(version: Version) -> Version:
-    return Version(
-        title=version.title,
-        author=version.author,
-        language=version.language,
-        fragment=version.fragment,
-        divisions=version.divisions,
-        resources=version.resources,
-        manuscripts=tuple(
+def _textual_version_for_core_builder(
+    version: Version,
+    *,
+    strip_non_core_items: bool,
+) -> Version:
+    has_blank_manuscript = any(not ms.abbrev.strip() for ms in version.manuscripts)
+    if not strip_non_core_items and not has_blank_manuscript:
+        return version
+
+    manuscripts = (
+        tuple(
             replace(ms, abbrev="") if not ms.abbrev.strip() else ms
             for ms in version.manuscripts
-        ),
-        divs=tuple(_without_special_div_items(div) for div in version.divs),
+        )
+        if has_blank_manuscript
+        else version.manuscripts
     )
+    divs = (
+        tuple(_without_special_div_items(div) for div in version.divs)
+        if strip_non_core_items
+        else version.divs
+    )
+    return replace(version, manuscripts=manuscripts, divs=divs)
 
 
 def _attach_orphan_witnesses(
@@ -520,25 +544,31 @@ def build_tf_data(
         # Textual versions go first so metadata-only siblings can use a technical
         # anchor from the same OCP work even when upstream lists the empty version first.
         for vidx, (version, version_id) in enumerate(zip(book.versions, version_ids), 1):
-            if _version_has_units(version):
+            shape = _classify_version_tree(version)
+            if shape.has_units:
                 first_slot = builder.next_slot
                 start = len(builder.objects)
+                core_version = _textual_version_for_core_builder(
+                    version,
+                    strip_non_core_items=shape.has_non_core_items,
+                )
                 manuscripts = _add_version(
                     builder,
                     book,
-                    _textual_version_for_core_builder(version),
+                    core_version,
                     version_id,
                     bidx,
                     vidx,
                 )
-                _add_textual_source_anomalies(
-                    builder,
-                    book,
-                    version,
-                    bidx,
-                    vidx,
-                    manuscripts,
-                )
+                if shape.has_non_core_items:
+                    _add_textual_source_anomalies(
+                        builder,
+                        book,
+                        version,
+                        bidx,
+                        vidx,
+                        manuscripts,
+                    )
                 _stamp_version_identity(builder, start, version_id)
                 if book_anchor is None and builder.next_slot > first_slot:
                     book_anchor = first_slot
