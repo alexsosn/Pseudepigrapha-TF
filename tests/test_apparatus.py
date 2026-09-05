@@ -130,6 +130,22 @@ def test_passage_traverses_each_apparatus_relation_once():
     assert api.E.witness.f_calls == Counter({11: 1, 12: 1, 21: 1, 22: 1})
 
 
+def test_passage_names_truly_missing_ms_abbrev_on_incomplete_api():
+    api = passage_api()
+    delattr(api.F, "ms_abbrev")
+
+    with pytest.raises(ValueError, match="ms_abbrev"):
+        Apparatus(api).passage("Perf", "1", "1")
+
+
+def test_passage_rejects_manuscript_without_ms_abbrev_value():
+    api = passage_api()
+    api.F.ms_abbrev.values.pop(30)
+
+    with pytest.raises(ValueError, match=r"ms_abbrev.*node 30"):
+        Apparatus(api).passage("Perf", "1", "1")
+
+
 def test_passage_still_rejects_multiple_readings_for_one_witness():
     api = passage_api(duplicate_witness=True)
 

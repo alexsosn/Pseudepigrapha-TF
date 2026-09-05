@@ -23,6 +23,12 @@ class Apparatus:
             raise ValueError(f"feature {name!r} must be loaded for this Apparatus operation")
         return feature
 
+    def _required_feature_value(self, feature, name: str, node: int):
+        value = feature.v(node)
+        if value is None:
+            raise ValueError(f"feature {name!r} has no value for node {node}")
+        return value
+
     def _require_edge(self, name: str):
         edge = getattr(self.api.E, name, None)
         if edge is None:
@@ -52,16 +58,20 @@ class Apparatus:
         manuscript_of = getattr(self.api.E, "manuscript_of", None)
         if manuscript_of is None:
             raise ValueError("manuscript_of edge feature must be loaded for this Apparatus operation")
+        ms_abbrev = self._require_feature("ms_abbrev")
         undefined_manuscript = self._require_feature("undefined_manuscript")
         nodes = tuple(
             sorted(
                 manuscript_of.t(owner),
-                key=lambda node: (str(self._feature("ms_abbrev", node, "")), node),
+                key=lambda node: (
+                    str(self._required_feature_value(ms_abbrev, "ms_abbrev", node)),
+                    node,
+                ),
             )
         )
         witnesses: dict[str, dict[str, object]] = {}
         for manuscript in nodes:
-            abbrev = str(self._feature("ms_abbrev", manuscript, manuscript))
+            abbrev = str(self._required_feature_value(ms_abbrev, "ms_abbrev", manuscript))
             if abbrev in witnesses:
                 raise ValueError(f"duplicate manuscript abbreviation for TF version owner {owner}: {abbrev!r}")
             witnesses[abbrev] = {
@@ -128,10 +138,18 @@ class Apparatus:
             raise ValueError(f"manuscript {manuscript} has multiple readings at unit {unit}: {matches}")
         return matches[0] if matches else None
 
-    def _state_for_reading(self, unit: int, reading: int | None) -> dict[str, object]:
+    def _state_for_reading(
+        self,
+        unit: int,
+        reading: int | None,
+        *,
+        unit_id_feature=None,
+    ) -> dict[str, object]:
         """Build one witness-state record from an already resolved reading."""
 
-        unit_id = str(self._feature("unit_id", unit, unit))
+        if unit_id_feature is None:
+            unit_id_feature = self._require_feature("unit_id")
+        unit_id = str(self._required_feature_value(unit_id_feature, "unit_id", unit))
         if reading is None:
             return {
                 "unit": unit_id,
@@ -247,6 +265,8 @@ class Apparatus:
         """Build a passage from already validated, request-local context."""
 
         is_primary = self._require_feature("is_primary")
+        ms_abbrev = self._require_feature("ms_abbrev")
+        unit_id = self._require_feature("unit_id")
         witness = self._require_edge("witness")
         units = tuple(self.api.L.d(verse_node, otype="unit"))
         source_refs: list[str] = []
@@ -277,7 +297,7 @@ class Apparatus:
                         "omission": text == "",
                         "witness_nodes": witness_nodes,
                         "witnesses": tuple(
-                            str(self._feature("ms_abbrev", manuscript, manuscript))
+                            str(self._required_feature_value(ms_abbrev, "ms_abbrev", manuscript))
                             for manuscript in witness_nodes
                         ),
                     }
@@ -286,7 +306,7 @@ class Apparatus:
             unit_records.append(
                 {
                     "node": unit,
-                    "unit": str(self._feature("unit_id", unit, unit)),
+                    "unit": str(self._required_feature_value(unit_id, "unit_id", unit)),
                     "source_ref": source_ref,
                     "readings": tuple(readings),
                 }
@@ -296,7 +316,11 @@ class Apparatus:
         for abbrev, manuscript_record in manuscripts.items():
             manuscript = int(manuscript_record["node"])
             segments = tuple(
-                self._state_for_reading(unit, reading_by_witness[unit].get(manuscript))
+                self._state_for_reading(
+                    unit,
+                    reading_by_witness[unit].get(manuscript),
+                    unit_id_feature=unit_id,
+                )
                 for unit in units
             )
             coverage = Counter(str(segment["status"]) for segment in segments)
