@@ -9,7 +9,7 @@ from . import __version__
 from .conversion import build_tf_data
 from .semantic_audit import build_conversion_report, write_conversion_report
 from .source import detect_git_commit, load_source_directory
-from .writer import write_tf
+from .writer import _write_prevalidated_tf
 
 UPSTREAM_REPOSITORY = "https://github.com/OnlineCriticalPseudepigrapha/Online-Critical-Pseudepigrapha"
 
@@ -79,7 +79,7 @@ def main(argv: list[str] | None = None) -> int:
             f"report: {report_path}{diagnostic}"
         )
 
-    if not write_tf(data, args.output):
+    if not _write_prevalidated_tf(data, args.output):
         raise SystemExit("Text-Fabric refused the generated dataset")
     _stage("write_text_fabric", stage_started)
     print(f"timing: total {perf_counter() - total_started:.3f}s", flush=True)
