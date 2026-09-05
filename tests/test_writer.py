@@ -35,7 +35,16 @@ def test_writer_delegates_validated_features_to_text_fabric(tmp_path):
         assert name in saved["nodeFeatures"]
         assert saved["metaData"][name]["valueType"] in {"str", "int"}
     assert saved["metaData"]["undefined_manuscript"]["valueType"] == "int"
-    assert saved["edgeFeatures"] is data.edge_features
+
+    assert saved["edgeFeatures"] is not data.edge_features
+    for name, values in data.edge_features.items():
+        assert saved["edgeFeatures"][name] == values
+        assert saved["edgeFeatures"][name] is not values
+        for source, targets in values.items():
+            assert saved["edgeFeatures"][name][source] is not targets
+    assert "witness" in saved["edgeFeatures"]
+    assert "manuscript_of" in saved["edgeFeatures"]
+
     assert saved["metaData"] is not data.metadata
     assert saved["metaData"]["otext"] == data.metadata["otext"]
     assert saved["location"] == str(tmp_path / "tf")
