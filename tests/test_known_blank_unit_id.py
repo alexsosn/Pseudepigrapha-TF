@@ -3,6 +3,7 @@ from pathlib import Path
 import pytest
 
 from pseudepigrapha_tf.conversion import build_tf_data
+from pseudepigrapha_tf.model import Book, Div, DivisionSpec, Reading, Token, Unit, Version
 from pseudepigrapha_tf.parser import InvalidSourceError, parse_bytes
 from pseudepigrapha_tf.semantic_audit import build_conversion_report
 from pseudepigrapha_tf.source import load_source_directory
@@ -96,6 +97,46 @@ def test_missing_unit_id_audit_rejects_spurious_marker(tmp_path: Path):
     report = build_conversion_report(tmp_path, books, data)
     assert report["status"] == "failed"
     assert report["semantic_checks"]["missing_unit_ids"] is False
+
+
+def test_direct_model_cannot_spoof_known_blank_unit_with_source_path():
+    reading = Reading(
+        option="0",
+        witnesses=(),
+        mss_raw="",
+        linebreak="",
+        indent="",
+        text="alpha",
+        content_xml="alpha",
+        tokens=(Token("alpha"),),
+    )
+    missing = Unit(
+        unit_id="",
+        group="0",
+        parallel="",
+        linebreak="",
+        readings=(reading,),
+    )
+    version = Version(
+        title="Latin (Mozley)",
+        author="",
+        language="Latin",
+        fragment="",
+        divisions=(DivisionSpec("Chapter", ":"), DivisionSpec("Verse")),
+        resources=(),
+        manuscripts=(),
+        divs=(Div("26", "", (Div("0", "", (missing,)),)),),
+    )
+    book = Book(
+        filename="AdamEve",
+        title="Life of Adam and Eve",
+        text_structure="",
+        versions=(version,),
+        source_path="AdamEve.xml",
+    )
+
+    with pytest.raises(ValueError, match=r"blank unit id"):
+        build_tf_data([book])
 
 
 @pytest.mark.parametrize(
