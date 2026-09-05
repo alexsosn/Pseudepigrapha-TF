@@ -24,6 +24,9 @@ def _adam_eve_xml(*, version_title: str = "Latin (Mozley)", inner_div: str = "0"
           <unit id="" group="0" parallel="">
             <reading option="0" mss="Mozley ">alpha</reading>
           </unit>
+          <unit id="28" group="0" parallel="">
+            <reading option="0" mss="Mozley ">beta</reading>
+          </unit>
         </div>
       </div>
     </text>
@@ -31,18 +34,32 @@ def _adam_eve_xml(*, version_title: str = "Latin (Mozley)", inner_div: str = "0"
 </book>'''.encode()
 
 
-def test_known_pinned_blank_unit_id_is_preserved_marked_and_audited(tmp_path: Path):
+def _case(tmp_path: Path):
     source = tmp_path / "AdamEve.xml"
     source.write_bytes(_adam_eve_xml())
-
     books, warnings = load_source_directory(tmp_path)
     assert warnings == []
-    data = build_tf_data(books)
+    return books, build_tf_data(books)
+
+
+def _unit(data, *, unit_id: str | None = None):
+    return next(
+        node
+        for node, kind in data.node_features["otype"].items()
+        if kind == "unit"
+        and (unit_id is None or data.node_features.get("unit_id", {}).get(node) == unit_id)
+    )
+
+
+def test_known_pinned_blank_unit_id_is_preserved_marked_and_audited(tmp_path: Path):
+    books, data = _case(tmp_path)
 
     unit = next(
         node
         for node, kind in data.node_features["otype"].items()
-        if kind == "unit" and data.node_features["source_ref"][node] == "26:0"
+        if kind == "unit"
+        and data.node_features["source_ref"][node] == "26:0"
+        and node not in data.node_features.get("unit_id", {})
     )
     assert unit not in data.node_features.get("unit_id", {})
     assert data.node_features["is_missing_unit_id"][unit] == 1
@@ -53,6 +70,32 @@ def test_known_pinned_blank_unit_id_is_preserved_marked_and_audited(tmp_path: Pa
     assert report["source"]["missing_unit_ids"] == 1
     assert report["graph"]["missing_unit_ids"] == 1
     assert report["semantic_checks"]["missing_unit_ids"] is True
+
+
+@pytest.mark.parametrize("feature", ["is_missing_unit_id", "is_source_anomaly"])
+def test_missing_unit_id_audit_rejects_missing_marker(tmp_path: Path, feature: str):
+    books, data = _case(tmp_path)
+    missing = next(
+        node
+        for node in data.node_features["is_missing_unit_id"]
+        if data.node_features["is_missing_unit_id"][node] == 1
+    )
+    data.node_features[feature].pop(missing)
+
+    report = build_conversion_report(tmp_path, books, data)
+    assert report["status"] == "failed"
+    assert report["semantic_checks"]["missing_unit_ids"] is False
+
+
+def test_missing_unit_id_audit_rejects_spurious_marker(tmp_path: Path):
+    books, data = _case(tmp_path)
+    regular = _unit(data, unit_id="28")
+    data.node_features.setdefault("is_missing_unit_id", {})[regular] = 1
+    data.node_features.setdefault("is_source_anomaly", {})[regular] = 1
+
+    report = build_conversion_report(tmp_path, books, data)
+    assert report["status"] == "failed"
+    assert report["semantic_checks"]["missing_unit_ids"] is False
 
 
 @pytest.mark.parametrize(
