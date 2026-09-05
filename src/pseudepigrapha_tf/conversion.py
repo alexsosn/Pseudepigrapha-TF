@@ -36,6 +36,20 @@ def _version_has_units(version: Version) -> bool:
     return any(_div_has_units(div) for div in version.divs)
 
 
+def _validate_unique_manuscript_abbreviations(books: Iterable[Book]) -> None:
+    """Reject ambiguous witness identity before any graph mutation occurs."""
+
+    for book in books:
+        for version in book.versions:
+            seen: set[str] = set()
+            for manuscript in version.manuscripts:
+                if manuscript.abbrev in seen:
+                    raise ValueError(
+                        f"{book.filename}/{version.title}: duplicate manuscript abbreviation {manuscript.abbrev!r}"
+                    )
+                seen.add(manuscript.abbrev)
+
+
 def _stamp_version_identity(builder: _Builder, start: int, version_id: str) -> None:
     """Stamp source-derived version identity on nodes created for one version."""
 
@@ -71,7 +85,7 @@ def _textual_version_for_core_builder(version: Version) -> Version:
 
 
 def _manuscript_keys(builder: _Builder, vkey: str) -> dict[str, str]:
-    """Return first-created manuscript keys, matching ordinary-reading semantics."""
+    """Return the unique manuscript key for each declared abbreviation."""
 
     result: dict[str, str] = {}
     prefix = f"{vkey}:ms:"
@@ -79,8 +93,11 @@ def _manuscript_keys(builder: _Builder, vkey: str) -> dict[str, str]:
         if not obj.key.startswith(prefix):
             continue
         abbrev = str(obj.features.get("ms_abbrev", ""))
-        if abbrev:
-            result.setdefault(abbrev, obj.key)
+        if not abbrev:
+            continue
+        if abbrev in result and result[abbrev] != obj.key:
+            raise ValueError(f"{vkey}: duplicate manuscript abbreviation {abbrev!r}")
+        result[abbrev] = obj.key
     return result
 
 
@@ -322,6 +339,10 @@ def _add_metadata_version(
     mkeys: list[str] = []
     manuscripts: dict[str, str] = {}
     for midx, ms in enumerate(version.manuscripts, 1):
+        if ms.abbrev in manuscripts:
+            raise ValueError(
+                f"{book.filename}/{version.title}: duplicate manuscript abbreviation {ms.abbrev!r}"
+            )
         mkey = f"{vkey}:ms:{midx}"
         builder.node(
             mkey,
@@ -339,7 +360,7 @@ def _add_metadata_version(
             is_metadata_only=1,
         )
         mkeys.append(mkey)
-        manuscripts.setdefault(ms.abbrev, mkey)
+        manuscripts[ms.abbrev] = mkey
 
     target = f"{vkey}:metadata"
     builder.node(
@@ -405,6 +426,7 @@ def build_tf_data(
     """Build TF while preserving declared upstream versions that contain no text."""
 
     books = list(books)
+    _validate_unique_manuscript_abbreviations(books)
     builder = _Builder()
     pending: list[_PendingMetadataVersion] = []
 
