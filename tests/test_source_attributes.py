@@ -95,6 +95,30 @@ def test_pinned_capitalized_delimiter_alias_is_preserved_and_audited(tmp_path):
     assert report["semantic_checks"]["division_specs"] is True
 
 
+def test_duplicate_delimiter_spellings_fail_loudly_in_parser():
+    data = _modern_xml().replace(
+        b'<division label="Chapter" delimiter=":"/>',
+        b'<division label="Chapter" delimiter=":" Delimiter="."/>',
+        1,
+    )
+
+    with pytest.raises(InvalidSourceError, match=r"both delimiter and Delimiter on <division>"):
+        parse_bytes(data, source_path="attributes.xml")
+
+
+def test_duplicate_delimiter_spellings_fail_loudly_in_raw_audit(tmp_path):
+    data = _modern_xml().replace(
+        b'<division label="Chapter" delimiter=":"/>',
+        b'<division label="Chapter" delimiter=":" Delimiter="."/>',
+        1,
+    )
+    path = tmp_path / "attributes.xml"
+    path.write_bytes(data)
+
+    with pytest.raises(InvalidSourceError, match=r"both delimiter and Delimiter on <division>"):
+        audit._raw_inventory(tmp_path)
+
+
 def test_unknown_w_attribute_is_preserved_inside_audited_mixed_xml(tmp_path):
     data = _modern_xml().replace(
         b">alpha</reading>",
