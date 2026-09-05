@@ -146,7 +146,11 @@ def _raw_inventory(source_dir: Path) -> dict:
                 })
                 divisions = version.find("divisions")
                 specs = tuple(
-                    DivisionSpec(d.get("label", ""), d.get("delimiter", ""), _plain_text(d))
+                    DivisionSpec(
+                        d.get("label", ""),
+                        d.get("delimiter", d.get("Delimiter", "")),
+                        _plain_text(d),
+                    )
                     for d in (divisions.findall("division") if divisions is not None else [])
                 )
                 for index, spec in enumerate(specs, 1):
