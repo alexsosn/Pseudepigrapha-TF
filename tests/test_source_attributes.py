@@ -30,6 +30,23 @@ def _with_attribute(element_start: bytes, attribute: bytes) -> bytes:
     return data.replace(element_start, replacement, 1)
 
 
+def _without_attribute(element_start: bytes, attribute: bytes) -> bytes:
+    data = _modern_xml()
+    replacement = element_start.replace(b" " + attribute, b"", 1)
+    assert replacement != element_start
+    return data.replace(element_start, replacement, 1)
+
+
+def _missing_manuscript_language(*, book_filename: str = "Attrs") -> bytes:
+    data = _without_attribute(
+        b'<ms abbrev="A" language="Greek" show="yes">',
+        b'language="Greek"',
+    )
+    if book_filename != "Attrs":
+        data = data.replace(b'filename="Attrs"', f'filename="{book_filename}"'.encode(), 1)
+    return data
+
+
 @pytest.mark.parametrize(
     ("element", "element_start"),
     [
@@ -55,11 +72,68 @@ def test_parser_rejects_unknown_attribute_that_would_be_dropped(element, element
         )
 
 
+@pytest.mark.parametrize(
+    ("element", "element_start", "attribute", "name"),
+    [
+        ("book", b'<book filename="Attrs" title="Attribute fixture" textStructure="criticalApparatus">', b'filename="Attrs"', "filename"),
+        ("book", b'<book filename="Attrs" title="Attribute fixture" textStructure="criticalApparatus">', b'title="Attribute fixture"', "title"),
+        ("version", b'<version title="Greek" author="Anonymous" language="Greek" fragment="vfrag">', b'title="Greek"', "title"),
+        ("version", b'<version title="Greek" author="Anonymous" language="Greek" fragment="vfrag">', b'author="Anonymous"', "author"),
+        ("division", b'<division label="Chapter" delimiter=":"/>', b'label="Chapter"', "label"),
+        ("resource", b'<resource name="Edition">', b'name="Edition"', "name"),
+        ("ms", b'<ms abbrev="A" language="Greek" show="yes">', b'abbrev="A"', "abbrev"),
+        ("ms", b'<ms abbrev="A" language="Greek" show="yes">', b'show="yes"', "show"),
+        ("div", b'<div number="1" fragment="dfrag">', b'number="1"', "number"),
+        ("unit", b'<unit id="1" group="2" parallel="p" linebreak="following">', b'id="1"', "id"),
+        ("reading", b'<reading option="0" mss="A " linebreak="following" indent="1">', b'option="0"', "option"),
+        ("reading", b'<reading option="0" mss="A " linebreak="following" indent="1">', b'mss="A "', "mss"),
+    ],
+)
+def test_parser_rejects_missing_modern_dtd_required_attribute(element, element_start, attribute, name):
+    with pytest.raises(
+        InvalidSourceError,
+        match=rf"missing required attribute {name} on <{element}>",
+    ):
+        parse_bytes(
+            _without_attribute(element_start, attribute),
+            source_path="attributes.xml",
+        )
+
+
+def test_non_exception_file_missing_manuscript_language_is_rejected():
+    with pytest.raises(
+        InvalidSourceError,
+        match=r"Other.xml: missing required attribute language on <ms> at /book/version/manuscripts/ms",
+    ):
+        parse_bytes(_missing_manuscript_language(), source_path="Other.xml")
+
+
+def test_exception_filename_does_not_exempt_wrong_book_identity():
+    with pytest.raises(
+        InvalidSourceError,
+        match=r"ClMal.xml: missing required attribute language on <ms> at /book/version/manuscripts/ms",
+    ):
+        parse_bytes(_missing_manuscript_language(book_filename="Attrs"), source_path="ClMal.xml")
+
+
 def test_raw_audit_rejects_same_unknown_attribute(tmp_path):
     path = tmp_path / "attributes.xml"
     path.write_bytes(_with_attribute(b'<unit id="1" group="2" parallel="p" linebreak="following">', b'future="metadata"'))
 
     with pytest.raises(InvalidSourceError, match=r"unsupported attribute future on <unit>"):
+        audit._raw_inventory(tmp_path)
+
+
+def test_raw_audit_rejects_missing_modern_dtd_required_attribute(tmp_path):
+    path = tmp_path / "attributes.xml"
+    path.write_bytes(
+        _without_attribute(
+            b'<unit id="1" group="2" parallel="p" linebreak="following">',
+            b'id="1"',
+        )
+    )
+
+    with pytest.raises(InvalidSourceError, match=r"missing required attribute id on <unit>"):
         audit._raw_inventory(tmp_path)
 
 
@@ -85,6 +159,20 @@ def test_all_modeled_modern_attributes_and_unit_linebreak_remain_supported():
     assert div.fragment == "dfrag"
     assert (unit.group, unit.parallel, unit.linebreak) == ("2", "p", "following")
     assert (reading.linebreak, reading.indent) == ("following", "1")
+
+
+def test_optional_modern_attributes_can_still_be_absent():
+    data = _modern_xml()
+    for element_start, attribute in (
+        (b'<book filename="Attrs" title="Attribute fixture" textStructure="criticalApparatus">', b'textStructure="criticalApparatus"'),
+        (b'<version title="Greek" author="Anonymous" language="Greek" fragment="vfrag">', b'fragment="vfrag"'),
+        (b'<division label="Chapter" delimiter=":"/>', b'delimiter=":"'),
+        (b'<unit id="1" group="2" parallel="p" linebreak="following">', b'parallel="p"'),
+        (b'<reading option="0" mss="A " linebreak="following" indent="1">', b'indent="1"'),
+    ):
+        replacement = element_start.replace(b" " + attribute, b"", 1)
+        data = data.replace(element_start, replacement, 1)
+    assert parse_bytes(data, source_path="optional-attributes.xml").filename == "Attrs"
 
 
 def test_pinned_capitalized_delimiter_alias_is_preserved_and_audited(tmp_path):

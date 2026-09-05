@@ -9,7 +9,7 @@
     <text>
       <div number="1">
         <div number="1">
-          <unit id="1"><reading option="0">alpha beta</reading></unit>
+          <unit id="1"><reading option="0" mss="">alpha beta</reading></unit>
         </div>
       </div>
     </text>

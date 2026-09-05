@@ -26,7 +26,7 @@ pseudepigrapha-tf convert \
   --output tf/0.1
 ```
 
-The converter auto-detects the source Git commit and records it in TF metadata. `--upstream-commit` can override this for a nonstandard checkout. Zero-byte XML files are reported and skipped; malformed non-empty XML fails loudly. Well-formed XML also fails with `InvalidSourceError` when it contains a child element outside the explicitly supported modern or legacy source vocabulary, preventing silent loss when upstream structure changes.
+The converter auto-detects the source Git commit and records it in TF metadata. `--upstream-commit` can override this for a nonstandard checkout. Zero-byte XML files are reported and skipped; malformed non-empty XML fails loudly. Well-formed XML also fails with `InvalidSourceError` when it contains unsupported structural children or attributes, or when a modern OCP element omits an attribute declared `#REQUIRED` by the pinned Grammateus DTD. This prevents silent loss or empty-string normalization when upstream structure changes. The pinned corpus contains five record-specific violations of the DTD's required `ms/@language` rule: two manuscripts in `ClMal.xml`, one in `Eup.xml`, and two in `Ps-Eup.xml`. Those exact records are preserved with unknown manuscript language rather than rejected or inferred from `version/@language`; neighboring records in the same files remain subject to the normal required-attribute rule.
 
 Every successful conversion also writes `conversion-report.json` beside the `.tf` features. The conversion fails if the independent raw-XML parity audit detects a semantic mismatch.
 
@@ -188,7 +188,7 @@ For an available passage in a selective Text-Fabric load, `passage()` / `work_pa
 `conversion-report.json` is built by rereading the raw XML independently of the converter's parsed model and comparing it with the generated TF graph. It checks:
 
 - source file SHA-256s and every declared version, including metadata-only versions;
-- explicit modern/legacy child-element vocabulary before inventory extraction, so an unsupported subtree cannot be silently ignored by both parser and audit;
+- explicit modern/legacy child-element and attribute vocabulary plus modern DTD-required attribute presence before inventory extraction, so unsupported or missing source structure cannot be silently ignored or normalized by both parser and audit; the five pinned record-specific `ms/@language` omissions are the documented exception and remain empty/unknown;
 - division declarations and every structural division/reference;
 - unit attributes and explicit unit→div parent linkage;
 - every standard reading's option, witnesses, flags, normalized text, and mixed XML;
@@ -212,7 +212,7 @@ The report says `status: "ok"` only when every semantic check passes. Section co
 pytest
 ```
 
-The synthetic suite covers parser, graph, apparatus helpers, reading-token semantics on real Text-Fabric, passage-level witness coverage and declaration provenance, work-level multi-version retrieval, semantic parity, ownership-edge corruption, explicit source-structure drift rejection, preserved ellipsis/direct-reading anomalies and their corruption detection, legacy OCP, deep/non-numeric and duplicate references, omissions, empty source divisions, metadata-only versions, and reproducible paths. CI additionally installs real Text-Fabric, verifies node-type `T.text()` behavior and deep/duplicate `T.sectionFromNode()`/`T.nodeFromSection()` addresses, converts and audits the pinned complete OCP checkout (including the real Aristob/PssSol source anomalies), reloads the full dataset, exercises `Apparatus.passage("1En__Ethiopic", "1", "2")`, verifies witness declaration provenance, verifies that `Apparatus.work_passage("1En", "1", "2")` exposes all four real 1 Enoch versions, and verifies that real `TJob/Coptic` remains visible as metadata-only evidence.
+The synthetic suite covers parser, graph, apparatus helpers, reading-token semantics on real Text-Fabric, passage-level witness coverage and declaration provenance, work-level multi-version retrieval, semantic parity, ownership-edge corruption, explicit source-structure and required-attribute drift rejection, preserved ellipsis/direct-reading anomalies and their corruption detection, legacy OCP, deep/non-numeric and duplicate references, omissions, empty source divisions, metadata-only versions, and reproducible paths. CI additionally installs real Text-Fabric, verifies node-type `T.text()` behavior and deep/duplicate `T.sectionFromNode()`/`T.nodeFromSection()` addresses, converts and audits the pinned complete OCP checkout (including the real Aristob/PssSol source anomalies and documented manuscript-language omissions), reloads the full dataset, exercises `Apparatus.passage("1En__Ethiopic", "1", "2")`, verifies witness declaration provenance, verifies that `Apparatus.work_passage("1En", "1", "2")` exposes all four real 1 Enoch versions, and verifies that real `TJob/Coptic` remains visible as metadata-only evidence.
 
 ## Licensing
 

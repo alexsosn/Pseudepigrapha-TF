@@ -84,6 +84,32 @@ MODERN_ATTRIBUTES: dict[str, frozenset[str] | None] = {
     "w": None,
 }
 
+# Presence requirements copied from the pinned modern Grammateus DTD.
+MODERN_REQUIRED_ATTRIBUTES: dict[str, frozenset[str]] = {
+    "book": frozenset({"filename", "title"}),
+    "version": frozenset({"title", "author"}),
+    "division": frozenset({"label"}),
+    "resource": frozenset({"name"}),
+    "ms": frozenset({"abbrev", "language", "show"}),
+    "div": frozenset({"number"}),
+    "unit": frozenset({"id"}),
+    "reading": frozenset({"option", "mss"}),
+}
+
+# These exact pinned manuscript records embed/inhabit DTDs declaring
+# ms/@language #REQUIRED while omitting it in the source. Scope the exception
+# to source basename + OCP book identity + version title + manuscript abbrev;
+# neighboring records in the same file still obey the DTD requirement.
+KNOWN_MISSING_MANUSCRIPT_LANGUAGE: frozenset[tuple[str, str, str, str]] = frozenset(
+    {
+        ("ClMal.xml", "ClMal", "Jewish Antiquities", "Niese"),
+        ("ClMal.xml", "ClMal", "Praep. Evang.", "Mras"),
+        ("Eup.xml", "Eup", "Praep. Evang. (Frag. 3)", "Mras"),
+        ("Ps-Eup.xml", "Ps-Eup", "Praep. Evang. (Frag. 1)", "Mras"),
+        ("Ps-Eup.xml", "Ps-Eup", "Praep. Evang. (Frag. 2)", "Mras"),
+    }
+)
+
 LEGACY_ATTRIBUTES: dict[str, frozenset[str] | None] = {
     "book": frozenset({"filename", "title", "textStructure", "language"}),
     "resources": frozenset(),
@@ -121,15 +147,39 @@ def validate_source_structure(
     allowed_children = LEGACY_CHILDREN if legacy else MODERN_CHILDREN
     allowed_attributes = LEGACY_ATTRIBUTES if legacy else MODERN_ATTRIBUTES
     location = source_path or "<memory>"
+    source_name = source_path.replace("\\", "/").rsplit("/", 1)[-1] if source_path else ""
+    book_filename = root.attrib.get("filename", "")
 
-    stack: list[tuple[ET.Element, str]] = [(root, f"/{root.tag}")]
+    # Carry the containing version title through the iterative traversal so
+    # record-specific exceptions remain linear and do not require ancestor scans.
+    stack: list[tuple[ET.Element, str, str]] = [(root, f"/{root.tag}", "")]
     while stack:
-        parent, path = stack.pop()
+        parent, path, version_title = stack.pop()
+        if parent.tag == "version":
+            version_title = parent.attrib.get("title", "")
+
         allowed = allowed_children.get(parent.tag)
         if allowed is None:
             raise SourceStructureError(
                 f"{location}: unsupported <{parent.tag}> element at {path}"
             )
+
+        if not legacy:
+            required = MODERN_REQUIRED_ATTRIBUTES.get(parent.tag, frozenset())
+            if parent.tag == "ms":
+                manuscript_identity = (
+                    source_name,
+                    book_filename,
+                    version_title,
+                    parent.attrib.get("abbrev", ""),
+                )
+                if manuscript_identity in KNOWN_MISSING_MANUSCRIPT_LANGUAGE:
+                    required = required - {"language"}
+            for attribute in sorted(required):
+                if attribute not in parent.attrib:
+                    raise SourceStructureError(
+                        f"{location}: missing required attribute {attribute} on <{parent.tag}> at {path}"
+                    )
 
         if (
             not legacy
@@ -156,4 +206,4 @@ def validate_source_structure(
                     f"{location}: unsupported <{child.tag}> child of <{parent.tag}> at {path}"
                 )
         for child in reversed(children):
-            stack.append((child, f"{path}/{child.tag}"))
+            stack.append((child, f"{path}/{child.tag}", version_title))
