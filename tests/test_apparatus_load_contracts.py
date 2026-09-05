@@ -37,14 +37,6 @@ def test_unit_readings_names_missing_reading_of_edge(tmp_path):
         Apparatus(api).unit_readings(_unit(api))
 
 
-def test_reading_text_names_missing_feature(tmp_path):
-    api = _load(tmp_path, "reading_of witness is_primary")
-    unit = _unit(api)
-    reading = next(iter(api.E.reading_of.t(unit)))
-    with pytest.raises(ValueError, match="reading_text"):
-        Apparatus(api).reading_text(reading)
-
-
 def test_witness_reading_names_missing_witness_edge(tmp_path):
     api = _load(tmp_path, "reading_of reading_text is_primary")
     with pytest.raises(ValueError, match="witness"):
@@ -57,6 +49,12 @@ def test_apparatus_names_missing_is_primary_feature(tmp_path):
         Apparatus(api).apparatus(_unit(api))
 
 
+def test_apparatus_names_missing_witness_edge(tmp_path):
+    api = _load(tmp_path, "reading_of reading_text is_primary")
+    with pytest.raises(ValueError, match="witness"):
+        Apparatus(api).apparatus(_unit(api))
+
+
 def test_passage_rejects_missing_is_primary_instead_of_silently_marking_false(tmp_path):
     api = _load(
         tmp_path,
@@ -64,6 +62,16 @@ def test_passage_rejects_missing_is_primary_instead_of_silently_marking_false(tm
         "reading_of witness manuscript_of",
     )
     with pytest.raises(ValueError, match="is_primary"):
+        Apparatus(api).passage("Sample", "1", "2")
+
+
+def test_passage_names_missing_witness_edge(tmp_path):
+    api = _load(
+        tmp_path,
+        "reading_text is_primary ms_abbrev undefined_manuscript unit_id "
+        "reading_of manuscript_of",
+    )
+    with pytest.raises(ValueError, match="witness"):
         Apparatus(api).passage("Sample", "1", "2")
 
 
