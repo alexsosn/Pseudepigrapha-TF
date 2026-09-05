@@ -80,7 +80,7 @@ def test_conversion_report_uses_report_local_node_index(monkeypatch, tmp_path):
     assert scan_calls == []
 
 
-def test_node_index_scans_otype_once_and_sorts_each_kind():
+def test_node_index_scans_otype_once_and_sorts_each_kind_without_coercion():
     class CountingOtype(dict):
         items_calls = 0
 
@@ -88,13 +88,15 @@ def test_node_index_scans_otype_once_and_sorts_each_kind():
             self.items_calls += 1
             return super().items()
 
-    otype = CountingOtype([(3, "unit"), (2, "book"), (1, "unit")])
+    otype = CountingOtype([(3, "unit"), (2, "book"), (1, "unit"), (4, 7)])
     data = TFData({"otype": otype}, {}, {}, [])
 
     index = compatibility_audit._node_index(data)
 
     assert otype.items_calls == 1
-    assert index == {"unit": [1, 3], "book": [2]}
+    assert index == {"unit": [1, 3], "book": [2], 7: [4]}
+    assert compatibility_audit._nodes(data, "7", index) == []
+    assert compatibility_audit._nodes(data, "7") == []
 
 
 def test_node_index_is_not_cached_on_mutable_tfdata():
