@@ -1,5 +1,7 @@
 from pathlib import Path
 
+import pytest
+
 from pseudepigrapha_tf import cli
 from pseudepigrapha_tf.graph import TFData
 
@@ -24,13 +26,18 @@ def _graph_snapshot(data):
     )
 
 
-def test_cli_validates_generated_graph_once(monkeypatch, tmp_path):
+def _copy_source_fixture(tmp_path):
     source_dir = tmp_path / "source"
     source_dir.mkdir()
     (source_dir / "sample.xml").write_text(
         (FIXTURES / "sample.xml").read_text(encoding="utf-8"),
         encoding="utf-8",
     )
+    return source_dir
+
+
+def test_cli_validates_generated_graph_once(monkeypatch, tmp_path):
+    source_dir = _copy_source_fixture(tmp_path)
 
     validate_calls = 0
     original_validate = TFData.validate
@@ -67,3 +74,28 @@ def test_cli_validates_generated_graph_once(monkeypatch, tmp_path):
 
     assert result == 0
     assert validate_calls == 1
+
+
+def test_cli_does_not_replace_existing_report_when_tf_serialization_fails(monkeypatch, tmp_path):
+    source_dir = _copy_source_fixture(tmp_path)
+    output = tmp_path / "tf"
+    output.mkdir()
+    report_path = output / "conversion-report.json"
+    old_report = b'{"status":"previous-success"}\n'
+    report_path.write_bytes(old_report)
+
+    monkeypatch.setattr(cli, "_write_prevalidated_tf", lambda data, output_dir: False)
+
+    with pytest.raises(SystemExit, match="Text-Fabric refused the generated dataset"):
+        cli.main(
+            [
+                "convert",
+                str(source_dir),
+                "--output",
+                str(output),
+                "--upstream-commit",
+                "test-commit",
+            ]
+        )
+
+    assert report_path.read_bytes() == old_report
