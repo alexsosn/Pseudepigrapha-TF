@@ -37,16 +37,19 @@ OCP also requires attribution to the individual editor identified for an edition
 
 The selected OCP XML snapshot contains English and French versions created by OCP's translation workflow. They live inside the upstream `static/docs/` XML scope. Their machine-generation and alignment provenance is a separate semantic concern from this corpus-level license record; Pseudepigrapha-TF does not invent a distinct copyright status for them. Their inclusion/provenance behavior is tracked independently from this license boundary.
 
-## Nonstandard source checkouts
+## Source-identity attestation and nonstandard checkouts
 
-The converter still supports research/custom source checkouts and `--upstream-commit` overrides. A source tuple other than the exact researched repository + commit above remains convertible, but Pseudepigrapha-TF does **not** guess that it has the same content license. Generated generic TF metadata records `contentLicenseStatus=unverified` and a source-tuple diagnostic, and omits the verified `contentLicense`, scope, and license-evidence fields.
+The CLI independently asks Git for the commit containing the supplied source directory. The verified CC-BY profile is emitted only when that detected checkout commit agrees with the recorded commit and the resulting source tuple is the researched OCP pin above.
+
+`--upstream-commit` remains available for research/custom provenance, but it cannot force a verified license claim. A non-Git source directory, a mismatching override, or any source tuple without a researched license profile remains convertible and is marked `sourceIdentityStatus=unverified` and/or `contentLicenseStatus=unverified`. Verified-only CC-BY fields are omitted and machine-readable diagnostics record the mismatch.
 
 A future OCP source refresh should add a new verified provenance profile only after checking the license evidence for that exact source tuple.
 
 ## Generated metadata fields
 
-For the exact supported OCP pin, generic Text-Fabric metadata records:
+For the exact supported OCP checkout, generic Text-Fabric metadata records:
 
+- `sourceIdentityStatus=verified`
 - `contentLicense=CC-BY-4.0`
 - `contentLicenseStatus=verified`
 - `contentLicenseUrl`
@@ -60,4 +63,4 @@ For the exact supported OCP pin, generic Text-Fabric metadata records:
 - `contentAttribution`
 - `contentCitation`
 
-`conversion-report.json` mirrors the same provenance in snake_case and independently checks that the verified/unverified metadata shape is consistent with the recorded source tuple. A contradictory verified license/source combination fails the semantic audit.
+`conversion-report.json` mirrors the same provenance in snake_case. The semantic audit checks that the verified/unverified license shape is consistent with the independently attested source-identity status; a mismatching or non-Git checkout cannot retain the verified CC-BY fields merely by supplying the supported SHA as an override.
