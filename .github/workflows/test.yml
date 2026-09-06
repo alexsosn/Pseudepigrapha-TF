@@ -184,33 +184,51 @@ jobs:
           raw_documents = json.loads(
               Path('/tmp/ocp/static/docs/intros.json').read_text(encoding='utf-8')
           )['documents']
-          tjob_metadata = A.work_metadata('TJob')
-          tjob_raw = raw_documents['TJob.xml']
-          assert tjob_metadata['source_file'] == 'TJob.xml'
-          assert tjob_metadata['metadata_title'] == tjob_raw['title']
-          assert tjob_metadata['metadata_version'] == tjob_raw['version']
-          assert tjob_metadata['fields'] == tjob_raw['fields']
-          assert tjob_metadata['citation'] == tjob_raw.get('citation')
-          assert tjob_metadata['has_text'] is True
-          assert tjob_metadata['metadata_only'] is False
+          work_by_source = {}
+          for node in api.F.otype.s('work'):
+              source_file = api.F.source_file.v(node)
+              assert source_file and source_file not in work_by_source, source_file
+              work_by_source[source_file] = api.F.ocp_book.v(node)
+          assert len(work_by_source) == 39
+          assert set(raw_documents) <= set(work_by_source)
 
+          # Full-corpus serialization parity: every committed public metadata
+          # document must survive TF save/reload byte-for-Unicode-value exactly.
+          for source_file, raw in raw_documents.items():
+              metadata = A.work_metadata(work_by_source[source_file])
+              assert metadata['source_file'] == source_file
+              assert metadata['metadata_title'] == raw['title'], source_file
+              assert metadata['metadata_version'] == raw['version'], source_file
+              assert list(metadata['fields']) == list(raw['fields']), source_file
+              assert metadata['fields'] == raw['fields'], source_file
+              assert metadata['citation'] == raw.get('citation'), source_file
+              has_text = bool((Path('/tmp/ocp/static/docs') / source_file).read_bytes().strip())
+              assert metadata['has_text'] is has_text, source_file
+              assert metadata['metadata_only'] is (not has_text), source_file
+
+          # XML documents without an intros.json record still have explicit work
+          # identity, but no fabricated scholarly metadata.
+          for source_file, work_id in work_by_source.items():
+              if source_file in raw_documents:
+                  continue
+              metadata = A.work_metadata(work_id)
+              assert metadata['source_file'] == source_file
+              assert metadata['metadata_title'] is None
+              assert metadata['metadata_version'] is None
+              assert metadata['fields'] == {}
+              assert metadata['citation'] is None
+              assert metadata['has_text'] is True
+              assert metadata['metadata_only'] is False
+
+          # Representative public API examples remain easy to inspect directly.
+          tjob_metadata = A.work_metadata('TJob')
+          assert tjob_metadata['fields'] == raw_documents['TJob.xml']['fields']
           macc_metadata = A.work_metadata('3Macc')
-          macc_raw = raw_documents['3Macc.xml']
-          assert macc_metadata['source_file'] == '3Macc.xml'
-          assert macc_metadata['metadata_title'] == macc_raw['title']
-          assert macc_metadata['fields'] == macc_raw['fields']
-          assert macc_metadata['citation'] == macc_raw.get('citation')
           assert macc_metadata['has_text'] is False
           assert macc_metadata['metadata_only'] is True
-
           esdl_metadata = A.work_metadata('Esdl')
-          assert esdl_metadata['source_file'] == 'Esdl.xml'
           assert esdl_metadata['metadata_title'] is None
-          assert esdl_metadata['metadata_version'] is None
-          assert esdl_metadata['fields'] == {}
-          assert esdl_metadata['citation'] is None
           assert esdl_metadata['has_text'] is True
-          assert esdl_metadata['metadata_only'] is False
 
           # 1 Enoch has four top-level OCP source textual versions. Generated
           # English/French versions are intentionally absent until #76.
