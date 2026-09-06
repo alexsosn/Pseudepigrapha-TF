@@ -14,6 +14,30 @@
 
 Descriptive fields such as `source_ref`, `unit_id`, `ms_abbrev`, `ms_name`, `ms_language`, and `ms_show` remain optional where the API already provides a neutral fallback. Selective loading therefore needs to preserve semantic distinctions, not every display field.
 
+## Document-level scholarly metadata
+
+When an OCP source directory contains the committed `intros.json` export, the converter creates exactly one `work` node for every OCP XML document identity. Textual `book` nodes and `version_metadata` nodes point to that document node through `version_of`. A work whose sibling XML is empty (currently `3Macc.xml` in the pinned source) is preserved as a metadata-only `work` node with one technical slot anchor but no fabricated textual version or section.
+
+The long introduction, bibliography, sigla, manuscript notes, and related source values live **only on the `work` node**, not on every textual version. This avoids duplicating large scholarly HTML for multi-version works.
+
+Text-Fabric 13.1 does not safely round-trip raw carriage returns in ordinary string features. Pseudepigrapha-TF therefore stores the exact upstream scalars/strings as JSON string values in `intro_*_json` features. This is a transport encoding, not normalization: after `json.loads`, CRLF, Unicode, tabs, literal backslashes, HTML, and explicitly empty source strings are recovered exactly. Missing upstream fields remain absent, which is distinct from a committed empty string (`""`).
+
+`Apparatus.work_metadata(work)` reverses that transport representation. It returns the OCP work id, source filename, metadata title/version, ordered public body fields as decoded strings, citation, and booleans indicating whether textual content exists and whether the work is metadata-only. A textual work with no `intros.json` record is still represented as a `work` node and returns `metadata_title=None`, `metadata_version=None`, an empty field mapping, and `citation=None`.
+
+For selective loading, `work_metadata()` requires `ocp_book`, `source_file`, `intro_field_order`, `intro_title_json`, `intro_version_json`, `intro_citation_json`, `is_metadata_only_work`, and the `version_of` edge. It also requires every `intro_<field>_json` feature named by the loaded work's `intro_field_order`. The full public body vocabulary is:
+
+- `intro_introduction_json`
+- `intro_provenance_json`
+- `intro_themes_json`
+- `intro_status_json`
+- `intro_manuscripts_json`
+- `intro_bibliography_json`
+- `intro_corrections_json`
+- `intro_sigla_json`
+- `intro_copyright_json`
+
+The converter always serializes this feature vocabulary when the document-work layer is enabled, even when a particular feature has no values in the current corpus. That keeps selective-load failures explicit instead of making feature-file presence depend on the current metadata distribution.
+
 ## `witness_text()`
 
 `Apparatus.witness_text(manuscript)` reconstructs all non-empty **standard unit readings** attributed to one manuscript in Text-Fabric corpus-unit order. In this global mode it requires:
