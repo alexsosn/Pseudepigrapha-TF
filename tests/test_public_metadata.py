@@ -8,7 +8,13 @@ import pytest
 from tf.fabric import Fabric
 
 from pseudepigrapha_tf.conversion import build_tf_data
-from pseudepigrapha_tf.metadata import WorkMetadata, load_public_metadata
+from pseudepigrapha_tf.metadata import (
+    WorkMetadata,
+    attach_public_metadata,
+    augment_conversion_report_with_public_metadata,
+    load_public_metadata,
+)
+from pseudepigrapha_tf.semantic_audit import build_conversion_report
 from pseudepigrapha_tf.source import load_source_directory
 from pseudepigrapha_tf.writer import write_tf
 
@@ -59,6 +65,14 @@ def _payload() -> dict:
     }
 
 
+def _build_with_metadata(docs: Path):
+    books, warnings = load_source_directory(docs)
+    metadata = load_public_metadata(docs)
+    data = build_tf_data(books)
+    attach_public_metadata(data, metadata)
+    return books, warnings, metadata, data
+
+
 def test_loader_maps_by_filename_and_preserves_sparse_scalars(tmp_path: Path):
     docs = _write_source(tmp_path, _payload())
     metadata = load_public_metadata(docs)
@@ -99,11 +113,9 @@ def test_loader_rejects_nonempty_xml_filename_identity_mismatch(tmp_path: Path):
 def test_document_metadata_nodes_and_api_preserve_exact_values_after_tf_reload(tmp_path: Path):
     payload = _payload()
     docs = _write_source(tmp_path, payload)
-    books, warnings = load_source_directory(docs)
+    _, warnings, metadata, data = _build_with_metadata(docs)
     assert any("Empty.xml" in warning for warning in warnings)
-    metadata = load_public_metadata(docs)
 
-    data = build_tf_data(books, public_metadata=metadata)
     metadata_nodes = [node for node, kind in data.node_features["otype"].items() if kind == "document_metadata"]
     assert len(metadata_nodes) == 2
 
@@ -133,12 +145,35 @@ def test_document_metadata_nodes_and_api_preserve_exact_values_after_tf_reload(t
 
 def test_graph_has_no_metadata_blob_duplication_across_textual_nodes(tmp_path: Path):
     docs = _write_source(tmp_path, _payload())
-    books, _ = load_source_directory(docs)
-    metadata = load_public_metadata(docs)
-    data = build_tf_data(books, public_metadata=metadata)
+    _, _, _, data = _build_with_metadata(docs)
 
     encoded_features = [name for name in data.node_features if name.startswith("intro_") and name.endswith("_json")]
     for feature in encoded_features:
         owners = set(data.node_features[feature])
         assert owners
         assert all(data.node_features["otype"][node] == "document_metadata" for node in owners)
+
+
+def test_independent_raw_json_audit_detects_metadata_tampering(tmp_path: Path):
+    docs = _write_source(tmp_path, _payload())
+    books, _, _, data = _build_with_metadata(docs)
+
+    report = augment_conversion_report_with_public_metadata(
+        build_conversion_report(docs, books, data), docs, data
+    )
+    assert report["status"] == "ok"
+    assert report["semantic_checks"]["public_metadata_values"] is True
+    assert report["source"]["public_metadata_documents"] == 2
+    assert report["graph"]["document_metadata"] == 2
+
+    one_node = next(
+        node
+        for node, kind in data.node_features["otype"].items()
+        if kind == "document_metadata" and data.node_features["ocp_book"].get(node) == "One"
+    )
+    data.node_features["intro_introduction_json"][one_node] = json.dumps("tampered")
+    bad = augment_conversion_report_with_public_metadata(
+        build_conversion_report(docs, books, data), docs, data
+    )
+    assert bad["status"] == "failed"
+    assert "public_metadata_values" in bad["failed_checks"]
