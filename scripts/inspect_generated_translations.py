@@ -3,9 +3,10 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import sys
-from collections import Counter
+from collections import Counter, defaultdict
 from pathlib import Path
 from xml.etree import ElementTree as ET
 
@@ -36,7 +37,16 @@ def _units(version: ET.Element) -> list[dict[str, object]]:
                 )
                 walk(child, (*path, number))
             elif tag == "unit":
-                result.append({"path": path, "id": child.get("id", "")})
+                reading = child.find("reading[@option='0']")
+                if reading is None:
+                    reading = child.find("reading")
+                result.append(
+                    {
+                        "path": path,
+                        "id": child.get("id", ""),
+                        "text": "".join(reading.itertext()) if reading is not None else "",
+                    }
+                )
 
     walk(text, ())
     return result
@@ -46,9 +56,13 @@ def _source_signature(version: ET.Element) -> UnitSignature:
     return tuple((tuple(unit["path"]), str(unit["id"])) for unit in _units(version))
 
 
-def _translation_signature(version: ET.Element) -> UnitSignature:
+def _language_prefix(version: ET.Element) -> str:
     language = (version.get("language") or "").lower()
-    prefix = "en_" if language == "english" else "fr_" if language == "french" else ""
+    return "en_" if language == "english" else "fr_" if language == "french" else ""
+
+
+def _translation_signature(version: ET.Element) -> UnitSignature:
+    prefix = _language_prefix(version)
     result: list[UnitIdentity] = []
     for unit in _units(version):
         unit_id = str(unit["id"])
@@ -60,6 +74,37 @@ def _translation_signature(version: ET.Element) -> UnitSignature:
 def _duplicates(values: list[object] | tuple[object, ...]) -> list[object]:
     counts = Counter(values)
     return sorted((value for value, count in counts.items() if count > 1), key=repr)
+
+
+def _text_digest(text: str) -> str:
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+
+def _translation_id_collisions(version: ET.Element) -> list[dict[str, object]]:
+    prefix = _language_prefix(version)
+    groups: dict[str, list[dict[str, object]]] = defaultdict(list)
+    for unit in _units(version):
+        generated_id = str(unit["id"])
+        source_id = generated_id[len(prefix) :] if prefix and generated_id.startswith(prefix) else generated_id
+        groups[source_id].append(unit)
+
+    collisions: list[dict[str, object]] = []
+    for source_id, rows in sorted(groups.items()):
+        if len(rows) < 2:
+            continue
+        texts = [str(row["text"]) for row in rows]
+        collisions.append(
+            {
+                "source_unit_id": source_id,
+                "occurrences": len(rows),
+                "paths": [row["path"] for row in rows],
+                "text_sha256": [_text_digest(text) for text in texts],
+                "all_injected_text_equal": len(set(texts)) == 1,
+                "empty_text_occurrences": sum(1 for text in texts if not text.strip()),
+                "placeholder_occurrences": sum(1 for text in texts if text.strip() == "[...]"),
+            }
+        )
+    return collisions
 
 
 def _version_record(index: int, version: ET.Element, *, translated: bool = False) -> dict[str, object]:
@@ -74,8 +119,10 @@ def _version_record(index: int, version: ET.Element, *, translated: bool = False
         "units": len(signature),
         "readings": len(readings),
         "empty_readings": sum(1 for reading in readings if not "".join(reading.itertext()).strip()),
+        "placeholder_readings": sum(1 for reading in readings if "".join(reading.itertext()).strip() == "[...]"),
         "duplicate_unit_identities": _duplicates(list(signature)),
         "duplicate_bare_unit_ids": _duplicates(bare_ids),
+        "generator_key_collisions": _translation_id_collisions(version) if translated else [],
     }
 
 
@@ -119,15 +166,19 @@ def inventory(source_dir: Path) -> dict[str, object]:
     language_counts: Counter[str] = Counter()
     language_unit_counts: Counter[str] = Counter()
     language_empty_counts: Counter[str] = Counter()
+    language_placeholder_counts: Counter[str] = Counter()
     genuine_modern_versions: list[dict[str, object]] = []
     ambiguous: list[dict[str, object]] = []
     unmatched: list[dict[str, object]] = []
     order_drift: list[dict[str, object]] = []
     source_duplicate_bare_ids: list[dict[str, object]] = []
     source_duplicate_identities: list[dict[str, object]] = []
+    generated_id_collisions: list[dict[str, object]] = []
+    generated_duplicate_identities: list[dict[str, object]] = []
     generated_total = 0
     generated_units = 0
     generated_empty_readings = 0
+    generated_placeholder_readings = 0
     generated_documents: set[str] = set()
     source_versions_total = 0
 
@@ -208,6 +259,10 @@ def inventory(source_dir: Path) -> dict[str, object]:
                 ambiguous.append(record)
             elif not bool(record["candidate_sources"][0]["sequence_equal"]):  # type: ignore[index]
                 order_drift.append(record)
+            if record["generator_key_collisions"]:
+                generated_id_collisions.append(record)
+            if record["duplicate_unit_identities"]:
+                generated_duplicate_identities.append(record)
             generated_records.append(record)
             generated_total += 1
             generated_documents.add(xml_path.name)
@@ -217,8 +272,11 @@ def inventory(source_dir: Path) -> dict[str, object]:
             generated_units += units
             readings = list(version.iter("reading"))
             empty_count = sum(1 for reading in readings if not "".join(reading.itertext()).strip())
+            placeholder_count = sum(1 for reading in readings if "".join(reading.itertext()).strip() == "[...]")
             language_empty_counts[target] += empty_count
+            language_placeholder_counts[target] += placeholder_count
             generated_empty_readings += empty_count
+            generated_placeholder_readings += placeholder_count
 
         files.append(
             {
@@ -235,12 +293,16 @@ def inventory(source_dir: Path) -> dict[str, object]:
         "generated_versions": generated_total,
         "generated_units": generated_units,
         "generated_empty_readings": generated_empty_readings,
+        "generated_placeholder_readings": generated_placeholder_readings,
         "generated_versions_by_language": dict(sorted(language_counts.items())),
         "generated_units_by_language": dict(sorted(language_unit_counts.items())),
         "generated_empty_readings_by_language": dict(sorted(language_empty_counts.items())),
+        "generated_placeholder_readings_by_language": dict(sorted(language_placeholder_counts.items())),
         "genuine_non_generated_english_french_versions": genuine_modern_versions,
         "source_versions_with_duplicate_bare_unit_ids": source_duplicate_bare_ids,
         "source_versions_with_duplicate_unit_identities": source_duplicate_identities,
+        "generated_versions_with_generator_key_collisions": generated_id_collisions,
+        "generated_versions_with_duplicate_unit_identities": generated_duplicate_identities,
         "unmatched_generated_versions": unmatched,
         "ambiguous_generated_versions": ambiguous,
         "generated_versions_with_order_drift": order_drift,
