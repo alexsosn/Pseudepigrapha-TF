@@ -1,7 +1,8 @@
 from __future__ import annotations
 
-from collections import Counter
 from types import SimpleNamespace
+
+import pytest
 
 from pseudepigrapha_tf import Apparatus, Translations
 
@@ -142,8 +143,11 @@ def test_translations_returns_occurrence_aligned_source_and_translation_text():
 
 def test_apparatus_default_witness_view_excludes_synthetic_translation_witness():
     api = translation_api()
-    # This directly exercises the witness collection used by passage/work_passage;
-    # the synthetic provenance node remains in TF but is not historical evidence.
     witnesses = Apparatus(api)._witnesses(2)
 
     assert "OCP-Trans" not in witnesses
+
+
+def test_apparatus_rejects_direct_generated_translation_passage():
+    with pytest.raises(ValueError, match="generated translation"):
+        Apparatus(translation_api()).passage("Demo__translation__French", "1", "1")
