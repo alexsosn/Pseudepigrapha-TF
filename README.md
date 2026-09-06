@@ -206,6 +206,7 @@ For an available passage in a selective Text-Fabric load, `passage()` / `work_pa
 - every annotated `<w>` in standard unit readings and its attributes; special orphan-reading mixed XML remains preserved verbatim in `reading_xml` because no unit/token locus is inferred for malformed source structure;
 - primary and alternative token reconstruction;
 - complete and unique `book/chapter/verse` coverage for the textual slot stream, including deterministic disambiguation of repeated exact upstream citations without changing their `source_ref`;
+- corpus-license provenance consistency: the exact supported OCP source tuple carries the researched verified profile, while other tuples cannot retain verified CC-BY fields;
 - graph size including `oslots` edge count.
 
 The report says `status: "ok"` only when every semantic check passes. Section coverage, ownership, source-structure validation, and special-anomaly scans are linear in their respective node/element/edge counts so the audit itself does not reintroduce the dense-scaling problem eliminated from the graph.
@@ -216,11 +217,17 @@ The report says `status: "ok"` only when every semantic check passes. Section co
 pytest
 ```
 
-The synthetic suite covers parser, graph, apparatus helpers, reading-token semantics on real Text-Fabric, passage-level witness coverage and declaration provenance, work-level multi-version retrieval, semantic parity, ownership-edge corruption, explicit source-structure and required-attribute drift rejection, ambiguous duplicate non-empty witness declarations at XML/raw-audit/direct-model boundaries plus abbreviation-less controls, preserved ellipsis/direct-reading anomalies and their corruption detection, legacy OCP, deep/non-numeric and duplicate references, omissions, empty source divisions, metadata-only versions, and reproducible paths. CI additionally installs real Text-Fabric, verifies node-type `T.text()` behavior and deep/duplicate `T.sectionFromNode()`/`T.nodeFromSection()` addresses, converts and audits the pinned complete OCP checkout (including the real Aristob/PssSol source anomalies and documented manuscript-language omissions), reloads the full dataset, exercises `Apparatus.passage("1En__Ethiopic", "1", "2")`, verifies witness declaration provenance, verifies that `Apparatus.work_passage("1En", "1", "2")` exposes all four real 1 Enoch versions, and verifies that real `TJob/Coptic` remains visible as metadata-only evidence.
+The synthetic suite covers parser, graph, apparatus helpers, reading-token semantics on real Text-Fabric, passage-level witness coverage and declaration provenance, work-level multi-version retrieval, semantic parity, ownership-edge corruption, explicit source-structure and required-attribute drift rejection, ambiguous duplicate non-empty witness declarations at XML/raw-audit/direct-model boundaries plus abbreviation-less controls, preserved ellipsis/direct-reading anomalies and their corruption detection, legacy OCP, deep/non-numeric and duplicate references, omissions, empty source divisions, metadata-only versions, corpus-license provenance and real-TF reload, and reproducible paths. CI additionally installs real Text-Fabric, verifies node-type `T.text()` behavior and deep/duplicate `T.sectionFromNode()`/`T.nodeFromSection()` addresses, converts and audits the pinned complete OCP checkout (including the real Aristob/PssSol source anomalies and documented manuscript-language omissions), reloads the full dataset, exercises `Apparatus.passage("1En__Ethiopic", "1", "2")`, verifies witness declaration provenance, verifies that `Apparatus.work_passage("1En", "1", "2")` exposes all four real 1 Enoch versions, and verifies that real `TJob/Coptic` remains visible as metadata-only evidence.
 
-## Licensing
+## Licensing and corpus provenance
 
-The converter code is MIT-licensed. OCP source editions have their own rights/provenance situation; this repository intentionally does not redistribute the XML or generated TF corpus. See `research.md` for the current distribution boundary.
+The converter code, tests, and repository-authored software are MIT-licensed; see `LICENSE` and `pyproject.toml`. The supported reproducible corpus build uses OCP commit `c939dcbacad78c5d18d2c4282cad23c47e19ac07`. OCP's dual-license clarification at commit `8c8c2c55a2c55ba4b23ac506956f98dcc25045b2` scopes GNU GPL v3 to OCP software and **CC BY 4.0** to text editions and TEI XML under `static/docs/`.
+
+For that exact source tuple, generated TF metadata records `contentLicense=CC-BY-4.0`, the exact upstream repository/SHA and license-evidence commit, the content scope, the MIT converter-software license, the upstream GPL software license, and OCP attribution/citation. `conversion-report.json` mirrors and audits those values. A nonstandard checkout remains convertible, but is marked `contentLicenseStatus=unverified` and receives no verified CC-BY claim.
+
+OCP requests attribution to the Online Critical Pseudepigrapha and to the individual editor named for an edition. The converter preserves per-work `citation`/`copyright` data from `intros.json` when present and source version/editor metadata independently of the corpus-level license record. See [`DATA_LICENSE.md`](DATA_LICENSE.md) for the exact source boundary, attribution guidance, and pinned upstream license evidence.
+
+This repository still does **not** redistribute the OCP XML or a generated TF corpus; the metadata above travels with a corpus produced by the converter.
 
 ## Public document metadata (`intros.json`)
 

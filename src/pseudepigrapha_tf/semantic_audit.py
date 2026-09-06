@@ -6,6 +6,7 @@ from pathlib import Path
 from . import audit as base
 from .graph import TFData
 from .model import Book
+from .provenance import corpus_license_provenance_is_consistent, report_provenance
 
 
 def _metadata_version_inventory(
@@ -368,9 +369,11 @@ def build_conversion_report(source_dir: str | Path, books: list[Book], data: TFD
     model_hashes = {book.source_path: book.source_sha256 for book in books}
     section_address_records = _section_address_records(data, node_index)
     section_address_collisions = _section_address_collisions_from_records(section_address_records)
+    generic = data.metadata.get("", {})
 
     checks = {
         "source_hashes": source_hashes == model_hashes,
+        "corpus_license_provenance": corpus_license_provenance_is_consistent(generic),
         "generated_translation_exclusions": base._canonical(raw_excluded_translations)
         == base._canonical(model_excluded_translations),
         "versions": base._canonical(raw["versions"]) == base._canonical(graph["versions"]),
@@ -462,7 +465,6 @@ def build_conversion_report(source_dir: str | Path, books: list[Book], data: TFD
         ),
     }
 
-    generic = data.metadata.get("", {})
     failed = [name for name, ok in checks.items() if not ok]
     return {
         "status": "ok" if not failed else "failed",
@@ -475,11 +477,7 @@ def build_conversion_report(source_dir: str | Path, books: list[Book], data: TFD
         "source": source_counts,
         "graph": graph_counts,
         "source_sha256": source_hashes,
-        "provenance": {
-            "upstream_repository": generic.get("upstreamRepository", ""),
-            "upstream_commit": generic.get("upstreamCommit", ""),
-            "converter_version": generic.get("converterVersion", ""),
-        },
+        "provenance": report_provenance(generic),
     }
 
 
