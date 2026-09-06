@@ -10,7 +10,7 @@ permissions:
 jobs:
   test:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -18,4 +18,52 @@ jobs:
           python-version: '3.12'
           cache: pip
       - run: pip install -e '.[dev]'
-      - run: pytest -q tests/test_public_metadata.py
+      - name: Full test suite
+        run: pytest -q
+      - name: Clone exact pinned upstream
+        run: |
+          git clone https://github.com/OnlineCriticalPseudepigrapha/Online-Critical-Pseudepigrapha.git /tmp/ocp
+          git -C /tmp/ocp checkout c939dcbacad78c5d18d2c4282cad23c47e19ac07
+      - name: Convert exact pinned upstream
+        run: |
+          pseudepigrapha-tf convert /tmp/ocp/static/docs \
+            --output /tmp/pseudepigrapha-tf/0.1 \
+            --upstream-commit c939dcbacad78c5d18d2c4282cad23c47e19ac07
+      - name: Verify public metadata parity and round-trip
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          from tf.fabric import Fabric
+          from pseudepigrapha_tf import WorkMetadata
+
+          source = json.loads(Path('/tmp/ocp/static/docs/intros.json').read_text(encoding='utf-8'))['documents']
+          assert len(source) == 32
+
+          report = json.loads(Path('/tmp/pseudepigrapha-tf/0.1/conversion-report.json').read_text(encoding='utf-8'))
+          assert report['status'] == 'ok', report['failed_checks']
+          assert report['semantic_checks']['public_metadata_documents'] is True
+          assert report['semantic_checks']['public_metadata_values'] is True
+          assert report['semantic_checks']['public_metadata_provenance'] is True
+          assert report['source']['public_metadata_documents'] == 32
+          assert report['graph']['document_metadata'] == 32
+          assert report['source']['public_metadata_scalars'] == report['graph']['public_metadata_scalars']
+          assert report['provenance']['intros_source'] == 'intros.json'
+          assert len(report['provenance']['intros_sha256']) == 64
+
+          TF = Fabric(locations=['/tmp/pseudepigrapha-tf/0.1'], modules=[''], silent='deep')
+          api = TF.load(' '.join(WorkMetadata.REQUIRED_FEATURES), silent='deep')
+          assert api is not False and not isinstance(api, bool)
+          assert len(api.F.otype.s('document_metadata')) == 32
+
+          works = WorkMetadata(api)
+          assert works.get('3Macc') == source['3Macc.xml']
+          assert not any(api.F.ocp_book.v(n) == '3Macc' for n in api.F.otype.s('book'))
+
+          tjob = works.get('TJob')
+          assert tjob == source['TJob.xml']
+          for field in ('introduction', 'manuscripts', 'bibliography'):
+              assert tjob['fields'][field].encode('utf-8') == source['TJob.xml']['fields'][field].encode('utf-8')
+          assert '\r\n' in source['TJob.xml']['fields']['bibliography']
+          assert '\r\n' in tjob['fields']['bibliography']
+          PY
