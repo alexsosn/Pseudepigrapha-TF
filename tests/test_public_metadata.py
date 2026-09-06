@@ -9,6 +9,7 @@ from tf.fabric import Fabric
 
 from pseudepigrapha_tf.conversion import build_tf_data
 from pseudepigrapha_tf.metadata import (
+    PUBLIC_METADATA_FIELDS,
     WorkMetadata,
     attach_public_metadata,
     augment_conversion_report_with_public_metadata,
@@ -52,7 +53,12 @@ def _payload() -> dict:
                     "introduction": rich,
                     "provenance": "",
                     "themes": None,
+                    "status": "<p>Current state.</p>",
+                    "manuscripts": rich,
                     "bibliography": '<h3>Works</h3>\r\n<ul><li>A &amp; B</li></ul>',
+                    "corrections": "<p>Corrections</p>",
+                    "sigla": "<p>Sigla α &amp; β</p>",
+                    "copyright": "<p>Copyright</p>",
                 },
             },
             "Empty.xml": {
@@ -73,7 +79,7 @@ def _build_with_metadata(docs: Path):
     return books, warnings, metadata, data
 
 
-def test_loader_maps_by_filename_and_preserves_sparse_scalars(tmp_path: Path):
+def test_loader_maps_by_filename_and_preserves_every_supported_field_and_sparse_scalars(tmp_path: Path):
     docs = _write_source(tmp_path, _payload())
     metadata = load_public_metadata(docs)
 
@@ -81,10 +87,17 @@ def test_loader_maps_by_filename_and_preserves_sparse_scalars(tmp_path: Path):
     assert one.title == "JSON title deliberately differs"
     assert one.version == 1.0
     assert one.citation == '<p>Cite <em>One</em>.</p>'
+    assert set(one.fields) == set(PUBLIC_METADATA_FIELDS)
     assert one.fields["introduction"].endswith("</ul>")
     assert one.fields["provenance"] == ""
     assert one.fields["themes"] is None
-    assert "status" not in one.fields
+    assert one.fields["manuscripts"].startswith("<h3>")
+    assert one.fields["corrections"] == "<p>Corrections</p>"
+    assert one.fields["sigla"] == "<p>Sigla α &amp; β</p>"
+    assert one.fields["copyright"] == "<p>Copyright</p>"
+
+    empty = metadata.documents["Empty.xml"]
+    assert set(empty.fields) == {"status"}
     assert metadata.source_sha256 == hashlib.sha256((docs / "intros.json").read_bytes()).hexdigest()
 
 
@@ -139,8 +152,11 @@ def test_document_metadata_nodes_and_api_preserve_exact_values_after_tf_reload(t
     works = WorkMetadata(api)
     one = works.get("One")
     assert one == payload["documents"]["One.xml"]
+    assert works.get("One.xml") == payload["documents"]["One.xml"]
     assert one["fields"]["introduction"].encode("utf-8") == payload["documents"]["One.xml"]["fields"]["introduction"].encode("utf-8")
+    assert set(one["fields"]) == set(PUBLIC_METADATA_FIELDS)
     assert works.get("Empty") == payload["documents"]["Empty.xml"]
+    assert set(works.get("Empty")["fields"]) == {"status"}
 
 
 def test_graph_has_no_metadata_blob_duplication_across_textual_nodes(tmp_path: Path):
