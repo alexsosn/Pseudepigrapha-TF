@@ -11,6 +11,26 @@ from .semantic_audit import build_conversion_report as _build_core_conversion_re
 from .semantic_audit import write_conversion_report
 from .source import INTRO_FIELDS
 
+_GRAPH_METADATA_FEATURES = (
+    "has_intro_metadata",
+    "intro_title_json",
+    "intro_version_json",
+    "intro_field_order",
+    "intro_citation_json",
+    *(f"intro_{name}_json" for name in INTRO_FIELDS),
+)
+
+
+def _raw_object_without_duplicate_keys(pairs: list[tuple[str, object]]) -> dict[str, object]:
+    """Reject duplicate raw JSON keys without reusing the conversion loader."""
+
+    result: dict[str, object] = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError(f"duplicate key in raw intros.json during semantic audit: {key!r}")
+        result[key] = value
+    return result
+
 
 def _raw_document_metadata(source_dir: Path) -> tuple[dict[str, object], list[dict[str, object]]]:
     """Read raw committed intros.json independently of the conversion source model."""
@@ -18,7 +38,10 @@ def _raw_document_metadata(source_dir: Path) -> tuple[dict[str, object], list[di
     path = source_dir / "intros.json"
     if not path.is_file():
         return {}, []
-    payload = json.loads(path.read_text(encoding="utf-8"))
+    payload = json.loads(
+        path.read_text(encoding="utf-8"),
+        object_pairs_hook=_raw_object_without_duplicate_keys,
+    )
     if not isinstance(payload, dict):
         raise ValueError("raw intros.json root must be an object during semantic audit")
     meta = payload.get("_meta", {})
@@ -66,17 +89,42 @@ def _decode_feature(
 
 
 def _graph_document_metadata(data: TFData) -> tuple[list[dict[str, object]], list[dict[str, object]]]:
-    """Decode graph metadata without consulting the parsed metadata catalog."""
+    """Decode every graph metadata value without consulting the parsed catalog."""
 
     errors: list[dict[str, object]] = []
+    otype = data.node_features.get("otype", {})
     source_files = data.node_features.get("source_file", {})
-    titles = data.node_features.get("intro_title_json", {})
-    field_orders = data.node_features.get("intro_field_order", {})
     citations = data.node_features.get("intro_citation_json", {})
-    records: list[dict[str, object]] = []
+    intro_flag = data.node_features.get("has_intro_metadata", {})
 
-    for node in sorted(titles):
+    candidates: set[int] = set()
+    for feature in _GRAPH_METADATA_FEATURES:
+        candidates.update(data.node_features.get(feature, {}))
+
+    records: list[dict[str, object]] = []
+    for node in sorted(candidates):
+        if otype.get(node) != "work":
+            errors.append(
+                {
+                    "node": node,
+                    "feature": "otype",
+                    "error": "metadata_on_non_work",
+                }
+            )
+            continue
+
         source_file = str(source_files.get(node, ""))
+        if not source_file:
+            errors.append({"node": node, "feature": "source_file", "error": "missing"})
+        if intro_flag.get(node) != 1:
+            errors.append(
+                {
+                    "node": node,
+                    "feature": "has_intro_metadata",
+                    "error": "missing_or_invalid_flag",
+                }
+            )
+
         title = _decode_feature(data, "intro_title_json", node, errors, required=True)
         version = _decode_feature(data, "intro_version_json", node, errors, required=True)
         order = _decode_feature(data, "intro_field_order", node, errors, required=True)
@@ -88,10 +136,16 @@ def _graph_document_metadata(data: TFData) -> tuple[list[dict[str, object]], lis
         if len(order) != len(set(order)):
             errors.append({"node": node, "feature": "intro_field_order", "error": "duplicate_field"})
 
+        declared_fields = set(order)
         fields: list[tuple[str, object]] = []
         for name in order:
             value = _decode_feature(data, f"intro_{name}_json", node, errors, required=True)
             fields.append((name, value))
+        for name in INTRO_FIELDS:
+            feature = f"intro_{name}_json"
+            if name not in declared_fields and node in data.node_features.get(feature, {}):
+                errors.append({"node": node, "feature": feature, "error": "unlisted_value"})
+
         citation = (
             _decode_feature(data, "intro_citation_json", node, errors)
             if node in citations
@@ -106,6 +160,18 @@ def _graph_document_metadata(data: TFData) -> tuple[list[dict[str, object]], lis
                 "citation": citation,
             }
         )
+
+    source_counts = Counter(str(record["source_file"]) for record in records)
+    for source_file, count in sorted(source_counts.items()):
+        if count > 1:
+            errors.append(
+                {
+                    "source_file": source_file,
+                    "error": "duplicate_source_file",
+                    "count": count,
+                }
+            )
+
     return sorted(records, key=lambda record: str(record["source_file"])), errors
 
 
