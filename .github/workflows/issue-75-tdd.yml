@@ -22,4 +22,4 @@ jobs:
           python-version: '3.12'
           cache: pip
       - run: pip install -e '.[dev]'
-      - run: pytest -q tests/test_historical_classifications.py
+      - run: pytest -q tests/test_historical_classifications.py tests/test_historical_classification_parity.py
