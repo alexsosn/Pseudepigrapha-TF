@@ -39,15 +39,17 @@ The selected OCP XML snapshot contains English and French versions created by OC
 
 ## Source-identity attestation and nonstandard checkouts
 
-The CLI independently asks Git for the commit containing the supplied source directory. The verified CC-BY profile is emitted only when that detected checkout commit agrees with the recorded commit and the resulting source tuple is the researched OCP pin above.
+The CLI independently checks both the Git commit containing the supplied source directory and the cleanliness of that directory. The verified CC-BY profile is emitted only when the detected checkout commit agrees with the recorded commit, the source directory has no tracked, untracked, or ignored filesystem changes, and the resulting source tuple is the researched OCP pin above.
 
-`--upstream-commit` remains available for research/custom provenance, but it cannot force a verified license claim. A non-Git source directory, a mismatching override, or any source tuple without a researched license profile remains convertible and is marked `sourceIdentityStatus=unverified` and/or `contentLicenseStatus=unverified`. Verified-only CC-BY fields are omitted and machine-readable diagnostics record the mismatch.
+`--upstream-commit` remains available for research/custom provenance, but it cannot force a verified license claim. A non-Git source directory, a mismatching override, a dirty source directory, or any source tuple without a researched license profile remains convertible and is marked `sourceIdentityStatus=unverified` and/or `contentLicenseStatus=unverified`. Verified-only CC-BY fields are omitted and machine-readable diagnostics record the mismatch or dirty-tree condition.
+
+The cleanliness rule is intentionally conservative because the converter reads source files from the filesystem. An untracked XML file or a local edit means the converted bytes are no longer proven to be the pinned upstream snapshot even when Git HEAD itself still equals the supported SHA.
 
 A future OCP source refresh should add a new verified provenance profile only after checking the license evidence for that exact source tuple.
 
 ## Generated metadata fields
 
-For the exact supported OCP checkout, generic Text-Fabric metadata records:
+For the exact supported, clean OCP checkout, generic Text-Fabric metadata records:
 
 - `sourceIdentityStatus=verified`
 - `contentLicense=CC-BY-4.0`
@@ -63,4 +65,4 @@ For the exact supported OCP checkout, generic Text-Fabric metadata records:
 - `contentAttribution`
 - `contentCitation`
 
-`conversion-report.json` mirrors the same provenance in snake_case. The semantic audit checks that the verified/unverified license shape is consistent with the independently attested source-identity status; a mismatching or non-Git checkout cannot retain the verified CC-BY fields merely by supplying the supported SHA as an override.
+`conversion-report.json` mirrors the same provenance in snake_case. The semantic audit checks that the verified/unverified license shape is consistent with the independently attested source-identity status; a mismatching, dirty, or non-Git checkout cannot retain the verified CC-BY fields merely by supplying the supported SHA as an override.
