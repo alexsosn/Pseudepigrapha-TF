@@ -1,0 +1,230 @@
+name: issue-75-research
+
+on:
+  push:
+    branches: [issue-75-historical-classifications]
+
+permissions:
+  contents: write
+
+jobs:
+  extract-public-classifications:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: issue-75-historical-classifications
+      - name: Clone exact historical and current upstream
+        run: |
+          git clone https://github.com/OnlineCriticalPseudepigrapha/Online-Critical-Pseudepigrapha.git /tmp/ocp-historical
+          git -C /tmp/ocp-historical checkout d722fb6
+          git clone --depth 1 https://github.com/OnlineCriticalPseudepigrapha/Online-Critical-Pseudepigrapha.git /tmp/ocp-current
+      - name: Extract only public classification tables and inventory
+        run: |
+          python - <<'PY'
+          from __future__ import annotations
+
+          import collections
+          import hashlib
+          import json
+          import re
+          import sqlite3
+          import subprocess
+          from pathlib import Path
+
+          hist = Path('/tmp/ocp-historical')
+          current = Path('/tmp/ocp-current')
+          db_path = hist / 'databases/storage.sqlite'
+          out_dir = Path('research/issue-75')
+          out_dir.mkdir(parents=True, exist_ok=True)
+
+          historical_commit = subprocess.check_output(
+              ['git', '-C', str(hist), 'rev-parse', 'HEAD'], text=True
+          ).strip()
+          historical_date = subprocess.check_output(
+              ['git', '-C', str(hist), 'show', '-s', '--format=%cI', 'HEAD'], text=True
+          ).strip()
+          current_commit = subprocess.check_output(
+              ['git', '-C', str(current), 'rev-parse', 'HEAD'], text=True
+          ).strip()
+
+          conn = sqlite3.connect(f'file:{db_path}?mode=ro', uri=True)
+          conn.row_factory = sqlite3.Row
+          conn.execute('PRAGMA query_only=ON')
+
+          expected_columns = {
+              'docs': {'id', 'name', 'filename', 'genres', 'figures'},
+              'genres': {'id', 'genre'},
+              'biblical_figures': {'id', 'figure'},
+          }
+          schemas = {}
+          for table, needed in expected_columns.items():
+              cols = [row['name'] for row in conn.execute(f'PRAGMA table_info({table})')]
+              missing = needed - set(cols)
+              if missing:
+                  raise SystemExit(f'{table}: missing required columns {sorted(missing)}')
+              schemas[table] = sorted(needed)
+
+          docs = [dict(row) for row in conn.execute(
+              'SELECT id, name, filename, genres, figures FROM docs ORDER BY id'
+          )]
+          genres = [dict(row) for row in conn.execute(
+              'SELECT id, genre FROM genres ORDER BY id'
+          )]
+          figures = [dict(row) for row in conn.execute(
+              'SELECT id, figure FROM biblical_figures ORDER BY id'
+          )]
+          conn.close()
+
+          def parse_refs(raw, *, location):
+              if raw is None or raw == '':
+                  return [], None
+              if not isinstance(raw, str):
+                  return [], f'{location}: non-string list reference {type(raw).__name__}'
+              parts = [part for part in raw.split('|') if part]
+              if not parts or any(not re.fullmatch(r'\d+', part) for part in parts):
+                  return [], f'{location}: unsupported list-reference encoding {raw!r}'
+              return [int(part) for part in parts], None
+
+          genre_by_id = {row['id']: row['genre'] for row in genres}
+          figure_by_id = {row['id']: row['figure'] for row in figures}
+          parse_errors = []
+          dangling_genres = []
+          dangling_figures = []
+          assignments = []
+
+          for doc in docs:
+              genre_ids, error = parse_refs(doc['genres'], location=f"docs[{doc['id']}].genres")
+              if error:
+                  parse_errors.append(error)
+              figure_ids, error = parse_refs(doc['figures'], location=f"docs[{doc['id']}].figures")
+              if error:
+                  parse_errors.append(error)
+
+              doc_genres = []
+              for ref in genre_ids:
+                  if ref not in genre_by_id:
+                      dangling_genres.append({'doc_id': doc['id'], 'filename': doc['filename'], 'genre_id': ref})
+                  else:
+                      doc_genres.append({'id': ref, 'label': genre_by_id[ref]})
+              doc_figures = []
+              for ref in figure_ids:
+                  if ref not in figure_by_id:
+                      dangling_figures.append({'doc_id': doc['id'], 'filename': doc['filename'], 'figure_id': ref})
+                  else:
+                      doc_figures.append({'id': ref, 'label': figure_by_id[ref]})
+
+              assignments.append({
+                  'doc_id': doc['id'],
+                  'name': doc['name'],
+                  'filename': doc['filename'],
+                  'genres_raw': doc['genres'],
+                  'figures_raw': doc['figures'],
+                  'genres': doc_genres,
+                  'biblical_figures': doc_figures,
+              })
+
+          current_xml = sorted(
+              p.name for p in (current / 'static/docs').glob('*.xml') if not p.name.startswith('.')
+          )
+          historical_filenames = [row['filename'] for row in docs if row['filename']]
+          exact_matches = sorted(set(historical_filenames) & set(current_xml))
+          suffix_matches = sorted(
+              filename for filename in historical_filenames
+              if filename not in current_xml and f'{filename}.xml' in current_xml
+          )
+          stale = sorted(
+              filename for filename in historical_filenames
+              if filename not in current_xml and f'{filename}.xml' not in current_xml
+          )
+          current_without_historical = sorted(
+              filename for filename in current_xml
+              if filename not in historical_filenames and filename.removesuffix('.xml') not in historical_filenames
+          )
+
+          def duplicate_labels(rows, key):
+              grouped = collections.defaultdict(list)
+              for row in rows:
+                  grouped[row[key]].append(row['id'])
+              return [
+                  {'label': label, 'ids': ids}
+                  for label, ids in sorted(grouped.items(), key=lambda item: str(item[0]))
+                  if len(ids) > 1
+              ]
+
+          grep = subprocess.run(
+              ['git', '-C', str(current), 'grep', '-l', '-E', r'docs\.genres|docs\.figures|biblical_figures|define_table\(.genres'],
+              text=True, capture_output=True, check=False,
+          )
+          current_classification_mentions = sorted(
+              line for line in grep.stdout.splitlines() if line.strip()
+          )
+          exporter_text = (current / 'scripts/export_intros.py').read_text(encoding='utf-8')
+
+          source_extract = {
+              'source': {
+                  'repository': 'OnlineCriticalPseudepigrapha/Online-Critical-Pseudepigrapha',
+                  'historical_commit': historical_commit,
+                  'historical_commit_date': historical_date,
+                  'storage_sqlite_git_blob': '17b6931b5c2c37289e23d28c598d4bd0b4950075',
+                  'storage_sqlite_sha256': hashlib.sha256(db_path.read_bytes()).hexdigest(),
+                  'consulted_tables': schemas,
+                  'excluded_table_policy': 'No auth_*, draft*, user/email, or unrelated application rows queried.',
+              },
+              'genres': genres,
+              'biblical_figures': figures,
+              'docs': assignments,
+          }
+
+          summary = {
+              'historical_commit': historical_commit,
+              'historical_commit_date': historical_date,
+              'current_upstream_commit_checked': current_commit,
+              'published_docs': len(docs),
+              'docs_with_genres': sum(bool(row['genres']) for row in assignments),
+              'docs_with_biblical_figures': sum(bool(row['biblical_figures']) for row in assignments),
+              'genre_assignment_count': sum(len(row['genres']) for row in assignments),
+              'biblical_figure_assignment_count': sum(len(row['biblical_figures']) for row in assignments),
+              'genre_labels': [row['genre'] for row in genres],
+              'biblical_figure_labels': [row['figure'] for row in figures],
+              'duplicate_genre_labels': duplicate_labels(genres, 'genre'),
+              'duplicate_biblical_figure_labels': duplicate_labels(figures, 'figure'),
+              'empty_genre_labels': [row['id'] for row in genres if row['genre'] in (None, '')],
+              'empty_biblical_figure_labels': [row['id'] for row in figures if row['figure'] in (None, '')],
+              'parse_errors': parse_errors,
+              'dangling_genre_references': dangling_genres,
+              'dangling_biblical_figure_references': dangling_figures,
+              'duplicate_doc_filenames': [
+                  filename for filename, count in collections.Counter(historical_filenames).items() if count > 1
+              ],
+              'mapping': {
+                  'current_xml_count': len(current_xml),
+                  'exact_filename_matches': exact_matches,
+                  'historical_names_matching_after_dot_xml_only': suffix_matches,
+                  'historical_unmapped': stale,
+                  'current_xml_without_historical_row': current_without_historical,
+              },
+              'current_upstream': {
+                  'classification_code_mentions': current_classification_mentions,
+                  'export_intros_mentions_genres': 'genres' in exporter_text,
+                  'export_intros_mentions_figures': 'figures' in exporter_text,
+              },
+          }
+
+          (out_dir / 'public-source-extract.json').write_text(
+              json.dumps(source_extract, ensure_ascii=False, indent=2) + '\n', encoding='utf-8'
+          )
+          (out_dir / 'inventory.json').write_text(
+              json.dumps(summary, ensure_ascii=False, indent=2) + '\n', encoding='utf-8'
+          )
+          print(json.dumps(summary, ensure_ascii=False, indent=2))
+          PY
+      - name: Commit public-only research artifacts
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add research/issue-75/public-source-extract.json research/issue-75/inventory.json
+          git commit -m 'Record issue 75 public classification inventory'
+          git push origin HEAD:issue-75-historical-classifications
