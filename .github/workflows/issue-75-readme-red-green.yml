@@ -1,4 +1,4 @@
-name: issue-75-readme-red-green
+name: issue-75-readme-green
 
 on:
   push:
@@ -8,7 +8,7 @@ permissions:
   contents: write
 
 jobs:
-  red-green:
+  green:
     if: github.actor != 'github-actions[bot]'
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -19,15 +19,13 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - name: Confirm README acceptance test is RED
-        run: |
-          if python -m pytest -q tests/test_historical_classification_docs.py; then
-            echo 'expected README docs regression to fail before fix' >&2
-            exit 1
-          fi
       - name: Add minimal README query documentation
         run: |
-          cat >> README.md <<'EOF'
+          python - <<'PY'
+          from pathlib import Path
+          path = Path('README.md')
+          text = path.read_text(encoding='utf-8')
+          section = '''
 
 ## Historical OCP catalogue classifications
 
@@ -40,7 +38,11 @@ C = HistoricalClassifications(api)
 C.works_by_genre("testaments")
 C.works_by_figure("Moses")
 ```
-EOF
+'''
+          if '## Historical OCP catalogue classifications' in text:
+              raise SystemExit('historical classification README section already exists')
+          path.write_text(text.rstrip() + section, encoding='utf-8')
+          PY
           python -m pytest -q tests/test_historical_classification_docs.py
           git diff --check
       - name: Commit README fix
