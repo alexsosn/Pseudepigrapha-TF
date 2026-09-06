@@ -1,0 +1,62 @@
+name: issue-75-fixture
+
+on:
+  push:
+    branches: [issue-75-historical-classifications]
+
+permissions:
+  contents: write
+
+jobs:
+  generate:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: issue-75-historical-classifications
+      - name: Derive minimal public runtime fixture
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          source_path = Path('research/issue-75/public-source-extract.json')
+          source = json.loads(source_path.read_text(encoding='utf-8'))
+          src = source['source']
+          payload = {
+              'source': {
+                  'repository': src['repository'],
+                  'historical_commit': src['historical_commit'],
+                  'historical_commit_date': src['historical_commit_date'],
+                  'storage_sqlite_git_blob': src['storage_sqlite_git_blob'],
+                  'storage_sqlite_sha256': src['storage_sqlite_sha256'],
+                  'status': 'historical OCP catalogue snapshot (2017)',
+              },
+              'genres': [
+                  {'id': row['id'], 'label': row['genre']}
+                  for row in source['genres']
+              ],
+              'biblical_figures': [
+                  {'id': row['id'], 'label': row['figure']}
+                  for row in source['biblical_figures']
+              ],
+              'documents': [
+                  {
+                      'historical_doc_id': row['doc_id'],
+                      'work_id': row['filename'],
+                      'genre_ids': [item['id'] for item in row['genres']],
+                      'biblical_figure_ids': [item['id'] for item in row['biblical_figures']],
+                  }
+                  for row in source['docs']
+              ],
+          }
+          out = Path('src/pseudepigrapha_tf/data/ocp_classifications_2017.json')
+          out.parent.mkdir(parents=True, exist_ok=True)
+          out.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
+          PY
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add src/pseudepigrapha_tf/data/ocp_classifications_2017.json
+          git commit -m 'Add public-only historical OCP classification fixture'
+          git push origin HEAD:issue-75-historical-classifications
