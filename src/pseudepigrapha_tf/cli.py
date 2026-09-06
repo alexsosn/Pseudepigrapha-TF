@@ -15,7 +15,7 @@ from .metadata import (
 )
 from .provenance import attest_corpus_license_source_identity
 from .semantic_audit import build_conversion_report, write_conversion_report
-from .source import detect_git_commit, load_source_directory
+from .source import detect_git_commit, git_source_is_clean, load_source_directory
 from .writer import _write_prevalidated_tf
 
 UPSTREAM_REPOSITORY = "https://github.com/OnlineCriticalPseudepigrapha/Online-Critical-Pseudepigrapha"
@@ -67,6 +67,7 @@ def main(argv: list[str] | None = None) -> int:
         raise SystemExit("no non-empty OCP XML files found")
 
     detected_commit = detect_git_commit(args.source)
+    source_tree_clean = git_source_is_clean(args.source) if detected_commit else False
     upstream_commit = args.upstream_commit if args.upstream_commit is not None else detected_commit
     data = build_tf_data(
         books,
@@ -74,7 +75,11 @@ def main(argv: list[str] | None = None) -> int:
         upstream_commit=upstream_commit,
         converter_version=__version__,
     )
-    attest_corpus_license_source_identity(data.metadata.setdefault("", {}), detected_commit)
+    attest_corpus_license_source_identity(
+        data.metadata.setdefault("", {}),
+        detected_commit,
+        source_tree_clean=source_tree_clean,
+    )
     identity_diagnostic = data.metadata[""].get("sourceIdentityDiagnostic")
     if identity_diagnostic:
         source_warnings.append(identity_diagnostic)
