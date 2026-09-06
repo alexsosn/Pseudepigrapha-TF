@@ -7,6 +7,11 @@ from tempfile import TemporaryDirectory
 from time import perf_counter
 
 from . import __version__
+from .classifications import (
+    attach_historical_classifications,
+    augment_conversion_report_with_historical_classifications,
+    load_historical_classifications,
+)
 from .conversion import build_tf_data
 from .metadata import (
     attach_public_metadata,
@@ -25,7 +30,7 @@ def _parser() -> argparse.ArgumentParser:
     sub = parser.add_subparsers(dest="command", required=True)
     convert = sub.add_parser(
         "convert",
-        help="convert all direct *.xml files and public intros.json metadata in an OCP docs directory",
+        help="convert all direct *.xml files plus public OCP work metadata in an OCP docs directory",
     )
     convert.add_argument("source", type=Path, help="path to OCP static/docs")
     convert.add_argument("--output", type=Path, default=Path("tf/0.1"), help="Text-Fabric output directory")
@@ -61,6 +66,11 @@ def main(argv: list[str] | None = None) -> int:
         if (args.source / "intros.json").is_file()
         else None
     )
+    historical_classifications = (
+        load_historical_classifications()
+        if public_metadata is not None
+        else None
+    )
     stage_started = _stage("load_source", stage_started)
     if not books:
         raise SystemExit("no non-empty OCP XML files found")
@@ -74,6 +84,8 @@ def main(argv: list[str] | None = None) -> int:
     )
     if public_metadata is not None:
         attach_public_metadata(data, public_metadata)
+    if historical_classifications is not None:
+        attach_historical_classifications(data, historical_classifications)
     stage_started = _stage("build_graph", stage_started)
     for warning in [*source_warnings, *data.warnings]:
         print(f"warning: {warning}")
@@ -82,6 +94,8 @@ def main(argv: list[str] | None = None) -> int:
     report = build_conversion_report(args.source, books, data)
     if public_metadata is not None:
         report = augment_conversion_report_with_public_metadata(report, args.source, data)
+    if historical_classifications is not None:
+        report = augment_conversion_report_with_historical_classifications(report, data)
     stage_started = _stage("semantic_audit", stage_started)
     if report["status"] != "ok":
         write_conversion_report(report, report_path)
@@ -120,11 +134,17 @@ def main(argv: list[str] | None = None) -> int:
         1 for kind in data.node_features.get("otype", {}).values() if kind == "document_metadata"
     )
     metadata_summary = f", {metadata_count} public metadata records" if public_metadata is not None else ""
+    classification_summary = (
+        f", {len(historical_classifications.documents)} historical classification records"
+        if historical_classifications is not None
+        else ""
+    )
     print(f"timing: total {perf_counter() - total_started:.3f}s", flush=True)
     print(
         f"converted {len(books)} OCP files to {args.output} "
         f"({data.max_slot} word slots, {data.max_node} total nodes, "
-        f"{data.oslots_edge_count} oslots edges{metadata_summary}); parity report: {report_path}"
+        f"{data.oslots_edge_count} oslots edges{metadata_summary}{classification_summary}); "
+        f"parity report: {report_path}"
     )
     return 0
 
