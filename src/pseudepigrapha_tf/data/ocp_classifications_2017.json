@@ -1,0 +1,438 @@
+{
+  "source": {
+    "repository": "OnlineCriticalPseudepigrapha/Online-Critical-Pseudepigrapha",
+    "historical_commit": "d722fb62a48782ced67c678dc111cfb1b391cc89",
+    "historical_commit_date": "2017-10-30T20:32:12-04:00",
+    "storage_sqlite_git_blob": "17b6931b5c2c37289e23d28c598d4bd0b4950075",
+    "storage_sqlite_sha256": "85f039815cb0b814dc896654115c0de59cdeb7492d94064051cf7e23e0712283",
+    "status": "historical OCP catalogue snapshot (2017)"
+  },
+  "genres": [
+    {
+      "id": 1,
+      "label": "apocalypses and visionary texts"
+    },
+    {
+      "id": 2,
+      "label": "psalms and hymns"
+    },
+    {
+      "id": 3,
+      "label": "testaments"
+    },
+    {
+      "id": 4,
+      "label": "parabiblical works (re-written Bible)"
+    },
+    {
+      "id": 5,
+      "label": "lives and biographies"
+    },
+    {
+      "id": 6,
+      "label": "histories and history-like narratives"
+    },
+    {
+      "id": 7,
+      "label": "drama"
+    },
+    {
+      "id": 8,
+      "label": "uncertain genre"
+    },
+    {
+      "id": 9,
+      "label": "philosophical and theological discourses"
+    },
+    {
+      "id": 10,
+      "label": "epic poetry"
+    },
+    {
+      "id": 11,
+      "label": "prophecy"
+    }
+  ],
+  "biblical_figures": [
+    {
+      "id": 1,
+      "label": "Adam"
+    },
+    {
+      "id": 2,
+      "label": "Eve"
+    },
+    {
+      "id": 3,
+      "label": "Baruch"
+    },
+    {
+      "id": 4,
+      "label": "Enoch"
+    },
+    {
+      "id": 5,
+      "label": "Solomon"
+    },
+    {
+      "id": 6,
+      "label": "Moses"
+    },
+    {
+      "id": 7,
+      "label": "Rechabites"
+    },
+    {
+      "id": 8,
+      "label": "Jacob"
+    },
+    {
+      "id": 9,
+      "label": "Job"
+    },
+    {
+      "id": 10,
+      "label": "Joseph"
+    },
+    {
+      "id": 11,
+      "label": "Sibyl"
+    },
+    {
+      "id": 12,
+      "label": "Prophets"
+    },
+    {
+      "id": 13,
+      "label": "Ezra"
+    },
+    {
+      "id": 14,
+      "label": "Abraham"
+    },
+    {
+      "id": 15,
+      "label": "Jeremiah"
+    },
+    {
+      "id": 16,
+      "label": "Ezekiel"
+    },
+    {
+      "id": 17,
+      "label": "Amram"
+    }
+  ],
+  "documents": [
+    {
+      "historical_doc_id": 1,
+      "work_id": "TJob",
+      "genre_ids": [
+        3
+      ],
+      "biblical_figure_ids": [
+        9
+      ]
+    },
+    {
+      "historical_doc_id": 2,
+      "work_id": "1En",
+      "genre_ids": [
+        1
+      ],
+      "biblical_figure_ids": [
+        4
+      ]
+    },
+    {
+      "historical_doc_id": 3,
+      "work_id": "TSol",
+      "genre_ids": [
+        3
+      ],
+      "biblical_figure_ids": [
+        5
+      ]
+    },
+    {
+      "historical_doc_id": 4,
+      "work_id": "TAbr",
+      "genre_ids": [
+        3
+      ],
+      "biblical_figure_ids": [
+        14
+      ]
+    },
+    {
+      "historical_doc_id": 5,
+      "work_id": "Amram",
+      "genre_ids": [
+        1
+      ],
+      "biblical_figure_ids": [
+        17
+      ]
+    },
+    {
+      "historical_doc_id": 6,
+      "work_id": "Aristob",
+      "genre_ids": [
+        9
+      ],
+      "biblical_figure_ids": [
+        6
+      ]
+    },
+    {
+      "historical_doc_id": 7,
+      "work_id": "3Bar",
+      "genre_ids": [
+        1
+      ],
+      "biblical_figure_ids": [
+        3
+      ]
+    },
+    {
+      "historical_doc_id": 8,
+      "work_id": "ApocrEzek",
+      "genre_ids": [
+        11
+      ],
+      "biblical_figure_ids": [
+        16
+      ]
+    },
+    {
+      "historical_doc_id": 10,
+      "work_id": "Jub",
+      "genre_ids": [
+        4
+      ],
+      "biblical_figure_ids": [
+        6
+      ]
+    },
+    {
+      "historical_doc_id": 11,
+      "work_id": "Mois",
+      "genre_ids": [
+        1,
+        4,
+        3
+      ],
+      "biblical_figure_ids": [
+        6
+      ]
+    },
+    {
+      "historical_doc_id": 12,
+      "work_id": "PhEPoet",
+      "genre_ids": [
+        10
+      ],
+      "biblical_figure_ids": []
+    },
+    {
+      "historical_doc_id": 13,
+      "work_id": "AdamEve",
+      "genre_ids": [
+        5,
+        4
+      ],
+      "biblical_figure_ids": [
+        1,
+        2
+      ]
+    },
+    {
+      "historical_doc_id": 14,
+      "work_id": "LetAris",
+      "genre_ids": [
+        6
+      ],
+      "biblical_figure_ids": []
+    },
+    {
+      "historical_doc_id": 15,
+      "work_id": "Artap",
+      "genre_ids": [
+        6,
+        4
+      ],
+      "biblical_figure_ids": [
+        14,
+        6
+      ]
+    },
+    {
+      "historical_doc_id": 16,
+      "work_id": "ClMal",
+      "genre_ids": [
+        6
+      ],
+      "biblical_figure_ids": []
+    },
+    {
+      "historical_doc_id": 17,
+      "work_id": "Eup",
+      "genre_ids": [
+        6
+      ],
+      "biblical_figure_ids": []
+    },
+    {
+      "historical_doc_id": 18,
+      "work_id": "EzekTrag",
+      "genre_ids": [
+        7,
+        4
+      ],
+      "biblical_figure_ids": [
+        6
+      ]
+    },
+    {
+      "historical_doc_id": 19,
+      "work_id": "4Bar",
+      "genre_ids": [
+        6,
+        4
+      ],
+      "biblical_figure_ids": [
+        3,
+        15
+      ]
+    },
+    {
+      "historical_doc_id": 20,
+      "work_id": "3Macc",
+      "genre_ids": [
+        6
+      ],
+      "biblical_figure_ids": []
+    },
+    {
+      "historical_doc_id": 21,
+      "work_id": "SibOr",
+      "genre_ids": [
+        1
+      ],
+      "biblical_figure_ids": [
+        11
+      ]
+    },
+    {
+      "historical_doc_id": 22,
+      "work_id": "TAdam",
+      "genre_ids": [
+        3
+      ],
+      "biblical_figure_ids": [
+        1
+      ]
+    },
+    {
+      "historical_doc_id": 23,
+      "work_id": "ArisEx",
+      "genre_ids": [
+        6,
+        4
+      ],
+      "biblical_figure_ids": [
+        9
+      ]
+    },
+    {
+      "historical_doc_id": 24,
+      "work_id": "2Bar",
+      "genre_ids": [
+        1
+      ],
+      "biblical_figure_ids": [
+        3
+      ]
+    },
+    {
+      "historical_doc_id": 25,
+      "work_id": "ElMod",
+      "genre_ids": [
+        8
+      ],
+      "biblical_figure_ids": []
+    },
+    {
+      "historical_doc_id": 26,
+      "work_id": "Ps-Eup",
+      "genre_ids": [
+        6
+      ],
+      "biblical_figure_ids": []
+    },
+    {
+      "historical_doc_id": 27,
+      "work_id": "4Ezra",
+      "genre_ids": [
+        1
+      ],
+      "biblical_figure_ids": [
+        13
+      ]
+    },
+    {
+      "historical_doc_id": 28,
+      "work_id": "4Macc",
+      "genre_ids": [
+        6
+      ],
+      "biblical_figure_ids": []
+    },
+    {
+      "historical_doc_id": 29,
+      "work_id": "LivPro",
+      "genre_ids": [
+        5
+      ],
+      "biblical_figure_ids": [
+        12
+      ]
+    },
+    {
+      "historical_doc_id": 30,
+      "work_id": "Theod",
+      "genre_ids": [
+        9
+      ],
+      "biblical_figure_ids": []
+    },
+    {
+      "historical_doc_id": 31,
+      "work_id": "HistRech",
+      "genre_ids": [
+        6
+      ],
+      "biblical_figure_ids": [
+        7
+      ]
+    },
+    {
+      "historical_doc_id": 32,
+      "work_id": "PssSol",
+      "genre_ids": [
+        2
+      ],
+      "biblical_figure_ids": [
+        5
+      ]
+    },
+    {
+      "historical_doc_id": 33,
+      "work_id": "4Q548",
+      "genre_ids": [
+        8
+      ],
+      "biblical_figure_ids": []
+    }
+  ]
+}
