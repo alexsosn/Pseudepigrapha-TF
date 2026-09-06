@@ -1,0 +1,244 @@
+name: issue-73-research
+
+on:
+  push:
+    branches: [issue-73-intros-metadata]
+
+permissions:
+  contents: read
+
+jobs:
+  inventory:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+      - name: Install project and Text-Fabric
+        run: pip install -e '.[dev]'
+      - name: Clone exact upstream source
+        run: |
+          git clone https://github.com/OnlineCriticalPseudepigrapha/Online-Critical-Pseudepigrapha.git /tmp/ocp
+          git -C /tmp/ocp checkout c939dcbacad78c5d18d2c4282cad23c47e19ac07
+      - name: Inventory intros.json and XML mapping
+        run: |
+          python - <<'PY'
+          from __future__ import annotations
+          import collections
+          import hashlib
+          import json
+          import re
+          import subprocess
+          from pathlib import Path
+          from xml.etree import ElementTree as ET
+
+          repo = Path('/tmp/ocp')
+          OLD = '2d1d14d23434a784d377ff7f4409ccdb2d18aafb'
+          NEW = 'c939dcbacad78c5d18d2c4282cad23c47e19ac07'
+
+          def from_ref(ref: str):
+              raw = subprocess.check_output(
+                  ['git', '-C', str(repo), 'show', f'{ref}:static/docs/intros.json']
+              )
+              return raw, json.loads(raw)
+
+          old_raw, old = from_ref(OLD)
+          new_raw, new = from_ref(NEW)
+          docs = new['documents']
+          old_docs = old['documents']
+          docs_dir = repo / 'static' / 'docs'
+
+          xml_paths = sorted(docs_dir.glob('*.xml'))
+          empty_xml = [p.name for p in xml_paths if not p.read_bytes().strip()]
+          roots = {}
+          root_ids = collections.defaultdict(list)
+          for p in xml_paths:
+              if p.name in empty_xml:
+                  continue
+              root = ET.fromstring(p.read_bytes())
+              roots[p.name] = root
+              root_ids[root.get('filename', '')].append(p.name)
+
+          json_keys = set(docs)
+          xml_names = {p.name for p in xml_paths}
+          nonempty_xml_names = set(roots)
+          title_mismatches = []
+          root_filename_mismatches = []
+          for name in sorted(json_keys & nonempty_xml_names):
+              entry = docs[name]
+              root = roots[name]
+              if entry.get('title') != root.get('title'):
+                  title_mismatches.append(
+                      {'file': name, 'json': entry.get('title'), 'xml': root.get('title')}
+                  )
+              expected_id = name[:-4]
+              if root.get('filename') != expected_id:
+                  root_filename_mismatches.append(
+                      {'file': name, 'expected': expected_id, 'xml': root.get('filename')}
+                  )
+
+          field_names = sorted({key for d in docs.values() for key in d.get('fields', {})})
+          field_summary = {}
+          tag_re = re.compile(r'<\s*/?\s*([A-Za-z][A-Za-z0-9]*)\b')
+          entity_re = re.compile(r'&(?:#\d+|#x[0-9A-Fa-f]+|[A-Za-z][A-Za-z0-9]+);')
+          for field in field_names:
+              present = []
+              for doc_name, entry in docs.items():
+                  fields = entry.get('fields', {})
+                  if field in fields:
+                      present.append((doc_name, fields[field]))
+              strings = [(n, v) for n, v in present if isinstance(v, str)]
+              nonempty = [(n, v) for n, v in strings if v != '']
+              max_pair = max(nonempty, key=lambda item: len(item[1]), default=('', ''))
+              tags = sorted({tag.lower() for _, v in strings for tag in tag_re.findall(v)})
+              field_summary[field] = {
+                  'present': len(present),
+                  'missing': len(docs) - len(present),
+                  'null': sum(v is None for _, v in present),
+                  'empty_string': sum(v == '' for _, v in strings),
+                  'nonempty_string': len(nonempty),
+                  'types': dict(collections.Counter(type(v).__name__ for _, v in present)),
+                  'with_html': sum(bool(tag_re.search(v)) for _, v in strings),
+                  'with_crlf': sum('\r\n' in v for _, v in strings),
+                  'with_tab': sum('\t' in v for _, v in strings),
+                  'with_entities': sum(bool(entity_re.search(v)) for _, v in strings),
+                  'with_nonascii': sum(any(ord(ch) > 127 for ch in v) for _, v in strings),
+                  'max_chars': len(max_pair[1]),
+                  'max_chars_document': max_pair[0],
+                  'html_tags': tags,
+              }
+
+          all_doc_top_keys = sorted({k for d in docs.values() for k in d})
+          doc_key_shapes = collections.Counter(tuple(sorted(d)) for d in docs.values())
+          version_values = collections.Counter(repr(d.get('version')) for d in docs.values())
+
+          changed_by_field = collections.Counter()
+          common_docs = set(old_docs) & set(docs)
+          changed_docs = []
+          for name in sorted(common_docs):
+              before = old_docs[name]
+              after = docs[name]
+              changed = []
+              for key in ('title', 'version'):
+                  if before.get(key) != after.get(key):
+                      changed.append(key)
+                      changed_by_field[key] += 1
+              all_fields = set(before.get('fields', {})) | set(after.get('fields', {}))
+              for field in sorted(all_fields):
+                  sentinel = object()
+                  if before.get('fields', {}).get(field, sentinel) != after.get('fields', {}).get(field, sentinel):
+                      changed.append(f'fields.{field}')
+                      changed_by_field[field] += 1
+              if changed:
+                  changed_docs.append({'file': name, 'changed': changed})
+
+          summary = {
+              'old': {
+                  'sha256': hashlib.sha256(old_raw).hexdigest(),
+                  'documents': len(old_docs),
+                  'meta': old.get('_meta'),
+              },
+              'new': {
+                  'sha256': hashlib.sha256(new_raw).hexdigest(),
+                  'documents': len(docs),
+                  'meta': new.get('_meta'),
+                  'top_document_keys': all_doc_top_keys,
+                  'document_key_shapes': {str(k): v for k, v in doc_key_shapes.items()},
+                  'version_values': dict(version_values),
+              },
+              'mapping': {
+                  'xml_files_total': len(xml_paths),
+                  'xml_nonempty': len(nonempty_xml_names),
+                  'xml_empty': empty_xml,
+                  'json_without_xml': sorted(json_keys - xml_names),
+                  'json_without_nonempty_xml': sorted(json_keys - nonempty_xml_names),
+                  'nonempty_xml_without_json': sorted(nonempty_xml_names - json_keys),
+                  'root_filename_collisions': {
+                      key: value for key, value in sorted(root_ids.items()) if key and len(value) > 1
+                  },
+                  'root_filename_mismatches': root_filename_mismatches,
+                  'title_mismatches': title_mismatches,
+              },
+              'field_names': field_names,
+              'field_summary': field_summary,
+              'old_to_new': {
+                  'documents_added': sorted(set(docs) - set(old_docs)),
+                  'documents_removed': sorted(set(old_docs) - set(docs)),
+                  'changed_documents_count': len(changed_docs),
+                  'changed_by_field': dict(sorted(changed_by_field.items())),
+                  'changed_documents': changed_docs,
+              },
+          }
+          print('=== INTRO INVENTORY ===')
+          print(json.dumps(summary, ensure_ascii=False, indent=2, sort_keys=True))
+          PY
+      - name: Probe exact Text-Fabric string round-trip
+        run: |
+          python - <<'PY'
+          import hashlib
+          import json
+          from pathlib import Path
+          from tf.fabric import Fabric
+
+          source = json.loads(Path('/tmp/ocp/static/docs/intros.json').read_text(encoding='utf-8'))
+          fields = source['documents']['TJob.xml']['fields']
+          probes = {
+              'bibliography': fields['bibliography'],
+              'manuscripts': fields['manuscripts'],
+              'synthetic': 'A\r\nB\nC\tD\\E &amp; α',
+          }
+          out = Path('/tmp/tf-probe')
+          out.mkdir()
+          TF = Fabric(locations=[], modules=[], silent='deep')
+          node_features = {
+              'otype': {1: 'word', 2: 'document_metadata'},
+              'g_word_utf8': {1: 'x'},
+              **{f'probe_{name}': {2: value} for name, value in probes.items()},
+              'probe_empty': {2: ''},
+          }
+          edge_features = {'oslots': {2: {1}}}
+          metadata = {
+              'otype': {'valueType': 'str'},
+              'g_word_utf8': {'valueType': 'str'},
+              'oslots': {'valueType': 'str'},
+              'probe_empty': {'valueType': 'str'},
+              **{f'probe_{name}': {'valueType': 'str'} for name in probes},
+          }
+          ok = TF.save(
+              nodeFeatures=node_features,
+              edgeFeatures=edge_features,
+              metaData=metadata,
+              location=str(out), module='', silent='deep'
+          )
+          assert ok
+          TF2 = Fabric(locations=[str(out)], modules=[''], silent='deep')
+          api = TF2.load('probe_bibliography probe_manuscripts probe_synthetic probe_empty', silent='deep')
+          assert api is not None
+          print('=== TF STRING ROUNDTRIP ===')
+          for name, original in probes.items():
+              loaded = getattr(api.F, f'probe_{name}').v(2)
+              equal = loaded == original
+              print(json.dumps({
+                  'probe': name,
+                  'equal': equal,
+                  'original_len': len(original),
+                  'loaded_len': len(loaded) if loaded is not None else None,
+                  'original_sha256': hashlib.sha256(original.encode()).hexdigest(),
+                  'loaded_sha256': hashlib.sha256(loaded.encode()).hexdigest() if loaded is not None else None,
+                  'original_crlf': original.count('\r\n'),
+                  'loaded_crlf': loaded.count('\r\n') if loaded is not None else None,
+                  'loaded_cr': loaded.count('\r') if loaded is not None else None,
+              }, ensure_ascii=False))
+              if not equal:
+                  for i, (a, b) in enumerate(zip(original, loaded or '')):
+                      if a != b:
+                          print('first_mismatch', name, i, repr(original[max(0,i-20):i+20]), repr((loaded or '')[max(0,i-20):i+20]))
+                          break
+          print(json.dumps({
+              'empty_is_empty': api.F.probe_empty.v(2) == '',
+              'missing_is_none': api.F.probe_empty.v(1) is None,
+          }))
+          PY
