@@ -33,6 +33,28 @@ _REQUIRED_ENTRY_KEYS = frozenset({"title", "version", "fields"})
 _JSON_SCALAR_TYPES = (str, int, float, bool, type(None))
 
 
+def _unique_json_object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+    result: dict[str, Any] = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError(f"duplicate JSON object key {key!r}")
+        result[key] = value
+    return result
+
+
+def _decode_json(raw: bytes, *, source_name: str) -> Any:
+    try:
+        text = raw.decode("utf-8")
+    except UnicodeDecodeError as exc:
+        raise ValueError(f"{source_name}: invalid UTF-8 JSON: {exc}") from exc
+    try:
+        return json.loads(text, object_pairs_hook=_unique_json_object)
+    except json.JSONDecodeError as exc:
+        raise ValueError(f"{source_name}: invalid UTF-8 JSON: {exc}") from exc
+    except ValueError as exc:
+        raise ValueError(f"{source_name}: {exc}") from exc
+
+
 @dataclass(frozen=True)
 class PublicMetadataDocument:
     filename: str
@@ -105,10 +127,7 @@ def load_public_metadata(path: str | Path) -> PublicMetadataCorpus:
     intro_path = source_dir / "intros.json"
     raw = intro_path.read_bytes()
     source_sha256 = hashlib.sha256(raw).hexdigest()
-    try:
-        payload = json.loads(raw.decode("utf-8"))
-    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
-        raise ValueError(f"{intro_path.name}: invalid UTF-8 JSON: {exc}") from exc
+    payload = _decode_json(raw, source_name=intro_path.name)
     if not isinstance(payload, dict):
         raise ValueError("intros.json: top level must be an object")
     documents = payload.get("documents")
@@ -327,7 +346,7 @@ class WorkMetadata:
 def _raw_public_metadata(source_dir: Path) -> tuple[dict[str, Any], str, dict[str, Any]]:
     intro_path = source_dir / "intros.json"
     raw = intro_path.read_bytes()
-    payload = json.loads(raw.decode("utf-8"))
+    payload = _decode_json(raw, source_name=intro_path.name)
     documents = payload.get("documents", {})
     if not isinstance(documents, dict):
         raise ValueError("intros.json: documents must be an object")
