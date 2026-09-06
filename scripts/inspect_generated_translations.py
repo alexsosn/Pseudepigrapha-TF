@@ -14,7 +14,8 @@ from pseudepigrapha_tf.source_versions import (
     is_generated_translation_version,
 )
 
-UnitSignature = tuple[tuple[tuple[str, ...], str], ...]
+UnitIdentity = tuple[tuple[str, ...], str]
+UnitSignature = tuple[UnitIdentity, ...]
 
 
 def _units(version: ET.Element) -> list[dict[str, object]]:
@@ -48,7 +49,7 @@ def _source_signature(version: ET.Element) -> UnitSignature:
 def _translation_signature(version: ET.Element) -> UnitSignature:
     language = (version.get("language") or "").lower()
     prefix = "en_" if language == "english" else "fr_" if language == "french" else ""
-    result: list[tuple[tuple[str, ...], str]] = []
+    result: list[UnitIdentity] = []
     for unit in _units(version):
         unit_id = str(unit["id"])
         source_id = unit_id[len(prefix) :] if prefix and unit_id.startswith(prefix) else unit_id
@@ -56,16 +57,25 @@ def _translation_signature(version: ET.Element) -> UnitSignature:
     return tuple(result)
 
 
-def _version_record(index: int, version: ET.Element) -> dict[str, object]:
+def _duplicates(values: list[object] | tuple[object, ...]) -> list[object]:
+    counts = Counter(values)
+    return sorted((value for value, count in counts.items() if count > 1), key=repr)
+
+
+def _version_record(index: int, version: ET.Element, *, translated: bool = False) -> dict[str, object]:
     readings = list(version.iter("reading"))
+    signature = _translation_signature(version) if translated else _source_signature(version)
+    bare_ids = [identity[1] for identity in signature]
     return {
         "index": index,
         "title": version.get("title", ""),
         "language": version.get("language", ""),
         "fragment": version.get("fragment", ""),
-        "units": len(_units(version)),
+        "units": len(signature),
         "readings": len(readings),
         "empty_readings": sum(1 for reading in readings if not "".join(reading.itertext()).strip()),
+        "duplicate_unit_identities": _duplicates(list(signature)),
+        "duplicate_bare_unit_ids": _duplicates(bare_ids),
     }
 
 
@@ -98,6 +108,8 @@ def _signature_drift(generated: UnitSignature, source: UnitSignature) -> dict[st
         "extra_in_generated_count": len(extra),
         "missing_from_generated_sample": missing[:5],
         "extra_in_generated_sample": extra[:5],
+        "sequence_equal": generated == source,
+        "multiset_equal": generated_counts == source_counts,
         "first_mismatch": first_mismatch,
     }
 
@@ -106,9 +118,13 @@ def inventory(source_dir: Path) -> dict[str, object]:
     files: list[dict[str, object]] = []
     language_counts: Counter[str] = Counter()
     language_unit_counts: Counter[str] = Counter()
+    language_empty_counts: Counter[str] = Counter()
     genuine_modern_versions: list[dict[str, object]] = []
     ambiguous: list[dict[str, object]] = []
     unmatched: list[dict[str, object]] = []
+    order_drift: list[dict[str, object]] = []
+    source_duplicate_bare_ids: list[dict[str, object]] = []
+    source_duplicate_identities: list[dict[str, object]] = []
     generated_total = 0
     generated_units = 0
     generated_empty_readings = 0
@@ -132,30 +148,36 @@ def inventory(source_dir: Path) -> dict[str, object]:
                 generated.append((index, version))
             else:
                 sources.append((index, version))
+                source_record = {"file": xml_path.name, **_version_record(index, version)}
+                if source_record["duplicate_bare_unit_ids"]:
+                    source_duplicate_bare_ids.append(source_record)
+                if source_record["duplicate_unit_identities"]:
+                    source_duplicate_identities.append(source_record)
                 if (version.get("language") or "").lower() in {"english", "french"}:
-                    genuine_modern_versions.append(
-                        {"file": xml_path.name, **_version_record(index, version)}
-                    )
+                    genuine_modern_versions.append(source_record)
 
         source_versions_total += len(sources)
-        source_signatures: dict[UnitSignature, list[tuple[int, ET.Element]]] = {}
+        source_multisets: dict[frozenset[tuple[UnitIdentity, int]], list[tuple[int, ET.Element]]] = {}
         for pair in sources:
-            source_signatures.setdefault(_source_signature(pair[1]), []).append(pair)
+            multiset_key = frozenset(Counter(_source_signature(pair[1])).items())
+            source_multisets.setdefault(multiset_key, []).append(pair)
 
         generated_records: list[dict[str, object]] = []
         for index, version in generated:
             target = version.get("language", "")
             signature = _translation_signature(version)
-            candidates = source_signatures.get(signature, [])
+            multiset_key = frozenset(Counter(signature).items())
+            candidates = source_multisets.get(multiset_key, [])
             record: dict[str, object] = {
                 "file": xml_path.name,
-                **_version_record(index, version),
+                **_version_record(index, version, translated=True),
                 "candidate_sources": [
                     {
                         "index": source_index,
                         "title": source.get("title", ""),
                         "language": source.get("language", ""),
                         "fragment": source.get("fragment", ""),
+                        "sequence_equal": signature == _source_signature(source),
                     }
                     for source_index, source in candidates
                 ],
@@ -184,6 +206,8 @@ def inventory(source_dir: Path) -> dict[str, object]:
                 unmatched.append(record)
             elif len(candidates) > 1:
                 ambiguous.append(record)
+            elif not bool(record["candidate_sources"][0]["sequence_equal"]):  # type: ignore[index]
+                order_drift.append(record)
             generated_records.append(record)
             generated_total += 1
             generated_documents.add(xml_path.name)
@@ -192,9 +216,9 @@ def inventory(source_dir: Path) -> dict[str, object]:
             language_unit_counts[target] += units
             generated_units += units
             readings = list(version.iter("reading"))
-            generated_empty_readings += sum(
-                1 for reading in readings if not "".join(reading.itertext()).strip()
-            )
+            empty_count = sum(1 for reading in readings if not "".join(reading.itertext()).strip())
+            language_empty_counts[target] += empty_count
+            generated_empty_readings += empty_count
 
         files.append(
             {
@@ -213,9 +237,13 @@ def inventory(source_dir: Path) -> dict[str, object]:
         "generated_empty_readings": generated_empty_readings,
         "generated_versions_by_language": dict(sorted(language_counts.items())),
         "generated_units_by_language": dict(sorted(language_unit_counts.items())),
+        "generated_empty_readings_by_language": dict(sorted(language_empty_counts.items())),
         "genuine_non_generated_english_french_versions": genuine_modern_versions,
+        "source_versions_with_duplicate_bare_unit_ids": source_duplicate_bare_ids,
+        "source_versions_with_duplicate_unit_identities": source_duplicate_identities,
         "unmatched_generated_versions": unmatched,
         "ambiguous_generated_versions": ambiguous,
+        "generated_versions_with_order_drift": order_drift,
         "files": files,
     }
 
