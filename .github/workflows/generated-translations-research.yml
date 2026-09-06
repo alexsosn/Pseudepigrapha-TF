@@ -67,3 +67,12 @@ jobs:
               'collision_unit_occurrence_count': report['collision_unit_occurrence_count'],
           }, ensure_ascii=False, indent=2))
           PY
+      - name: Preserve exact research evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: generated-translations-research
+          path: |
+            /tmp/generated-translations.json
+            /tmp/translation-omissions.json
+          if-no-files-found: error
+          retention-days: 7
