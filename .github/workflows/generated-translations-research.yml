@@ -48,12 +48,22 @@ jobs:
               'generated_versions_with_order_drift',
           )
           print(json.dumps({key: report[key] for key in summary_keys}, ensure_ascii=False, indent=2))
-          print('per-file generated counts:')
-          for file_record in report['files']:
-              generated = file_record['generated_versions']
-              if generated:
-                  counts = {}
-                  for record in generated:
-                      counts[record['language']] = counts.get(record['language'], 0) + 1
-                  print(file_record['file'], counts)
+          PY
+      - name: Reconcile omissions and generator id collisions
+        run: |
+          python scripts/inspect_translation_omissions.py /tmp/ocp/static/docs > /tmp/translation-omissions.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          report = json.loads(Path('/tmp/translation-omissions.json').read_text(encoding='utf-8'))
+          print(json.dumps({
+              'by_language': report['by_language'],
+              'omission_mismatch_count': len(report['omission_mismatches']),
+              'omission_mismatches': report['omission_mismatches'],
+              'ambiguous_omission_group_count': len(report['ambiguous_omission_groups']),
+              'collision_version_count': report['collision_version_count'],
+              'collision_group_count': report['collision_group_count'],
+              'collision_unit_occurrence_count': report['collision_unit_occurrence_count'],
+          }, ensure_ascii=False, indent=2))
           PY
