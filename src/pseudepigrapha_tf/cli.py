@@ -13,6 +13,7 @@ from .metadata import (
     augment_conversion_report_with_public_metadata,
     load_public_metadata,
 )
+from .provenance import attest_corpus_license_source_identity
 from .semantic_audit import build_conversion_report, write_conversion_report
 from .source import detect_git_commit, load_source_directory
 from .writer import _write_prevalidated_tf
@@ -65,13 +66,18 @@ def main(argv: list[str] | None = None) -> int:
     if not books:
         raise SystemExit("no non-empty OCP XML files found")
 
-    upstream_commit = args.upstream_commit if args.upstream_commit is not None else detect_git_commit(args.source)
+    detected_commit = detect_git_commit(args.source)
+    upstream_commit = args.upstream_commit if args.upstream_commit is not None else detected_commit
     data = build_tf_data(
         books,
         upstream_repository=UPSTREAM_REPOSITORY,
         upstream_commit=upstream_commit,
         converter_version=__version__,
     )
+    attest_corpus_license_source_identity(data.metadata.setdefault("", {}), detected_commit)
+    identity_diagnostic = data.metadata[""].get("sourceIdentityDiagnostic")
+    if identity_diagnostic:
+        source_warnings.append(identity_diagnostic)
     if public_metadata is not None:
         attach_public_metadata(data, public_metadata)
     stage_started = _stage("build_graph", stage_started)
