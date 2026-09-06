@@ -45,7 +45,7 @@ def _version(
 '''
 
 
-def test_loader_excludes_explicit_ocp_generated_translation(tmp_path: Path) -> None:
+def test_loader_models_explicit_ocp_generated_translation(tmp_path: Path) -> None:
     xml = _modern_book(
         _version(title="Greek", language="Greek", manuscript="A"),
         _version(title="English", language="English", manuscript="OCP-Trans"),
@@ -54,9 +54,13 @@ def test_loader_excludes_explicit_ocp_generated_translation(tmp_path: Path) -> N
 
     books, warnings = load_source_directory(tmp_path)
 
+    assert warnings == []
     assert [version.title for version in books[0].versions] == ["Greek"]
-    assert any("generated translation" in warning and "English" in warning for warning in warnings)
+    assert [item.version.title for item in books[0].generated_translations] == ["English"]
+    assert books[0].generated_translations[0].source_version_index == 0
 
+    # The independent raw audit is upgraded separately from parser behavior;
+    # until then it continues to expose its historical exclusion inventory.
     raw = _raw_inventory(tmp_path)
     assert [record["version_title"] for record in raw["versions"]] == ["Greek"]
     assert raw["excluded_generated_translation_versions"] == [
