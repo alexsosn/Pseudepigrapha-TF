@@ -13,12 +13,18 @@ class _TrackingObjects(list):
         super().__init__()
         self.full_iterations = 0
         self.yielded = 0
+        self.slice_reads: list[slice] = []
 
     def __iter__(self):
         self.full_iterations += 1
         for item in super().__iter__():
             self.yielded += 1
             yield item
+
+    def __getitem__(self, index):
+        if isinstance(index, slice):
+            self.slice_reads.append(index)
+        return super().__getitem__(index)
 
 
 class _TrackingBuilder(_Builder):
@@ -53,6 +59,23 @@ def test_textual_versions_do_not_full_scan_global_objects_before_finalize(monkey
     assert set(manuscripts) == {"S", "G"}
     assert data.node_features["version_id"][manuscripts["S"]] == "Multi__Syriac"
     assert data.node_features["version_id"][manuscripts["G"]] == "Multi__Greek"
+
+
+def test_version_identity_stamping_does_not_slice_graph_objects():
+    builder = _Builder()
+    builder.objects = _TrackingObjects()
+    builder.slot(g_word_utf8="slot")
+    builder.node("before", "marker", {1}, version_id="older")
+    start = len(builder.objects)
+    builder.node("current-a", "marker", {1})
+    builder.node("current-b", "marker", {1})
+
+    conversion._stamp_version_identity(builder, start, "Current")
+
+    assert builder.objects.slice_reads == []
+    assert builder.objects[0].features["version_id"] == "older"
+    assert builder.objects[1].features["version_id"] == "Current"
+    assert builder.objects[2].features["version_id"] == "Current"
 
 
 def test_finalize_groups_objects_with_one_global_iteration():
