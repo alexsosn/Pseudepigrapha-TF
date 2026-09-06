@@ -1,0 +1,37 @@
+name: issue-73-docs
+
+on:
+  push:
+    branches: [issue-73-intros-metadata]
+
+permissions:
+  contents: write
+
+jobs:
+  document:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: issue-73-intros-metadata
+      - name: Append public metadata documentation once
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('README.md')
+          text = path.read_text(encoding='utf-8')
+          marker = '## Public document metadata (`intros.json`)'
+          if marker not in text:
+              text = text.rstrip() + '''\n\n## Public document metadata (`intros.json`)\n\nWhen the supplied OCP `static/docs` directory contains the committed public `intros.json` export, conversion includes it automatically. Records are matched to works by the exact root-level XML filename, never by display title. This matters because OCP metadata titles are not guaranteed to equal XML titles. A public record whose XML file is empty, such as pinned `3Macc.xml`, is still preserved as a `document_metadata` node; its single `oslots` value is only a Text-Fabric technical anchor and does not create a `book`, chapter, verse, or word.\n\nEach public document gets one `document_metadata` node. `title`, edition `version`, per-work `citation`, and the public body fields `introduction`, `provenance`, `themes`, `status`, `manuscripts`, `bibliography`, `corrections`, `sigla`, and `copyright` are stored only on that node. The TF feature names are `intro_title_json`, `intro_version_json`, `intro_citation_json`, and `intro_<field>_json`. Values use reversible JSON-scalar encoding because raw multi-line HTML is not lossless through Text-Fabric's line-oriented feature serialization. The encoding preserves HTML, CRLF/newline characters, entities, Unicode, and the distinction between a missing key, an empty string, and JSON `null`.\n\nResearchers normally should not decode those features manually. Load the metadata feature set and use `WorkMetadata`:\n\n```python\nfrom tf.fabric import Fabric\nfrom pseudepigrapha_tf import WorkMetadata\n\nTF = Fabric(locations=['tf/0.1'], modules=[''], silent='deep')\napi = TF.load(' '.join(WorkMetadata.REQUIRED_FEATURES), silent='deep')\nM = WorkMetadata(api)\n\nM['TJob']['fields']['bibliography']  # original OCP HTML, including original line endings\nM['3Macc']                           # works even though pinned 3Macc.xml has no text\n```\n\nDataset-level TF metadata records `introsSource`, `introsSha256`, and the export date when supplied upstream. `conversion-report.json` independently rereads raw `intros.json` and checks document coverage, scalar values, and provenance against the graph, so corrupt or dropped metadata fails the same semantic parity gate as XML conversion.\n'''
+              path.write_text(text, encoding='utf-8')
+          PY
+          if git diff --quiet -- README.md; then
+            exit 0
+          fi
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add README.md
+          git commit -m 'Document public OCP metadata interface'
+          git push origin HEAD:issue-73-intros-metadata
