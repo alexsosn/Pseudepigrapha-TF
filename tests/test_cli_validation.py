@@ -1,3 +1,4 @@
+import json
 from pathlib import Path
 
 import pytest
@@ -99,3 +100,66 @@ def test_cli_does_not_replace_existing_report_when_tf_serialization_fails(monkey
         )
 
     assert report_path.read_bytes() == old_report
+
+
+def test_cli_preserves_explicit_report_when_tf_serialization_fails(monkeypatch, tmp_path):
+    source_dir = _copy_source_fixture(tmp_path)
+    output = tmp_path / "tf"
+    report_dir = tmp_path / "reports"
+    report_dir.mkdir()
+    report_path = report_dir / "custom.json"
+    old_report = b'{"status":"previous-explicit-success"}\n'
+    report_path.write_bytes(old_report)
+
+    monkeypatch.setattr(cli, "_write_prevalidated_tf", lambda data, output_dir: False)
+
+    with pytest.raises(SystemExit, match="Text-Fabric refused the generated dataset"):
+        cli.main(
+            [
+                "convert",
+                str(source_dir),
+                "--output",
+                str(output),
+                "--report",
+                str(report_path),
+                "--upstream-commit",
+                "test-commit",
+            ]
+        )
+
+    assert report_path.read_bytes() == old_report
+    assert not any(path.name.startswith(".pseudepigrapha-tf-report-") for path in report_dir.iterdir())
+
+
+def test_cli_semantic_audit_failure_still_publishes_diagnostic_report(monkeypatch, tmp_path):
+    source_dir = _copy_source_fixture(tmp_path)
+    output = tmp_path / "tf"
+    report_path = tmp_path / "diagnostics" / "failed.json"
+    failed_report = {
+        "status": "failed",
+        "failed_checks": ["forced_failure"],
+        "diagnostics": {"duplicate_section_addresses": []},
+    }
+
+    monkeypatch.setattr(cli, "build_conversion_report", lambda source, books, data: failed_report)
+
+    def writer_must_not_run(data, output_dir):
+        raise AssertionError("Text-Fabric writer must not run after failed semantic audit")
+
+    monkeypatch.setattr(cli, "_write_prevalidated_tf", writer_must_not_run)
+
+    with pytest.raises(SystemExit, match="semantic parity audit failed \(forced_failure\)"):
+        cli.main(
+            [
+                "convert",
+                str(source_dir),
+                "--output",
+                str(output),
+                "--report",
+                str(report_path),
+                "--upstream-commit",
+                "test-commit",
+            ]
+        )
+
+    assert json.loads(report_path.read_text(encoding="utf-8")) == failed_report
