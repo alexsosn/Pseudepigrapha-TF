@@ -163,3 +163,61 @@ def test_cli_semantic_audit_failure_still_publishes_diagnostic_report(monkeypatc
         )
 
     assert json.loads(report_path.read_text(encoding="utf-8")) == failed_report
+
+
+def test_cli_rejects_directory_report_path_before_tf_serialization(monkeypatch, tmp_path):
+    source_dir = _copy_source_fixture(tmp_path)
+    output = tmp_path / "tf"
+    report_path = tmp_path / "report-directory"
+    report_path.mkdir()
+    writer_calls = 0
+
+    def counted_writer(data, output_dir):
+        nonlocal writer_calls
+        writer_calls += 1
+        return True
+
+    monkeypatch.setattr(cli, "_write_prevalidated_tf", counted_writer)
+
+    with pytest.raises(IsADirectoryError):
+        cli.main(
+            [
+                "convert",
+                str(source_dir),
+                "--output",
+                str(output),
+                "--report",
+                str(report_path),
+                "--upstream-commit",
+                "test-commit",
+            ]
+        )
+
+    assert writer_calls == 0
+
+
+def test_cli_successful_explicit_report_preserves_symlink_target(monkeypatch, tmp_path):
+    source_dir = _copy_source_fixture(tmp_path)
+    output = tmp_path / "tf"
+    target = tmp_path / "real-report.json"
+    target.write_text('{"status":"old"}\n', encoding="utf-8")
+    report_path = tmp_path / "report.json"
+    report_path.symlink_to(target)
+
+    monkeypatch.setattr(cli, "_write_prevalidated_tf", lambda data, output_dir: True)
+
+    assert cli.main(
+        [
+            "convert",
+            str(source_dir),
+            "--output",
+            str(output),
+            "--report",
+            str(report_path),
+            "--upstream-commit",
+            "test-commit",
+        ]
+    ) == 0
+
+    assert report_path.is_symlink()
+    assert json.loads(target.read_text(encoding="utf-8"))["status"] == "ok"
