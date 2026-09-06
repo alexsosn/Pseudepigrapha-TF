@@ -199,7 +199,8 @@ def attach_public_metadata(data: TFData, metadata: PublicMetadataCorpus) -> None
 
     if not metadata.documents:
         return
-    if data.max_slot < 1:
+    max_slot = data.max_slot
+    if max_slot < 1:
         raise ValueError("public metadata cannot be attached to a TF graph with no word slot")
     if any(kind == "document_metadata" for kind in data.node_features.get("otype", {}).values()):
         raise ValueError("public document metadata is already attached")
@@ -208,7 +209,7 @@ def attach_public_metadata(data: TFData, metadata: PublicMetadataCorpus) -> None
     # works such as 3Macc reuse corpus slot 1 without becoming TF text sections.
     work_anchors: dict[str, int] = {}
     for slot, work_id in data.node_features.get("ocp_book", {}).items():
-        if slot <= data.max_slot:
+        if slot <= max_slot:
             work_anchors.setdefault(str(work_id), slot)
 
     otype = data.node_features.setdefault("otype", {})
