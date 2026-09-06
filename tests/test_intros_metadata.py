@@ -242,3 +242,56 @@ def test_conversion_report_rejects_extra_graph_metadata_without_intro_title(tmp_
             "graph_sha256": report["diagnostics"]["document_metadata_mismatches"][0]["graph_sha256"],
         }
     ]
+
+
+def test_conversion_report_rejects_intro_feature_not_listed_in_field_order(tmp_path):
+    _copy_fixture(tmp_path, "sample.xml")
+    _write_intros(tmp_path, {"sample.xml": _entry(fields={"introduction": "<p>source</p>"})})
+    books, _ = load_source_directory(tmp_path)
+    data = build_tf_data(books, document_metadata=_catalog(tmp_path))
+    work = _work_nodes(data)[0]
+
+    data.node_features["intro_bibliography_json"][work] = json.dumps("<p>extra</p>")
+
+    report = build_conversion_report(tmp_path, books, data)
+
+    assert report["status"] == "failed"
+    assert report["semantic_checks"]["document_metadata_exact"] is False
+    assert any(
+        error.get("feature") == "intro_bibliography_json" and error.get("error") == "unlisted_value"
+        for error in report["diagnostics"]["document_metadata_decode_errors"]
+    )
+
+
+def test_conversion_report_rejects_duplicate_graph_metadata_source_file(tmp_path):
+    _copy_fixture(tmp_path, "sample.xml")
+    _write_intros(tmp_path, {"sample.xml": _entry(fields={"introduction": "<p>source</p>"})})
+    books, _ = load_source_directory(tmp_path)
+    data = build_tf_data(books, document_metadata=_catalog(tmp_path))
+    original = _work_nodes(data)[0]
+    duplicate = data.max_node + 1
+
+    data.node_features["otype"][duplicate] = "work"
+    data.edge_features["oslots"][duplicate] = set(data.edge_features["oslots"][original])
+    for feature in (
+        "ocp_book",
+        "source_file",
+        "title",
+        "has_intro_metadata",
+        "intro_title_json",
+        "intro_version_json",
+        "intro_field_order",
+        "intro_introduction_json",
+    ):
+        data.node_features.setdefault(feature, {})[duplicate] = data.node_features[feature][original]
+    data.node_features["is_metadata_only_work"][duplicate] = 1
+
+    report = build_conversion_report(tmp_path, books, data)
+
+    assert report["status"] == "failed"
+    assert report["semantic_checks"]["document_metadata_exact"] is False
+    assert report["graph"]["document_metadata_documents"] == 2
+    assert any(
+        error.get("source_file") == "sample.xml" and error.get("error") == "duplicate_source_file"
+        for error in report["diagnostics"]["document_metadata_decode_errors"]
+    )
