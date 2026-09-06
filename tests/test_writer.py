@@ -125,3 +125,31 @@ def test_real_text_fabric_rewrite_removes_feature_files_absent_from_new_graph(tm
 
     assert not stale_feature.exists()
     assert sentinel.read_text(encoding="utf-8") == '{"sentinel": true}\n'
+
+
+def test_failed_standard_tf_save_leaves_existing_output_untouched(monkeypatch, tmp_path):
+    import tf.fabric
+
+    class FailingFabric:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def save(self, **kwargs):
+            stage = Path(kwargs["location"])
+            (stage / "otype.tf").write_text("partial replacement\n", encoding="utf-8")
+            (stage / "new-only.tf").write_text("partial new feature\n", encoding="utf-8")
+            return False
+
+    data = build_tf_data([parse_file(FIXTURES / "sample.xml")])
+    output = tmp_path / "tf"
+    output.mkdir()
+    (output / "otype.tf").write_text("old otype\n", encoding="utf-8")
+    (output / "obsolete.tf").write_text("old obsolete feature\n", encoding="utf-8")
+    (output / "conversion-report.json").write_text('{"old": true}\n', encoding="utf-8")
+    before = {path.name: path.read_bytes() for path in output.iterdir()}
+    monkeypatch.setattr(tf.fabric, "Fabric", FailingFabric)
+
+    assert write_tf(data, output) is False
+
+    assert {path.name: path.read_bytes() for path in output.iterdir()} == before
+    assert not any(path.name.startswith(".pseudepigrapha-tf-") for path in tmp_path.iterdir())
