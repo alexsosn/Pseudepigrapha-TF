@@ -148,7 +148,7 @@ def test_cli_semantic_audit_failure_still_publishes_diagnostic_report(monkeypatc
 
     monkeypatch.setattr(cli, "_write_prevalidated_tf", writer_must_not_run)
 
-    with pytest.raises(SystemExit, match="semantic parity audit failed \(forced_failure\)"):
+    with pytest.raises(SystemExit, match=r"semantic parity audit failed \(forced_failure\)"):
         cli.main(
             [
                 "convert",
