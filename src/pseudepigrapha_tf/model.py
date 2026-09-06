@@ -138,6 +138,15 @@ class Version:
     divs: tuple[Div, ...]
 
 
+@dataclass(frozen=True)
+class GeneratedTranslationExclusion:
+    """Source-declared generated OCP translation intentionally omitted from TF."""
+
+    version_title: str
+    language: str
+    marker: str = "OCP-Trans"
+
+
 @dataclass
 class Book:
     filename: str
@@ -146,3 +155,4 @@ class Book:
     versions: tuple[Version, ...]
     source_path: str = ""
     source_sha256: str = ""
+    excluded_generated_translations: tuple[GeneratedTranslationExclusion, ...] = ()

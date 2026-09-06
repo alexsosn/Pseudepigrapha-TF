@@ -11,6 +11,12 @@ from .graph import TFData
 from .model import Book, DivisionSpec
 from .parser import InvalidSourceError
 from .source_structure import SourceStructureError, validate_source_structure
+from .source_versions import (
+    GENERATED_TRANSLATION_MARKER,
+    GeneratedTranslationClassificationError,
+    is_generated_translation_version,
+    is_wrapped_legacy_version,
+)
 
 
 def _plain_text(element: ET.Element | None) -> str:
@@ -43,7 +49,7 @@ def _raw_inventory(source_dir: Path) -> dict:
     inventory = {
         "files": [], "versions": [], "division_specs": [], "divs": [], "units": [],
         "readings": [], "manuscripts": [], "resources": [], "annotated_words": [],
-        "ellipses": [], "orphan_readings": [],
+        "ellipses": [], "orphan_readings": [], "excluded_generated_translation_versions": [],
     }
 
     def add_manuscripts(container: ET.Element, ocp_book: str, version_title: str) -> None:
@@ -145,6 +151,34 @@ def _raw_inventory(source_dir: Path) -> dict:
                     "xml": _inner_xml(child),
                 })
 
+    def add_legacy_text(text: ET.Element, ocp_book: str, version_title: str,
+                        specs: tuple[DivisionSpec, ...]) -> None:
+        for chapter in text.findall("chapter"):
+            chapter_path = (chapter.get("number", ""),)
+            inventory["divs"].append({
+                "ocp_book": ocp_book, "version_title": version_title,
+                "source_ref": _reference(chapter_path, specs),
+                "number": chapter.get("number", ""), "fragment": chapter.get("fragment", ""),
+                "level": 1, "label": "Chapter",
+            })
+            for verse in chapter.findall("verse"):
+                verse_path = chapter_path + (verse.get("reference", ""),)
+                inventory["divs"].append({
+                    "ocp_book": ocp_book, "version_title": version_title,
+                    "source_ref": _reference(verse_path, specs),
+                    "number": verse.get("reference", ""), "fragment": verse.get("fragment", ""),
+                    "level": 2, "label": "Verse",
+                })
+                for unit in verse.findall("unit"):
+                    add_unit(unit, ocp_book, version_title, verse_path, specs)
+
+    def add_specs(ocp_book: str, version_title: str, specs: tuple[DivisionSpec, ...]) -> None:
+        for index, spec in enumerate(specs, 1):
+            inventory["division_specs"].append({
+                "ocp_book": ocp_book, "version_title": version_title, "index": index,
+                "label": spec.label, "delimiter": spec.delimiter, "text": spec.text,
+            })
+
     for path in sorted(source_dir.glob("*.xml")):
         data = path.read_bytes()
         if path.name.startswith(".") or not data.strip():
@@ -166,6 +200,20 @@ def _raw_inventory(source_dir: Path) -> dict:
         inventory["files"].append({"file": path.name, "sha256": source_sha256})
         if versions:
             for version in versions:
+                try:
+                    generated = is_generated_translation_version(version)
+                except GeneratedTranslationClassificationError as exc:
+                    raise InvalidSourceError(f"{path.name}: {exc}") from exc
+                if generated:
+                    inventory["excluded_generated_translation_versions"].append({
+                        "ocp_book": ocp_book,
+                        "version_title": version.get("title", ""),
+                        "language": version.get("language", ""),
+                        "source_file": path.name,
+                        "marker": GENERATED_TRANSLATION_MARKER,
+                    })
+                    continue
+
                 version_title = version.get("title", "")
                 inventory["versions"].append({
                     "ocp_book": ocp_book,
@@ -178,26 +226,28 @@ def _raw_inventory(source_dir: Path) -> dict:
                     "source_file": path.name,
                     "source_sha256": source_sha256,
                 })
-                divisions = version.find("divisions")
-                specs = tuple(
-                    DivisionSpec(
-                        d.get("label", ""),
-                        d.get("delimiter", d.get("Delimiter", "")),
-                        _plain_text(d),
+                if is_wrapped_legacy_version(version):
+                    specs = (DivisionSpec("Chapter", ":"), DivisionSpec("Verse", ""))
+                else:
+                    divisions = version.find("divisions")
+                    specs = tuple(
+                        DivisionSpec(
+                            d.get("label", ""),
+                            d.get("delimiter", d.get("Delimiter", "")),
+                            _plain_text(d),
+                        )
+                        for d in (divisions.findall("division") if divisions is not None else [])
                     )
-                    for d in (divisions.findall("division") if divisions is not None else [])
-                )
-                for index, spec in enumerate(specs, 1):
-                    inventory["division_specs"].append({
-                        "ocp_book": ocp_book, "version_title": version_title, "index": index,
-                        "label": spec.label, "delimiter": spec.delimiter, "text": spec.text,
-                    })
+                add_specs(ocp_book, version_title, specs)
                 add_manuscripts(version, ocp_book, version_title)
                 add_resources(version, ocp_book, version_title)
                 text = version.find("text")
                 if text is not None:
-                    for div in text.findall("div"):
-                        walk_div(div, ocp_book, version_title, specs, ())
+                    if is_wrapped_legacy_version(version):
+                        add_legacy_text(text, ocp_book, version_title, specs)
+                    else:
+                        for div in text.findall("div"):
+                            walk_div(div, ocp_book, version_title, specs, ())
         else:
             version_title = root.get("language", "") or "Default"
             inventory["versions"].append({
@@ -212,33 +262,12 @@ def _raw_inventory(source_dir: Path) -> dict:
                 "source_sha256": source_sha256,
             })
             specs = (DivisionSpec("Chapter", ":"), DivisionSpec("Verse", ""))
-            for index, spec in enumerate(specs, 1):
-                inventory["division_specs"].append({
-                    "ocp_book": ocp_book, "version_title": version_title, "index": index,
-                    "label": spec.label, "delimiter": spec.delimiter, "text": spec.text,
-                })
+            add_specs(ocp_book, version_title, specs)
             add_manuscripts(root, ocp_book, version_title)
             add_resources(root, ocp_book, version_title)
             text = root.find("text")
             if text is not None:
-                for chapter in text.findall("chapter"):
-                    chapter_path = (chapter.get("number", ""),)
-                    inventory["divs"].append({
-                        "ocp_book": ocp_book, "version_title": version_title,
-                        "source_ref": _reference(chapter_path, specs),
-                        "number": chapter.get("number", ""), "fragment": chapter.get("fragment", ""),
-                        "level": 1, "label": "Chapter",
-                    })
-                    for verse in chapter.findall("verse"):
-                        verse_path = chapter_path + (verse.get("reference", ""),)
-                        inventory["divs"].append({
-                            "ocp_book": ocp_book, "version_title": version_title,
-                            "source_ref": _reference(verse_path, specs),
-                            "number": verse.get("reference", ""), "fragment": verse.get("fragment", ""),
-                            "level": 2, "label": "Verse",
-                        })
-                        for unit in verse.findall("unit"):
-                            add_unit(unit, ocp_book, version_title, verse_path, specs)
+                add_legacy_text(text, ocp_book, version_title, specs)
     return inventory
 
 

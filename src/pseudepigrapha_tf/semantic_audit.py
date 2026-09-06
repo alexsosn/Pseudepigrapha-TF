@@ -345,10 +345,23 @@ def build_conversion_report(source_dir: str | Path, books: list[Book], data: TFD
     graph["division_specs"].extend(metadata_specs)
     raw_ellipses = raw["ellipses"]
     raw_orphan_readings = raw["orphan_readings"]
+    raw_excluded_translations = raw["excluded_generated_translation_versions"]
     graph_ellipses = _graph_ellipsis_inventory(data, node_index)
     graph_orphan_readings = _graph_orphan_reading_inventory(data, node_index)
     raw_missing_unit_ids = _raw_missing_unit_id_inventory(raw["units"])
     graph_missing_unit_ids = _graph_missing_unit_id_inventory(data, node_index)
+
+    model_excluded_translations = [
+        {
+            "ocp_book": book.filename,
+            "version_title": exclusion.version_title,
+            "language": exclusion.language,
+            "source_file": book.source_path,
+            "marker": exclusion.marker,
+        }
+        for book in books
+        for exclusion in book.excluded_generated_translations
+    ]
 
     primary_ok, alternative_ok = base._reconstruction_checks(data, node_index)
     source_hashes = {record["file"]: record["sha256"] for record in raw["files"]}
@@ -358,6 +371,8 @@ def build_conversion_report(source_dir: str | Path, books: list[Book], data: TFD
 
     checks = {
         "source_hashes": source_hashes == model_hashes,
+        "generated_translation_exclusions": base._canonical(raw_excluded_translations)
+        == base._canonical(model_excluded_translations),
         "versions": base._canonical(raw["versions"]) == base._canonical(graph["versions"]),
         "division_specs": base._canonical(raw["division_specs"]) == base._canonical(graph["division_specs"]),
         "divisions": base._canonical(raw["divs"]) == base._canonical(graph["divs"]),
@@ -409,6 +424,7 @@ def build_conversion_report(source_dir: str | Path, books: list[Book], data: TFD
     source_counts = {
         "files": len(raw["files"]),
         "versions": len(raw["versions"]),
+        "excluded_generated_translation_versions": len(raw_excluded_translations),
         "divisions": len(raw["divs"]),
         "units": len(raw["units"]),
         "missing_unit_ids": len(raw_missing_unit_ids),
@@ -454,6 +470,7 @@ def build_conversion_report(source_dir: str | Path, books: list[Book], data: TFD
         "semantic_checks": checks,
         "diagnostics": {
             "duplicate_section_addresses": section_address_collisions,
+            "excluded_generated_translation_versions": raw_excluded_translations,
         },
         "source": source_counts,
         "graph": graph_counts,

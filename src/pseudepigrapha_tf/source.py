@@ -15,9 +15,17 @@ def load_source_directory(path: str | Path) -> tuple[list[Book], list[str]]:
         if xml_path.name.startswith("."):
             continue
         try:
-            books.append(parse_bytes(xml_path.read_bytes(), source_path=xml_path.name))
+            book = parse_bytes(xml_path.read_bytes(), source_path=xml_path.name)
         except EmptySourceError:
             warnings.append(f"skipping empty XML source: {xml_path.name}")
+            continue
+        for exclusion in book.excluded_generated_translations:
+            warnings.append(
+                "excluding generated translation "
+                f"{book.filename}/{exclusion.version_title} ({exclusion.language}); "
+                f"source marker={exclusion.marker}"
+            )
+        books.append(book)
     return books, warnings
 
 

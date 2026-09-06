@@ -41,14 +41,12 @@ jobs:
       - name: Clone pinned OCP source
         run: |
           git clone https://github.com/OnlineCriticalPseudepigrapha/Online-Critical-Pseudepigrapha.git /tmp/ocp
-          git -C /tmp/ocp checkout 2d1d14d23434a784d377ff7f4409ccdb2d18aafb
-      - name: Record pinned AdamEve digest
-        run: sha256sum /tmp/ocp/static/docs/AdamEve.xml
+          git -C /tmp/ocp checkout c939dcbacad78c5d18d2c4282cad23c47e19ac07
       - name: Convert and audit complete OCP XML set
         run: |
           time pseudepigrapha-tf convert /tmp/ocp/static/docs \
             --output /tmp/pseudepigrapha-tf/0.1 \
-            --upstream-commit 2d1d14d23434a784d377ff7f4409ccdb2d18aafb
+            --upstream-commit c939dcbacad78c5d18d2c4282cad23c47e19ac07
       - name: Validate semantic parity report
         run: |
           python - <<'PY'
@@ -58,14 +56,16 @@ jobs:
           report = json.loads(Path('/tmp/pseudepigrapha-tf/0.1/conversion-report.json').read_text())
           assert report['status'] == 'ok', report['failed_checks']
           assert all(report['semantic_checks'].values())
-          assert report['provenance']['upstream_commit'] == '2d1d14d23434a784d377ff7f4409ccdb2d18aafb'
+          assert report['provenance']['upstream_commit'] == 'c939dcbacad78c5d18d2c4282cad23c47e19ac07'
           assert report['source']['versions'] == report['graph']['versions']
           assert report['source']['readings'] == report['graph']['readings']
           assert report['source']['missing_unit_ids'] == report['graph']['missing_unit_ids'] == 1
+          assert report['source']['excluded_generated_translation_versions'] > 0
           assert report['graph']['metadata_only_versions'] >= 1
           assert report['graph']['slots'] > 0
           assert report['graph']['oslots_edges'] > 0
-          print(json.dumps({'source': report['source'], 'graph': report['graph']}, indent=2))
+          assert report['diagnostics']['excluded_generated_translation_versions']
+          print(json.dumps({'source': report['source'], 'graph': report['graph'], 'diagnostics': report['diagnostics']}, indent=2))
           PY
       - name: Reload generated Text-Fabric dataset and verify interface semantics
         run: |
@@ -76,7 +76,7 @@ jobs:
           TF = Fabric(locations=['/tmp/pseudepigrapha-tf/0.1'], modules=[''], silent='deep')
           api = TF.load(
               'reading_text ms_abbrev ms_language ms_name ms_show undefined_manuscript resource_name source_ref is_primary '
-              'unit_id is_missing_unit_id is_source_anomaly prefix_utf8 g_word_utf8 trailer_utf8 boundary_utf8 '
+              'unit_id is_missing_unit_id is_source_anomaly prefix_utf8 g_word_utf8 trailer_utf8 boundary_utf8 linebreak '
               'version_title version_id is_metadata_only ocp_book title language author '
               'reading_of witness manuscript_of',
               silent='deep',
@@ -85,6 +85,23 @@ jobs:
           assert api.F.otype.maxSlot > 0
           assert api.F.otype.slotType == 'word'
           assert tuple(api.T.sectionTypes) == ('book', 'chapter', 'verse')
+
+          # Generated OCP translation witnesses are deliberately excluded by #72.
+          assert not any(
+              api.F.ms_abbrev.v(n) == 'OCP-Trans'
+              for n in api.F.otype.s('manuscript')
+          )
+
+          # Upstream 43444399 added linebreak="following" to all 32 non-primary
+          # Aramaic variant readings in 4Q548. Preserve that exact source value.
+          refreshed_variant_linebreaks = [
+              n for n in api.F.otype.s('reading')
+              if api.F.ocp_book.v(n) == '4Q548'
+              and api.F.version_title.v(n) == 'Aramaic'
+              and api.F.is_primary.v(n) != 1
+              and api.F.linebreak.v(n) == 'following'
+          ]
+          assert len(refreshed_variant_linebreaks) == 32, len(refreshed_variant_linebreaks)
 
           missing_units = [
               n for n in api.F.otype.s('unit')
@@ -132,8 +149,8 @@ jobs:
 
           A = Apparatus(api)
 
-          # 1 Enoch has four top-level OCP textual versions. passage() addresses
-          # one version explicitly; work_passage() retrieves all of them.
+          # 1 Enoch has four top-level OCP source textual versions. Generated
+          # English/French versions are intentionally absent until #76.
           enoch = A.passage('1En__Ethiopic', '1', '2')
           assert enoch['reference'] == ('1En__Ethiopic', '1', '2')
           assert enoch['source_refs'] == ('1:2',)

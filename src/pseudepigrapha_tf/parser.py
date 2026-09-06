@@ -11,6 +11,7 @@ from .model import (
     Div,
     DivisionSpec,
     Ellipsis,
+    GeneratedTranslationExclusion,
     Manuscript,
     OrphanReading,
     Reading,
@@ -21,6 +22,11 @@ from .model import (
     _validated_blank_unit_id,
 )
 from .source_structure import SourceStructureError, validate_source_structure
+from .source_versions import (
+    GeneratedTranslationClassificationError,
+    is_generated_translation_version,
+    is_wrapped_legacy_version,
+)
 
 ETHIOPIC_SEPARATORS = frozenset("፡።፣፤፥፦፧፨")
 
@@ -150,6 +156,28 @@ def _parse_div(element: ET.Element) -> Div:
     )
 
 
+def _parse_legacy_divs(text_el: ET.Element) -> tuple[Div, ...]:
+    chapter_divs: list[Div] = []
+    for chapter in text_el.findall("chapter"):
+        verse_divs: list[Div] = []
+        for verse in chapter.findall("verse"):
+            verse_divs.append(
+                Div(
+                    number=verse.get("reference", ""),
+                    fragment=verse.get("fragment", ""),
+                    items=tuple(_parse_unit(u) for u in verse.findall("unit")),
+                )
+            )
+        chapter_divs.append(
+            Div(
+                number=chapter.get("number", ""),
+                fragment=chapter.get("fragment", ""),
+                items=tuple(verse_divs),
+            )
+        )
+    return tuple(chapter_divs)
+
+
 def _parse_manuscript(element: ET.Element) -> Manuscript:
     name_el = element.find("name")
     bibliography = element.findall("bibliography")
@@ -182,23 +210,37 @@ def _parse_version(element: ET.Element) -> Version:
     divisions_el = element.find("divisions")
     manuscripts_el = element.find("manuscripts")
     text_el = element.find("text")
-    if divisions_el is None or manuscripts_el is None or text_el is None:
-        raise InvalidSourceError(f"version {element.get('title', '')!r} is missing divisions, manuscripts, or text")
+    if manuscripts_el is None or text_el is None:
+        raise InvalidSourceError(f"version {element.get('title', '')!r} is missing manuscripts or text")
+
+    wrapped_legacy = is_wrapped_legacy_version(element)
+    if divisions_el is None and not wrapped_legacy:
+        raise InvalidSourceError(f"version {element.get('title', '')!r} is missing divisions")
+
     resources: list[Resource] = []
     for resources_el in element.findall("resources"):
         resources.extend(_parse_resource(r) for r in resources_el.findall("resource"))
+
+    if wrapped_legacy:
+        divisions = (DivisionSpec("Chapter", ":"), DivisionSpec("Verse", ""))
+        divs = _parse_legacy_divs(text_el)
+    else:
+        assert divisions_el is not None
+        divisions = tuple(
+            DivisionSpec(d.get("label", ""), _division_delimiter(d), _plain_text(d))
+            for d in divisions_el.findall("division")
+        )
+        divs = tuple(_parse_div(d) for d in text_el.findall("div"))
+
     return Version(
         title=element.get("title", ""),
         author=element.get("author", ""),
         language=element.get("language", ""),
         fragment=element.get("fragment", ""),
-        divisions=tuple(
-            DivisionSpec(d.get("label", ""), _division_delimiter(d), _plain_text(d))
-            for d in divisions_el.findall("division")
-        ),
+        divisions=divisions,
         resources=tuple(resources),
         manuscripts=tuple(_parse_manuscript(ms) for ms in manuscripts_el.findall("ms")),
-        divs=tuple(_parse_div(d) for d in text_el.findall("div")),
+        divs=divs,
     )
 
 
@@ -210,24 +252,6 @@ def _parse_legacy_version(root: ET.Element) -> Version:
     resources: list[Resource] = []
     for resources_el in root.findall("resources"):
         resources.extend(_parse_resource(r) for r in resources_el.findall("resource"))
-    chapter_divs: list[Div] = []
-    for chapter in text_el.findall("chapter"):
-        verse_divs: list[Div] = []
-        for verse in chapter.findall("verse"):
-            verse_divs.append(
-                Div(
-                    number=verse.get("reference", ""),
-                    fragment=verse.get("fragment", ""),
-                    items=tuple(_parse_unit(u) for u in verse.findall("unit")),
-                )
-            )
-        chapter_divs.append(
-            Div(
-                number=chapter.get("number", ""),
-                fragment=chapter.get("fragment", ""),
-                items=tuple(verse_divs),
-            )
-        )
     language = root.get("language", "")
     return Version(
         title=language or "Default",
@@ -237,7 +261,7 @@ def _parse_legacy_version(root: ET.Element) -> Version:
         divisions=(DivisionSpec("Chapter", ":"), DivisionSpec("Verse", "")),
         resources=tuple(resources),
         manuscripts=tuple(_parse_manuscript(ms) for ms in manuscripts_el.findall("ms")),
-        divs=tuple(chapter_divs),
+        divs=_parse_legacy_divs(text_el),
     )
 
 
@@ -252,7 +276,8 @@ def parse_bytes(data: bytes, *, source_path: str = "") -> Book:
         raise InvalidSourceError(f"expected <book> root in {source_path or '<memory>'}, found <{root.tag}>")
 
     source_sha256 = hashlib.sha256(data).hexdigest()
-    has_versions = bool(root.findall("version"))
+    version_elements = root.findall("version")
+    has_versions = bool(version_elements)
     is_legacy = not has_versions and root.find("text/chapter") is not None
     try:
         validate_source_structure(
@@ -264,11 +289,29 @@ def parse_bytes(data: bytes, *, source_path: str = "") -> Book:
     except SourceStructureError as exc:
         raise InvalidSourceError(str(exc)) from exc
 
-    versions = tuple(_parse_version(v) for v in root.findall("version"))
+    parsed_versions: list[Version] = []
+    excluded: list[GeneratedTranslationExclusion] = []
+    for version_element in version_elements:
+        try:
+            generated = is_generated_translation_version(version_element)
+        except GeneratedTranslationClassificationError as exc:
+            location = source_path or "<memory>"
+            raise InvalidSourceError(f"{location}: {exc}") from exc
+        if generated:
+            excluded.append(
+                GeneratedTranslationExclusion(
+                    version_title=version_element.get("title", ""),
+                    language=version_element.get("language", ""),
+                )
+            )
+            continue
+        parsed_versions.append(_parse_version(version_element))
+
+    versions = tuple(parsed_versions)
     if not versions and is_legacy:
         versions = (_parse_legacy_version(root),)
     if not versions:
-        raise InvalidSourceError(f"book has no supported text structure: {source_path or '<memory>'}")
+        raise InvalidSourceError(f"book has no supported non-generated text structure: {source_path or '<memory>'}")
     return Book(
         filename=root.get("filename", ""),
         title=root.get("title", ""),
@@ -276,6 +319,7 @@ def parse_bytes(data: bytes, *, source_path: str = "") -> Book:
         versions=versions,
         source_path=source_path,
         source_sha256=source_sha256,
+        excluded_generated_translations=tuple(excluded),
     )
 
 

@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from xml.etree import ElementTree as ET
 
+from .source_versions import is_wrapped_legacy_version
+
 
 class SourceStructureError(ValueError):
     """Raised when a well-formed XML tree contains unsupported source structure."""
@@ -57,7 +59,9 @@ LEGACY_CHILDREN: dict[str, frozenset[str]] = {
 # already retained inside an independently audited mixed-XML feature. For all
 # other elements, accepting an unlisted attribute would silently discard it.
 MODERN_ATTRIBUTES: dict[str, frozenset[str] | None] = {
-    "book": frozenset({"filename", "title", "textStructure"}),
+    # Current OCP's wrapped legacy Esdr source retains the old root language
+    # attribute. It is accepted only under the equivalence check below.
+    "book": frozenset({"filename", "title", "textStructure", "language"}),
     "version": frozenset({"title", "author", "fragment", "language"}),
     "divisions": frozenset(),
     # ApocrEzek.xml in the pinned corpus uses capitalized Delimiter in several
@@ -108,18 +112,24 @@ MODERN_NONBLANK_IDENTITY_ATTRIBUTES: dict[str, frozenset[str]] = {
     "reading": frozenset({"option"}),
 }
 
-# AdamEve.xml at the pinned OCP revision contains exactly one source-declared
-# blank unit id: Latin (Mozley), source div path 26:0. Bind the exception to the
-# exact source bytes, not merely to a filename-shaped path supplied by a caller.
+# AdamEve.xml contains exactly one source-declared blank unit id: Latin
+# (Mozley), source div path 26:0. Bind the exception to exact source bytes for
+# each supported immutable OCP snapshot. The second digest is the refreshed
+# c939dcb... source after generated translations/pretty-printing were added.
 KNOWN_BLANK_UNIT_ID_SOURCES: dict[
-    tuple[str, str, str, tuple[str, ...]], str
+    tuple[str, str, str, tuple[str, ...]], frozenset[str]
 ] = {
     (
         "AdamEve.xml",
         "AdamEve",
         "Latin (Mozley)",
         ("26", "0"),
-    ): "a63275351e2349ce8a31b7427a28b80db034be670ba545e2398832a3d9ac6358",
+    ): frozenset(
+        {
+            "a63275351e2349ce8a31b7427a28b80db034be670ba545e2398832a3d9ac6358",
+            "b5e20471d7e1b531df49d81acd19462ee92192c3e20019cb110215611d7b9817",
+        }
+    ),
 }
 
 # These exact pinned manuscript records embed/inhabit DTDs declaring
@@ -170,26 +180,45 @@ def validate_source_structure(
     converter's preservation boundary while leaving unrelated cardinality/order
     checks to separate validation work. Elements and attributes are each visited
     a constant number of times, so validation remains linear in source size.
+
+    Current OCP has one hybrid shape produced by its translation generator: an
+    old chapter/verse document is wrapped in a modern <version> while its body is
+    left in the legacy dialect. Only that version subtree switches dialect; the
+    surrounding book and all sibling versions remain subject to modern rules.
     """
 
-    allowed_children = LEGACY_CHILDREN if legacy else MODERN_CHILDREN
-    allowed_attributes = LEGACY_ATTRIBUTES if legacy else MODERN_ATTRIBUTES
     location = source_path or "<memory>"
     source_name = source_path.replace("\\", "/").rsplit("/", 1)[-1] if source_path else ""
     book_filename = root.attrib.get("filename", "")
 
-    # Carry the containing version title and source div path through the
-    # iterative traversal so record-specific exceptions remain linear and do
-    # not require parent pointers or repeated ancestor scans.
-    stack: list[tuple[ET.Element, str, str, tuple[str, ...]]] = [
-        (root, f"/{root.tag}", "", ())
+    if not legacy and "language" in root.attrib:
+        wrapped_versions = [version for version in root.findall("version") if is_wrapped_legacy_version(version)]
+        if (
+            len(wrapped_versions) != 1
+            or wrapped_versions[0].attrib.get("language", "") != root.attrib.get("language", "")
+        ):
+            raise SourceStructureError(
+                f"{location}: root book language is only supported when it exactly duplicates one wrapped legacy version"
+            )
+
+    # Carry the containing version title, source div path, and hybrid-body flag
+    # through the iterative traversal so validation stays linear.
+    stack: list[tuple[ET.Element, str, str, tuple[str, ...], bool]] = [
+        (root, f"/{root.tag}", "", (), False)
     ]
     while stack:
-        parent, path, version_title, div_path = stack.pop()
+        parent, path, version_title, div_path, wrapped_legacy = stack.pop()
         if parent.tag == "version":
             version_title = parent.attrib.get("title", "")
+            wrapped_legacy = is_wrapped_legacy_version(parent)
         if parent.tag == "div":
             div_path = div_path + (parent.attrib.get("number", ""),)
+
+        # The <version> wrapper itself is modern. Only its descendants use the
+        # legacy chapter/verse policy.
+        node_legacy = legacy or (wrapped_legacy and parent.tag != "version")
+        allowed_children = LEGACY_CHILDREN if node_legacy else MODERN_CHILDREN
+        allowed_attributes = LEGACY_ATTRIBUTES if node_legacy else MODERN_ATTRIBUTES
 
         allowed = allowed_children.get(parent.tag)
         if allowed is None:
@@ -197,7 +226,7 @@ def validate_source_structure(
                 f"{location}: unsupported <{parent.tag}> element at {path}"
             )
 
-        if not legacy:
+        if not node_legacy:
             required = MODERN_REQUIRED_ATTRIBUTES.get(parent.tag, frozenset())
             if parent.tag == "ms":
                 manuscript_identity = (
@@ -220,13 +249,12 @@ def validate_source_structure(
                 value = parent.attrib.get(attribute)
                 if value is not None and not value.strip():
                     anomaly_key = (source_name, book_filename, version_title, div_path)
-                    expected_digest = KNOWN_BLANK_UNIT_ID_SOURCES.get(anomaly_key)
+                    expected_digests = KNOWN_BLANK_UNIT_ID_SOURCES.get(anomaly_key, frozenset())
                     known_blank_unit = (
                         parent.tag == "unit"
                         and attribute == "id"
                         and value == ""
-                        and expected_digest is not None
-                        and source_sha256 == expected_digest
+                        and source_sha256 in expected_digests
                     )
                     if not known_blank_unit:
                         raise SourceStructureError(
@@ -247,7 +275,7 @@ def validate_source_structure(
                 seen_abbrevs.add(abbrev)
 
         if (
-            not legacy
+            not node_legacy
             and parent.tag == "division"
             and "delimiter" in parent.attrib
             and "Delimiter" in parent.attrib
@@ -271,4 +299,4 @@ def validate_source_structure(
                     f"{location}: unsupported <{child.tag}> child of <{parent.tag}> at {path}"
                 )
         for child in reversed(children):
-            stack.append((child, f"{path}/{child.tag}", version_title, div_path))
+            stack.append((child, f"{path}/{child.tag}", version_title, div_path, wrapped_legacy))
