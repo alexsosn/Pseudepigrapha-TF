@@ -1,6 +1,6 @@
 # Apparatus helper loading contracts
 
-`pseudepigrapha_tf.Apparatus` is a convenience layer over a loaded Text-Fabric API. Its methods do not implicitly reload omitted features, so selective loads must include the features and edges required by the operation being used.
+`pseudepigrapha_tf.Apparatus` is a convenience layer over a loaded Text-Fabric API. Its methods do not implicitly reload omitted features, so selective loads must include the features and edges required by the operation being used. The main README includes an end-to-end `work_metadata()` researcher example; this page specifies the selective-load contract behind it.
 
 ## Primitive apparatus relations
 
