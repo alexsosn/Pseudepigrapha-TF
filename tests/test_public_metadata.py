@@ -115,6 +115,28 @@ def test_loader_rejects_unknown_json_document_key(tmp_path: Path):
         load_public_metadata(docs)
 
 
+def test_loader_rejects_duplicate_json_document_key(tmp_path: Path):
+    docs = tmp_path / "docs"
+    docs.mkdir()
+    (docs / "One.xml").write_text(ONE_XML, encoding="utf-8")
+    entry = json.dumps(
+        {
+            "title": "One",
+            "version": 1.0,
+            "citation": "<p>One</p>",
+            "fields": {},
+        },
+        ensure_ascii=False,
+    )
+    (docs / "intros.json").write_text(
+        '{"_meta":{},"documents":{"One.xml":' + entry + ',"One.xml":' + entry + '}}',
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match=r"duplicate JSON object key.*One\.xml"):
+        load_public_metadata(docs)
+
+
 def test_loader_rejects_nonempty_xml_filename_identity_mismatch(tmp_path: Path):
     docs = _write_source(tmp_path, _payload())
     (docs / "One.xml").write_text(ONE_XML.replace('filename="One"', 'filename="Other"'), encoding="utf-8")
