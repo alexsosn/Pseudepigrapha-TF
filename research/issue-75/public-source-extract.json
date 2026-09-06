@@ -1,0 +1,743 @@
+{
+  "source": {
+    "repository": "OnlineCriticalPseudepigrapha/Online-Critical-Pseudepigrapha",
+    "historical_commit": "d722fb62a48782ced67c678dc111cfb1b391cc89",
+    "historical_commit_date": "2017-10-30T20:32:12-04:00",
+    "storage_sqlite_git_blob": "17b6931b5c2c37289e23d28c598d4bd0b4950075",
+    "storage_sqlite_sha256": "85f039815cb0b814dc896654115c0de59cdeb7492d94064051cf7e23e0712283",
+    "consulted_tables": {
+      "docs": [
+        "figures",
+        "filename",
+        "genres",
+        "id",
+        "name"
+      ],
+      "genres": [
+        "genre",
+        "id"
+      ],
+      "biblical_figures": [
+        "figure",
+        "id"
+      ]
+    },
+    "excluded_table_policy": "No auth_*, draft*, user/email, or unrelated application rows queried."
+  },
+  "genres": [
+    {
+      "id": 1,
+      "genre": "apocalypses and visionary texts"
+    },
+    {
+      "id": 2,
+      "genre": "psalms and hymns"
+    },
+    {
+      "id": 3,
+      "genre": "testaments"
+    },
+    {
+      "id": 4,
+      "genre": "parabiblical works (re-written Bible)"
+    },
+    {
+      "id": 5,
+      "genre": "lives and biographies"
+    },
+    {
+      "id": 6,
+      "genre": "histories and history-like narratives"
+    },
+    {
+      "id": 7,
+      "genre": "drama"
+    },
+    {
+      "id": 8,
+      "genre": "uncertain genre"
+    },
+    {
+      "id": 9,
+      "genre": "philosophical and theological discourses"
+    },
+    {
+      "id": 10,
+      "genre": "epic poetry"
+    },
+    {
+      "id": 11,
+      "genre": "prophecy"
+    }
+  ],
+  "biblical_figures": [
+    {
+      "id": 1,
+      "figure": "Adam"
+    },
+    {
+      "id": 2,
+      "figure": "Eve"
+    },
+    {
+      "id": 3,
+      "figure": "Baruch"
+    },
+    {
+      "id": 4,
+      "figure": "Enoch"
+    },
+    {
+      "id": 5,
+      "figure": "Solomon"
+    },
+    {
+      "id": 6,
+      "figure": "Moses"
+    },
+    {
+      "id": 7,
+      "figure": "Rechabites"
+    },
+    {
+      "id": 8,
+      "figure": "Jacob"
+    },
+    {
+      "id": 9,
+      "figure": "Job"
+    },
+    {
+      "id": 10,
+      "figure": "Joseph"
+    },
+    {
+      "id": 11,
+      "figure": "Sibyl"
+    },
+    {
+      "id": 12,
+      "figure": "Prophets"
+    },
+    {
+      "id": 13,
+      "figure": "Ezra"
+    },
+    {
+      "id": 14,
+      "figure": "Abraham"
+    },
+    {
+      "id": 15,
+      "figure": "Jeremiah"
+    },
+    {
+      "id": 16,
+      "figure": "Ezekiel"
+    },
+    {
+      "id": 17,
+      "figure": "Amram"
+    }
+  ],
+  "docs": [
+    {
+      "doc_id": 1,
+      "name": "Testament of Job",
+      "filename": "TJob",
+      "genres_raw": "|3|",
+      "figures_raw": "|9|",
+      "genres": [
+        {
+          "id": 3,
+          "label": "testaments"
+        }
+      ],
+      "biblical_figures": [
+        {
+          "id": 9,
+          "label": "Job"
+        }
+      ]
+    },
+    {
+      "doc_id": 2,
+      "name": "1 (Ethiopic Apocalypse of) Enoch",
+      "filename": "1En",
+      "genres_raw": "|1|",
+      "figures_raw": "|4|",
+      "genres": [
+        {
+          "id": 1,
+          "label": "apocalypses and visionary texts"
+        }
+      ],
+      "biblical_figures": [
+        {
+          "id": 4,
+          "label": "Enoch"
+        }
+      ]
+    },
+    {
+      "doc_id": 3,
+      "name": "Testament of Solomon",
+      "filename": "TSol",
+      "genres_raw": "|3|",
+      "figures_raw": "|5|",
+      "genres": [
+        {
+          "id": 3,
+          "label": "testaments"
+        }
+      ],
+      "biblical_figures": [
+        {
+          "id": 5,
+          "label": "Solomon"
+        }
+      ]
+    },
+    {
+      "doc_id": 4,
+      "name": "Testament of Abraham",
+      "filename": "TAbr",
+      "genres_raw": "|3|",
+      "figures_raw": "|14|",
+      "genres": [
+        {
+          "id": 3,
+          "label": "testaments"
+        }
+      ],
+      "biblical_figures": [
+        {
+          "id": 14,
+          "label": "Abraham"
+        }
+      ]
+    },
+    {
+      "doc_id": 5,
+      "name": "Visions of Amram",
+      "filename": "Amram",
+      "genres_raw": "|1|",
+      "figures_raw": "|17|",
+      "genres": [
+        {
+          "id": 1,
+          "label": "apocalypses and visionary texts"
+        }
+      ],
+      "biblical_figures": [
+        {
+          "id": 17,
+          "label": "Amram"
+        }
+      ]
+    },
+    {
+      "doc_id": 6,
+      "name": "Aristobulus (Fragments)",
+      "filename": "Aristob",
+      "genres_raw": "|9|",
+      "figures_raw": "|6|",
+      "genres": [
+        {
+          "id": 9,
+          "label": "philosophical and theological discourses"
+        }
+      ],
+      "biblical_figures": [
+        {
+          "id": 6,
+          "label": "Moses"
+        }
+      ]
+    },
+    {
+      "doc_id": 7,
+      "name": "3 (Greek Apocalypse of) Baruch",
+      "filename": "3Bar",
+      "genres_raw": "|1|",
+      "figures_raw": "|3|",
+      "genres": [
+        {
+          "id": 1,
+          "label": "apocalypses and visionary texts"
+        }
+      ],
+      "biblical_figures": [
+        {
+          "id": 3,
+          "label": "Baruch"
+        }
+      ]
+    },
+    {
+      "doc_id": 8,
+      "name": "Apocryphon of Ezekiel",
+      "filename": "ApocrEzek",
+      "genres_raw": "|11|",
+      "figures_raw": "|16|",
+      "genres": [
+        {
+          "id": 11,
+          "label": "prophecy"
+        }
+      ],
+      "biblical_figures": [
+        {
+          "id": 16,
+          "label": "Ezekiel"
+        }
+      ]
+    },
+    {
+      "doc_id": 10,
+      "name": "Jubilees",
+      "filename": "Jub",
+      "genres_raw": "|4|",
+      "figures_raw": "|6|",
+      "genres": [
+        {
+          "id": 4,
+          "label": "parabiblical works (re-written Bible)"
+        }
+      ],
+      "biblical_figures": [
+        {
+          "id": 6,
+          "label": "Moses"
+        }
+      ]
+    },
+    {
+      "doc_id": 11,
+      "name": "Assumption of Moses (Testament of Moses)",
+      "filename": "Mois",
+      "genres_raw": "|1|4|3|",
+      "figures_raw": "|6|",
+      "genres": [
+        {
+          "id": 1,
+          "label": "apocalypses and visionary texts"
+        },
+        {
+          "id": 4,
+          "label": "parabiblical works (re-written Bible)"
+        },
+        {
+          "id": 3,
+          "label": "testaments"
+        }
+      ],
+      "biblical_figures": [
+        {
+          "id": 6,
+          "label": "Moses"
+        }
+      ]
+    },
+    {
+      "doc_id": 12,
+      "name": "Philo the Epic Poet (Fragments)",
+      "filename": "PhEPoet",
+      "genres_raw": "|10|",
+      "figures_raw": "||",
+      "genres": [
+        {
+          "id": 10,
+          "label": "epic poetry"
+        }
+      ],
+      "biblical_figures": []
+    },
+    {
+      "doc_id": 13,
+      "name": "Life of Adam and Eve",
+      "filename": "AdamEve",
+      "genres_raw": "|5|4|",
+      "figures_raw": "|1|2|",
+      "genres": [
+        {
+          "id": 5,
+          "label": "lives and biographies"
+        },
+        {
+          "id": 4,
+          "label": "parabiblical works (re-written Bible)"
+        }
+      ],
+      "biblical_figures": [
+        {
+          "id": 1,
+          "label": "Adam"
+        },
+        {
+          "id": 2,
+          "label": "Eve"
+        }
+      ]
+    },
+    {
+      "doc_id": 14,
+      "name": "Letter of Aristeas",
+      "filename": "LetAris",
+      "genres_raw": "|6|",
+      "figures_raw": "||",
+      "genres": [
+        {
+          "id": 6,
+          "label": "histories and history-like narratives"
+        }
+      ],
+      "biblical_figures": []
+    },
+    {
+      "doc_id": 15,
+      "name": "Artapanus (Fragments)",
+      "filename": "Artap",
+      "genres_raw": "|6|4|",
+      "figures_raw": "|14|6|",
+      "genres": [
+        {
+          "id": 6,
+          "label": "histories and history-like narratives"
+        },
+        {
+          "id": 4,
+          "label": "parabiblical works (re-written Bible)"
+        }
+      ],
+      "biblical_figures": [
+        {
+          "id": 14,
+          "label": "Abraham"
+        },
+        {
+          "id": 6,
+          "label": "Moses"
+        }
+      ]
+    },
+    {
+      "doc_id": 16,
+      "name": "Cleodemus Malchus",
+      "filename": "ClMal",
+      "genres_raw": "|6|",
+      "figures_raw": "||",
+      "genres": [
+        {
+          "id": 6,
+          "label": "histories and history-like narratives"
+        }
+      ],
+      "biblical_figures": []
+    },
+    {
+      "doc_id": 17,
+      "name": "Eupolemus (Fragments)",
+      "filename": "Eup",
+      "genres_raw": "|6|",
+      "figures_raw": "||",
+      "genres": [
+        {
+          "id": 6,
+          "label": "histories and history-like narratives"
+        }
+      ],
+      "biblical_figures": []
+    },
+    {
+      "doc_id": 18,
+      "name": "Exagoge of Ezekiel the Tragedian",
+      "filename": "EzekTrag",
+      "genres_raw": "|7|4|",
+      "figures_raw": "|6|",
+      "genres": [
+        {
+          "id": 7,
+          "label": "drama"
+        },
+        {
+          "id": 4,
+          "label": "parabiblical works (re-written Bible)"
+        }
+      ],
+      "biblical_figures": [
+        {
+          "id": 6,
+          "label": "Moses"
+        }
+      ]
+    },
+    {
+      "doc_id": 19,
+      "name": "Paraleipomena Ieremiou (4 Baruch)",
+      "filename": "4Bar",
+      "genres_raw": "|6|4|",
+      "figures_raw": "|3|15|",
+      "genres": [
+        {
+          "id": 6,
+          "label": "histories and history-like narratives"
+        },
+        {
+          "id": 4,
+          "label": "parabiblical works (re-written Bible)"
+        }
+      ],
+      "biblical_figures": [
+        {
+          "id": 3,
+          "label": "Baruch"
+        },
+        {
+          "id": 15,
+          "label": "Jeremiah"
+        }
+      ]
+    },
+    {
+      "doc_id": 20,
+      "name": "3 Maccabees",
+      "filename": "3Macc",
+      "genres_raw": "|6|",
+      "figures_raw": "||",
+      "genres": [
+        {
+          "id": 6,
+          "label": "histories and history-like narratives"
+        }
+      ],
+      "biblical_figures": []
+    },
+    {
+      "doc_id": 21,
+      "name": "Sibylline Oracles",
+      "filename": "SibOr",
+      "genres_raw": "|1|",
+      "figures_raw": "|11|",
+      "genres": [
+        {
+          "id": 1,
+          "label": "apocalypses and visionary texts"
+        }
+      ],
+      "biblical_figures": [
+        {
+          "id": 11,
+          "label": "Sibyl"
+        }
+      ]
+    },
+    {
+      "doc_id": 22,
+      "name": "Testament of Adam",
+      "filename": "TAdam",
+      "genres_raw": "|3|",
+      "figures_raw": "|1|",
+      "genres": [
+        {
+          "id": 3,
+          "label": "testaments"
+        }
+      ],
+      "biblical_figures": [
+        {
+          "id": 1,
+          "label": "Adam"
+        }
+      ]
+    },
+    {
+      "doc_id": 23,
+      "name": "Aristeas the Exegete (Fragment)",
+      "filename": "ArisEx",
+      "genres_raw": "|6|4|",
+      "figures_raw": "|9|",
+      "genres": [
+        {
+          "id": 6,
+          "label": "histories and history-like narratives"
+        },
+        {
+          "id": 4,
+          "label": "parabiblical works (re-written Bible)"
+        }
+      ],
+      "biblical_figures": [
+        {
+          "id": 9,
+          "label": "Job"
+        }
+      ]
+    },
+    {
+      "doc_id": 24,
+      "name": "2 (Syriac Apocalypse of) Baruch",
+      "filename": "2Bar",
+      "genres_raw": "|1|",
+      "figures_raw": "|3|",
+      "genres": [
+        {
+          "id": 1,
+          "label": "apocalypses and visionary texts"
+        }
+      ],
+      "biblical_figures": [
+        {
+          "id": 3,
+          "label": "Baruch"
+        }
+      ]
+    },
+    {
+      "doc_id": 25,
+      "name": "Eldad and Modad (Fragment)",
+      "filename": "ElMod",
+      "genres_raw": "|8|",
+      "figures_raw": "||",
+      "genres": [
+        {
+          "id": 8,
+          "label": "uncertain genre"
+        }
+      ],
+      "biblical_figures": []
+    },
+    {
+      "doc_id": 26,
+      "name": "Pseudo-Eupolemus (Fragments)",
+      "filename": "Ps-Eup",
+      "genres_raw": "|6|",
+      "figures_raw": "||",
+      "genres": [
+        {
+          "id": 6,
+          "label": "histories and history-like narratives"
+        }
+      ],
+      "biblical_figures": []
+    },
+    {
+      "doc_id": 27,
+      "name": "4 Ezra",
+      "filename": "4Ezra",
+      "genres_raw": "|1|",
+      "figures_raw": "|13|",
+      "genres": [
+        {
+          "id": 1,
+          "label": "apocalypses and visionary texts"
+        }
+      ],
+      "biblical_figures": [
+        {
+          "id": 13,
+          "label": "Ezra"
+        }
+      ]
+    },
+    {
+      "doc_id": 28,
+      "name": "4 Maccabees",
+      "filename": "4Macc",
+      "genres_raw": "|6|",
+      "figures_raw": "||",
+      "genres": [
+        {
+          "id": 6,
+          "label": "histories and history-like narratives"
+        }
+      ],
+      "biblical_figures": []
+    },
+    {
+      "doc_id": 29,
+      "name": "Lives of the Prophets",
+      "filename": "LivPro",
+      "genres_raw": "|5|",
+      "figures_raw": "|12|",
+      "genres": [
+        {
+          "id": 5,
+          "label": "lives and biographies"
+        }
+      ],
+      "biblical_figures": [
+        {
+          "id": 12,
+          "label": "Prophets"
+        }
+      ]
+    },
+    {
+      "doc_id": 30,
+      "name": "Theodotus (Fragments)",
+      "filename": "Theod",
+      "genres_raw": "|9|",
+      "figures_raw": "||",
+      "genres": [
+        {
+          "id": 9,
+          "label": "philosophical and theological discourses"
+        }
+      ],
+      "biblical_figures": []
+    },
+    {
+      "doc_id": 31,
+      "name": "History of the Rechabites",
+      "filename": "HistRech",
+      "genres_raw": "|6|",
+      "figures_raw": "|7|",
+      "genres": [
+        {
+          "id": 6,
+          "label": "histories and history-like narratives"
+        }
+      ],
+      "biblical_figures": [
+        {
+          "id": 7,
+          "label": "Rechabites"
+        }
+      ]
+    },
+    {
+      "doc_id": 32,
+      "name": "Psalms of Solomon",
+      "filename": "PssSol",
+      "genres_raw": "|2|",
+      "figures_raw": "|5|",
+      "genres": [
+        {
+          "id": 2,
+          "label": "psalms and hymns"
+        }
+      ],
+      "biblical_figures": [
+        {
+          "id": 5,
+          "label": "Solomon"
+        }
+      ]
+    },
+    {
+      "doc_id": 33,
+      "name": "4Q548 (Dualistic Fragments in Aramaic)",
+      "filename": "4Q548",
+      "genres_raw": "|8|",
+      "figures_raw": "||",
+      "genres": [
+        {
+          "id": 8,
+          "label": "uncertain genre"
+        }
+      ],
+      "biblical_figures": []
+    }
+  ]
+}
