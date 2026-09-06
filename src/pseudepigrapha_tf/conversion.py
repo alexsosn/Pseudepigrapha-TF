@@ -121,8 +121,8 @@ def _validate_unique_manuscript_abbreviations(books: Iterable[Book]) -> None:
 def _stamp_version_identity(builder: _Builder, start: int, version_id: str) -> None:
     """Stamp source-derived version identity on nodes created for one version."""
 
-    for obj in builder.objects[start:]:
-        obj.features["version_id"] = version_id
+    for index in range(start, len(builder.objects)):
+        builder.objects[index].features["version_id"] = version_id
 
 
 def _without_special_div_items(div: Div) -> Div:
