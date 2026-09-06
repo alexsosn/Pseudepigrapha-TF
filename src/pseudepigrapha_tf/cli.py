@@ -8,6 +8,11 @@ from time import perf_counter
 
 from . import __version__
 from .conversion import build_tf_data
+from .metadata import (
+    attach_public_metadata,
+    augment_conversion_report_with_public_metadata,
+    load_public_metadata,
+)
 from .semantic_audit import build_conversion_report, write_conversion_report
 from .source import detect_git_commit, load_source_directory
 from .writer import _write_prevalidated_tf
@@ -18,7 +23,10 @@ UPSTREAM_REPOSITORY = "https://github.com/OnlineCriticalPseudepigrapha/Online-Cr
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Convert Online Critical Pseudepigrapha XML to Text-Fabric")
     sub = parser.add_subparsers(dest="command", required=True)
-    convert = sub.add_parser("convert", help="convert all direct *.xml files in an OCP docs directory")
+    convert = sub.add_parser(
+        "convert",
+        help="convert all direct *.xml files and public intros.json metadata in an OCP docs directory",
+    )
     convert.add_argument("source", type=Path, help="path to OCP static/docs")
     convert.add_argument("--output", type=Path, default=Path("tf/0.1"), help="Text-Fabric output directory")
     convert.add_argument(
@@ -48,6 +56,11 @@ def main(argv: list[str] | None = None) -> int:
 
     total_started = stage_started = perf_counter()
     books, source_warnings = load_source_directory(args.source)
+    public_metadata = (
+        load_public_metadata(args.source)
+        if (args.source / "intros.json").is_file()
+        else None
+    )
     stage_started = _stage("load_source", stage_started)
     if not books:
         raise SystemExit("no non-empty OCP XML files found")
@@ -59,12 +72,16 @@ def main(argv: list[str] | None = None) -> int:
         upstream_commit=upstream_commit,
         converter_version=__version__,
     )
+    if public_metadata is not None:
+        attach_public_metadata(data, public_metadata)
     stage_started = _stage("build_graph", stage_started)
     for warning in [*source_warnings, *data.warnings]:
         print(f"warning: {warning}")
 
     report_path = args.report or (args.output / "conversion-report.json")
     report = build_conversion_report(args.source, books, data)
+    if public_metadata is not None:
+        report = augment_conversion_report_with_public_metadata(report, args.source, data)
     stage_started = _stage("semantic_audit", stage_started)
     if report["status"] != "ok":
         write_conversion_report(report, report_path)
@@ -99,11 +116,15 @@ def main(argv: list[str] | None = None) -> int:
         stage_started = _stage("write_text_fabric", stage_started)
         staged_report.replace(publication_path)
 
+    metadata_count = sum(
+        1 for kind in data.node_features.get("otype", {}).values() if kind == "document_metadata"
+    )
+    metadata_summary = f", {metadata_count} public metadata records" if public_metadata is not None else ""
     print(f"timing: total {perf_counter() - total_started:.3f}s", flush=True)
     print(
         f"converted {len(books)} OCP files to {args.output} "
         f"({data.max_slot} word slots, {data.max_node} total nodes, "
-        f"{data.oslots_edge_count} oslots edges); parity report: {report_path}"
+        f"{data.oslots_edge_count} oslots edges{metadata_summary}); parity report: {report_path}"
     )
     return 0
 

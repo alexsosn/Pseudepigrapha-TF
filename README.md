@@ -221,3 +221,30 @@ The synthetic suite covers parser, graph, apparatus helpers, reading-token seman
 ## Licensing
 
 The converter code is MIT-licensed. OCP source editions have their own rights/provenance situation; this repository intentionally does not redistribute the XML or generated TF corpus. See `research.md` for the current distribution boundary.
+
+## Public document metadata (`intros.json`)
+
+When the supplied OCP `static/docs` directory contains the committed public `intros.json` export, conversion includes it automatically. Records are matched to works by the exact root-level XML filename, never by display title; duplicate JSON object keys are rejected rather than accepted with last-write-wins semantics. This matters because OCP metadata titles are not guaranteed to equal XML titles. A public record whose XML file is empty, such as pinned `3Macc.xml`, is still preserved as a `document_metadata` node; its single `oslots` value is only a Text-Fabric technical anchor and does not create a `book`, chapter, verse, or word.
+
+Each public document gets one `document_metadata` node. `title`, edition `version`, per-work `citation`, and the public body fields `introduction`, `provenance`, `themes`, `status`, `manuscripts`, `bibliography`, `corrections`, `sigla`, and `copyright` are stored only on that node. The TF feature names are `intro_title_json`, `intro_version_json`, `intro_citation_json`, and `intro_<field>_json`. Values use reversible JSON-scalar encoding because raw multi-line HTML is not lossless through Text-Fabric's line-oriented feature serialization. The encoding preserves HTML, CRLF/newline characters, entities, Unicode, and the distinction between a missing key, an empty string, and JSON `null`.
+
+Researchers normally should not decode those features manually. Load the metadata feature set and use `WorkMetadata`:
+
+```python
+from tf.fabric import Fabric
+from pseudepigrapha_tf import WorkMetadata
+
+TF = Fabric(locations=['tf/0.1'], modules=[''], silent='deep')
+api = TF.load(' '.join(WorkMetadata.REQUIRED_FEATURES), silent='deep')
+M = WorkMetadata(api)
+
+tjob = M['TJob']
+tjob['fields']['provenance']   # provenance / cultural-setting HTML
+tjob['fields']['manuscripts']  # manuscript discussion HTML
+tjob['fields']['bibliography'] # bibliography HTML, including original line endings
+tjob['citation']                # per-work OCP citation
+M['TAdam']['fields']['introduction']  # public introduction HTML
+M['3Macc']                            # works even though pinned 3Macc.xml has no text
+```
+
+Dataset-level TF metadata records `introsSource`, `introsSha256`, and the export date when supplied upstream. `conversion-report.json` independently rereads raw `intros.json` and checks document coverage, scalar values, and provenance against the graph, so corrupt or dropped metadata fails the same semantic parity gate as XML conversion.

@@ -65,6 +65,14 @@ jobs:
           assert report['graph']['slots'] > 0
           assert report['graph']['oslots_edges'] > 0
           assert report['diagnostics']['excluded_generated_translation_versions']
+          assert report['source']['public_metadata_documents'] == 32
+          assert report['graph']['document_metadata'] == 32
+          assert report['source']['public_metadata_scalars'] == report['graph']['public_metadata_scalars']
+          assert report['semantic_checks']['public_metadata_documents'] is True
+          assert report['semantic_checks']['public_metadata_values'] is True
+          assert report['semantic_checks']['public_metadata_provenance'] is True
+          assert report['provenance']['intros_source'] == 'intros.json'
+          assert len(report['provenance']['intros_sha256']) == 64
           print(json.dumps({'source': report['source'], 'graph': report['graph'], 'diagnostics': report['diagnostics']}, indent=2))
           PY
       - name: Reload generated Text-Fabric dataset and verify interface semantics
@@ -197,4 +205,41 @@ jobs:
           assert 'Coptic' in tjob['metadata_only_versions']['TJob__Coptic']['witnesses']
           assert tjob['metadata_only_versions']['TJob__Coptic']['witnesses']['Coptic']['declared'] is True
           assert tjob['metadata_only_versions']['TJob__Coptic']['passage'] is None
+          PY
+      - name: Reload public document metadata and verify lossless pinned values
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          from tf.fabric import Fabric
+          from pseudepigrapha_tf import WorkMetadata
+
+          source = json.loads(Path('/tmp/ocp/static/docs/intros.json').read_text(encoding='utf-8'))['documents']
+          assert len(source) == 32
+
+          TF = Fabric(locations=['/tmp/pseudepigrapha-tf/0.1'], modules=[''], silent='deep')
+          api = TF.load(' '.join(WorkMetadata.REQUIRED_FEATURES), silent='deep')
+          assert api is not False and not isinstance(api, bool)
+          assert len(api.F.otype.s('document_metadata')) == 32
+
+          M = WorkMetadata(api)
+          expected_work_ids = tuple(sorted(filename.removesuffix('.xml') for filename in source))
+          assert M.keys() == expected_work_ids
+          for filename, expected in source.items():
+              assert M[filename] == expected, filename
+
+          assert M['3Macc'] == source['3Macc.xml']
+          assert not any(api.F.ocp_book.v(n) == '3Macc' for n in api.F.otype.s('book'))
+
+          tjob = M['TJob']
+          assert tjob == source['TJob.xml']
+          crlf_fields = {
+              field: value
+              for field, value in source['TJob.xml']['fields'].items()
+              if isinstance(value, str) and '\r\n' in value
+          }
+          assert crlf_fields
+          for field, value in crlf_fields.items():
+              assert tjob['fields'][field].encode('utf-8') == value.encode('utf-8')
+              assert '\r\n' in tjob['fields'][field]
           PY
