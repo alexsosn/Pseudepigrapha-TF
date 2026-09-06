@@ -75,7 +75,7 @@ def corpus_license_metadata(
 
     if not source_identity_verified:
         diagnostic = (
-            "recorded upstream commit was not independently verified against the source checkout: "
+            "recorded upstream commit/source tree was not independently verified: "
             f"upstreamRepository={repository!r}, upstreamCommit={commit!r}"
         )
     else:
@@ -93,17 +93,20 @@ def corpus_license_metadata(
 def attest_corpus_license_source_identity(
     generic: MutableMapping[str, str],
     detected_commit: str,
+    *,
+    source_tree_clean: bool = True,
 ) -> None:
     """Rebuild license metadata from independently detected checkout identity.
 
     The recorded upstream commit remains useful provenance even when explicitly
-    overridden, but an override cannot make a mismatching/non-Git checkout look
+    overridden, but an override or dirty source tree cannot make a checkout look
     like the researched source pin.
     """
 
     repository = str(generic.get("upstreamRepository", ""))
     recorded_commit = str(generic.get("upstreamCommit", ""))
-    identity_verified = bool(detected_commit) and detected_commit == recorded_commit
+    commit_matches = bool(detected_commit) and detected_commit == recorded_commit
+    identity_verified = commit_matches and source_tree_clean
 
     for key in _PROFILE_KEYS:
         generic.pop(key, None)
@@ -116,10 +119,15 @@ def attest_corpus_license_source_identity(
     )
     generic["sourceIdentityStatus"] = "verified" if identity_verified else "unverified"
     if not identity_verified:
-        generic["sourceIdentityDiagnostic"] = (
-            "recorded upstream commit does not match an independently detected source checkout: "
-            f"recorded={recorded_commit!r}, detected={detected_commit!r}"
-        )
+        reasons: list[str] = []
+        if not commit_matches:
+            reasons.append(
+                "recorded upstream commit does not match an independently detected source checkout "
+                f"(recorded={recorded_commit!r}, detected={detected_commit!r})"
+            )
+        if not source_tree_clean:
+            reasons.append("supplied source directory has tracked, untracked, or ignored filesystem changes")
+        generic["sourceIdentityDiagnostic"] = "; ".join(reasons)
 
 
 def corpus_license_provenance_is_consistent(generic: Mapping[str, object]) -> bool:
@@ -147,7 +155,7 @@ def corpus_license_provenance_is_consistent(generic: Mapping[str, object]) -> bo
 
     if identity_status == "verified" and "sourceIdentityDiagnostic" in generic:
         return False
-    if identity_status == "unverified" and "sourceIdentityDiagnostic" not in generic:
+    if identity_status == "unverified" and not generic.get("sourceIdentityDiagnostic"):
         return False
     return True
 
