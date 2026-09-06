@@ -148,9 +148,9 @@ def test_graph_has_no_metadata_blob_duplication_across_textual_nodes(tmp_path: P
     _, _, _, data = _build_with_metadata(docs)
 
     encoded_features = [name for name in data.node_features if name.startswith("intro_") and name.endswith("_json")]
+    assert encoded_features
     for feature in encoded_features:
         owners = set(data.node_features[feature])
-        assert owners
         assert all(data.node_features["otype"][node] == "document_metadata" for node in owners)
 
 
