@@ -2,7 +2,7 @@ name: test
 
 on:
   push:
-    branches: [main, issue-72-refresh-upstream]
+    branches: [main]
   pull_request:
 
 concurrency:
@@ -42,8 +42,6 @@ jobs:
         run: |
           git clone https://github.com/OnlineCriticalPseudepigrapha/Online-Critical-Pseudepigrapha.git /tmp/ocp
           git -C /tmp/ocp checkout c939dcbacad78c5d18d2c4282cad23c47e19ac07
-      - name: Record pinned AdamEve digest
-        run: sha256sum /tmp/ocp/static/docs/AdamEve.xml
       - name: Convert and audit complete OCP XML set
         run: |
           time pseudepigrapha-tf convert /tmp/ocp/static/docs \
