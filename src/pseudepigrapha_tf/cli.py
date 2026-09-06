@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import json
 from pathlib import Path
+from tempfile import TemporaryDirectory
 from time import perf_counter
 
 from . import __version__
@@ -65,9 +66,9 @@ def main(argv: list[str] | None = None) -> int:
     report_path = args.report or (args.output / "conversion-report.json")
     report = build_conversion_report(args.source, books, data)
     stage_started = _stage("semantic_audit", stage_started)
-    write_conversion_report(report, report_path)
-    stage_started = _stage("write_report", stage_started)
     if report["status"] != "ok":
+        write_conversion_report(report, report_path)
+        stage_started = _stage("write_report", stage_started)
         diagnostic = ""
         collisions = report.get("diagnostics", {}).get("duplicate_section_addresses", [])
         if collisions:
@@ -79,9 +80,25 @@ def main(argv: list[str] | None = None) -> int:
             f"report: {report_path}{diagnostic}"
         )
 
-    if not _write_prevalidated_tf(data, args.output):
-        raise SystemExit("Text-Fabric refused the generated dataset")
-    _stage("write_text_fabric", stage_started)
+    # Preserve the historical behavior of explicit report symlinks: writing to
+    # the path updates the symlink target rather than replacing the symlink.
+    # Resolve and validate that publication target before installing new TF data
+    # so deterministic report-path errors cannot leave a newer corpus paired
+    # with an older report.
+    report_path.parent.mkdir(parents=True, exist_ok=True)
+    publication_path = report_path.resolve(strict=False)
+    if publication_path.is_dir():
+        raise IsADirectoryError(str(report_path))
+
+    with TemporaryDirectory(prefix=".pseudepigrapha-tf-report-", dir=publication_path.parent) as report_stage_dir:
+        staged_report = Path(report_stage_dir) / publication_path.name
+        write_conversion_report(report, staged_report)
+        stage_started = _stage("write_report", stage_started)
+        if not _write_prevalidated_tf(data, args.output):
+            raise SystemExit("Text-Fabric refused the generated dataset")
+        stage_started = _stage("write_text_fabric", stage_started)
+        staged_report.replace(publication_path)
+
     print(f"timing: total {perf_counter() - total_started:.3f}s", flush=True)
     print(
         f"converted {len(books)} OCP files to {args.output} "
