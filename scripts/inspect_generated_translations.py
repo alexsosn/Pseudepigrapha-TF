@@ -14,6 +14,8 @@ from pseudepigrapha_tf.source_versions import (
     is_generated_translation_version,
 )
 
+UnitSignature = tuple[tuple[tuple[str, ...], str], ...]
+
 
 def _units(version: ET.Element) -> list[dict[str, object]]:
     text = version.find("text")
@@ -39,11 +41,11 @@ def _units(version: ET.Element) -> list[dict[str, object]]:
     return result
 
 
-def _source_signature(version: ET.Element) -> tuple[tuple[tuple[str, ...], str], ...]:
+def _source_signature(version: ET.Element) -> UnitSignature:
     return tuple((tuple(unit["path"]), str(unit["id"])) for unit in _units(version))
 
 
-def _translation_signature(version: ET.Element) -> tuple[tuple[tuple[str, ...], str], ...]:
+def _translation_signature(version: ET.Element) -> UnitSignature:
     language = (version.get("language") or "").lower()
     prefix = "en_" if language == "english" else "fr_" if language == "french" else ""
     result: list[tuple[tuple[str, ...], str]] = []
@@ -64,6 +66,39 @@ def _version_record(index: int, version: ET.Element) -> dict[str, object]:
         "units": len(_units(version)),
         "readings": len(readings),
         "empty_readings": sum(1 for reading in readings if not "".join(reading.itertext()).strip()),
+    }
+
+
+def _signature_drift(generated: UnitSignature, source: UnitSignature) -> dict[str, object]:
+    generated_counts = Counter(generated)
+    source_counts = Counter(source)
+    common = sum((generated_counts & source_counts).values())
+    missing = list((source_counts - generated_counts).elements())
+    extra = list((generated_counts - source_counts).elements())
+    first_mismatch = None
+    for position, (generated_item, source_item) in enumerate(zip(generated, source, strict=False)):
+        if generated_item != source_item:
+            first_mismatch = {
+                "position": position,
+                "generated": generated_item,
+                "source": source_item,
+            }
+            break
+    if first_mismatch is None and len(generated) != len(source):
+        first_mismatch = {
+            "position": min(len(generated), len(source)),
+            "generated": generated[min(len(generated), len(source))] if len(generated) > len(source) else None,
+            "source": source[min(len(generated), len(source))] if len(source) > len(generated) else None,
+        }
+    return {
+        "generated_units": len(generated),
+        "source_units": len(source),
+        "common_identities": common,
+        "missing_from_generated_count": len(missing),
+        "extra_in_generated_count": len(extra),
+        "missing_from_generated_sample": missing[:5],
+        "extra_in_generated_sample": extra[:5],
+        "first_mismatch": first_mismatch,
     }
 
 
@@ -103,7 +138,7 @@ def inventory(source_dir: Path) -> dict[str, object]:
                     )
 
         source_versions_total += len(sources)
-        source_signatures: dict[tuple[tuple[tuple[str, ...], str], ...], list[tuple[int, ET.Element]]] = {}
+        source_signatures: dict[UnitSignature, list[tuple[int, ET.Element]]] = {}
         for pair in sources:
             source_signatures.setdefault(_source_signature(pair[1]), []).append(pair)
 
@@ -112,7 +147,7 @@ def inventory(source_dir: Path) -> dict[str, object]:
             target = version.get("language", "")
             signature = _translation_signature(version)
             candidates = source_signatures.get(signature, [])
-            record = {
+            record: dict[str, object] = {
                 "file": xml_path.name,
                 **_version_record(index, version),
                 "candidate_sources": [
@@ -126,6 +161,26 @@ def inventory(source_dir: Path) -> dict[str, object]:
                 ],
             }
             if len(candidates) == 0:
+                nearest = []
+                for source_index, source in sources:
+                    drift = _signature_drift(signature, _source_signature(source))
+                    nearest.append(
+                        {
+                            "index": source_index,
+                            "title": source.get("title", ""),
+                            "language": source.get("language", ""),
+                            "fragment": source.get("fragment", ""),
+                            **drift,
+                        }
+                    )
+                nearest.sort(
+                    key=lambda item: (
+                        -int(item["common_identities"]),
+                        int(item["missing_from_generated_count"]) + int(item["extra_in_generated_count"]),
+                        int(item["index"]),
+                    )
+                )
+                record["nearest_sources"] = nearest[:3]
                 unmatched.append(record)
             elif len(candidates) > 1:
                 ambiguous.append(record)
