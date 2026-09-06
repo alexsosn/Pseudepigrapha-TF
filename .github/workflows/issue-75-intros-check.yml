@@ -1,0 +1,50 @@
+name: issue-75-intros-check
+
+on:
+  push:
+    branches: [issue-75-historical-classifications]
+
+permissions:
+  contents: write
+
+jobs:
+  check:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: issue-75-historical-classifications
+      - name: Compare historical classification IDs with current public metadata IDs
+        run: |
+          git clone --depth 1 https://github.com/OnlineCriticalPseudepigrapha/Online-Critical-Pseudepigrapha.git /tmp/ocp-current
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          historical = json.loads(Path('research/issue-75/public-source-extract.json').read_text(encoding='utf-8'))
+          intros = json.loads(Path('/tmp/ocp-current/static/docs/intros.json').read_text(encoding='utf-8'))
+          hist_ids = sorted(row['filename'] for row in historical['docs'])
+          intro_ids = sorted(Path(filename).stem for filename in intros['documents'])
+          result = {
+              'historical_work_ids': hist_ids,
+              'current_intro_work_ids': intro_ids,
+              'sets_equal': hist_ids == intro_ids,
+              'historical_without_intro': sorted(set(hist_ids) - set(intro_ids)),
+              'intro_without_historical': sorted(set(intro_ids) - set(hist_ids)),
+          }
+          Path('research/issue-75/intros-mapping.json').write_text(
+              json.dumps(result, ensure_ascii=False, indent=2) + '\n', encoding='utf-8'
+          )
+          print(json.dumps(result, indent=2))
+          if not result['sets_equal']:
+              raise SystemExit('classification/intros work-id sets differ')
+          PY
+      - name: Commit mapping evidence
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add research/issue-75/intros-mapping.json
+          git commit -m 'Record issue 75 classification to intros mapping'
+          git push origin HEAD:issue-75-historical-classifications
