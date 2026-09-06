@@ -35,9 +35,13 @@ jobs:
               'generated_empty_readings',
               'generated_versions_by_language',
               'generated_units_by_language',
+              'generated_empty_readings_by_language',
               'genuine_non_generated_english_french_versions',
+              'source_versions_with_duplicate_bare_unit_ids',
+              'source_versions_with_duplicate_unit_identities',
               'unmatched_generated_versions',
               'ambiguous_generated_versions',
+              'generated_versions_with_order_drift',
           )
           print(json.dumps({key: report[key] for key in summary_keys}, ensure_ascii=False, indent=2))
           print('per-file generated counts:')
