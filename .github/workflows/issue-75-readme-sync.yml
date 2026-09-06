@@ -1,0 +1,59 @@
+name: issue-75-readme-sync
+
+on:
+  push:
+    branches: [issue-75-historical-classifications]
+
+permissions:
+  contents: write
+
+jobs:
+  sync:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: issue-75-historical-classifications
+          fetch-depth: 0
+      - name: Preserve current main README and append historical-classification docs
+        run: |
+          git fetch origin main
+          git checkout origin/main -- README.md
+          cat >> README.md <<'EOF'
+
+## Historical OCP catalogue classifications
+
+The converter also ships the public genre and biblical-figure classifications from the historical OCP catalogue snapshot at `d722fb62a48782ced67c678dc111cfb1b391cc89` (2017-10-30). This layer is explicitly historical: newer OCP works are not assigned a genre or figure by inference. The packaged extraction contains only the public `docs` classification references and the `genres` / `biblical_figures` vocabularies; the historical SQLite database itself, authentication/user data, drafts, and unrelated application tables are not distributed.
+
+The snapshot covers 32 works with 39 genre assignments and 25 biblical-figure assignments. Its complete controlled vocabularies contain 11 genre labels and 17 biblical-figure labels, including labels that happen to be unused by those 32 assignments. Assignments live on the existing `document_metadata` nodes as `historical_ocp_doc_id`, `historical_genres_json`, and `historical_biblical_figures_json`; the complete vocabularies are preserved in the metadata of the latter two TF features rather than as fabricated vocabulary nodes.
+
+For selective loading and researcher-facing queries:
+
+```python
+from tf.fabric import Fabric
+from pseudepigrapha_tf import HistoricalClassifications
+
+TF = Fabric(locations=['tf/0.1'], modules=[''], silent='deep')
+api = TF.load(' '.join(HistoricalClassifications.REQUIRED_FEATURES), silent='deep')
+C = HistoricalClassifications(api)
+
+C['TJob']
+# {'historical_doc_id': 1, 'genres': ('testaments',),
+#  'biblical_figures': ('Job',)}
+
+C.works_by_genre('testaments')
+C.works_by_figure('Moses')
+C.genres()   # complete historical controlled vocabulary
+C.figures()  # complete historical controlled vocabulary
+```
+
+`3Macc` remains queryable through this API even though its XML source is empty and therefore has no textual `book` node. Current works absent from the 2017 catalogue snapshot remain unclassified. Corpus-level metadata records the historical source commit/date, SQLite blob and SHA-256, the historical status, and the packaged public fixture SHA-256. `conversion-report.json` independently rereads the public fixture and verifies work coverage, every assignment, the complete controlled vocabularies, and provenance against the generated graph.
+EOF
+          git diff --check
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add README.md
+          git commit -m 'Rebase issue 75 documentation on current main README'
+          git push origin HEAD:issue-75-historical-classifications
