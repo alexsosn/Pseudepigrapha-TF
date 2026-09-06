@@ -228,8 +228,13 @@ jobs:
 
           tjob = M['TJob']
           assert tjob == source['TJob.xml']
-          for field in ('introduction', 'manuscripts', 'bibliography'):
-              assert tjob['fields'][field].encode('utf-8') == source['TJob.xml']['fields'][field].encode('utf-8')
-          assert '\r\n' in source['TJob.xml']['fields']['bibliography']
-          assert '\r\n' in tjob['fields']['bibliography']
+          crlf_fields = {
+              field: value
+              for field, value in source['TJob.xml']['fields'].items()
+              if isinstance(value, str) and '\r\n' in value
+          }
+          assert crlf_fields
+          for field, value in crlf_fields.items():
+              assert tjob['fields'][field].encode('utf-8') == value.encode('utf-8')
+              assert '\r\n' in tjob['fields'][field]
           PY
