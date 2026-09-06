@@ -79,11 +79,14 @@ jobs:
           conn.close()
 
           def parse_refs(raw, *, location):
-              if raw is None or raw == '':
+              # PyDAL/Web2Py list:reference encodes the empty list as ||.
+              if raw is None or raw in {'', '||'}:
                   return [], None
               if not isinstance(raw, str):
                   return [], f'{location}: non-string list reference {type(raw).__name__}'
-              parts = [part for part in raw.split('|') if part]
+              if not raw.startswith('|') or not raw.endswith('|'):
+                  return [], f'{location}: unsupported list-reference encoding {raw!r}'
+              parts = raw[1:-1].split('|')
               if not parts or any(not re.fullmatch(r'\d+', part) for part in parts):
                   return [], f'{location}: unsupported list-reference encoding {raw!r}'
               return [int(part) for part in parts], None
