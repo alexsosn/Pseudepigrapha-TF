@@ -107,3 +107,49 @@ def test_real_text_fabric_write_does_not_mutate_reused_graph_payloads(tmp_path):
 
     assert data.node_features == node_snapshot
     assert data.edge_features == edge_snapshot
+
+
+def test_real_text_fabric_rewrite_removes_feature_files_absent_from_new_graph(tmp_path):
+    data = build_tf_data([parse_file(FIXTURES / "sample.xml")])
+    output = tmp_path / "tf"
+    sentinel = output / "conversion-report.json"
+    data.node_features["temporary_probe"] = {1: "present-only-in-first-write"}
+
+    assert write_tf(data, output)
+    stale_feature = output / "temporary_probe.tf"
+    assert stale_feature.is_file()
+    sentinel.write_text('{"sentinel": true}\n', encoding="utf-8")
+
+    del data.node_features["temporary_probe"]
+    assert write_tf(data, output)
+
+    assert not stale_feature.exists()
+    assert sentinel.read_text(encoding="utf-8") == '{"sentinel": true}\n'
+
+
+def test_failed_standard_tf_save_leaves_existing_output_untouched(monkeypatch, tmp_path):
+    import tf.fabric
+
+    class FailingFabric:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def save(self, **kwargs):
+            stage = Path(kwargs["location"])
+            (stage / "otype.tf").write_text("partial replacement\n", encoding="utf-8")
+            (stage / "new-only.tf").write_text("partial new feature\n", encoding="utf-8")
+            return False
+
+    data = build_tf_data([parse_file(FIXTURES / "sample.xml")])
+    output = tmp_path / "tf"
+    output.mkdir()
+    (output / "otype.tf").write_text("old otype\n", encoding="utf-8")
+    (output / "obsolete.tf").write_text("old obsolete feature\n", encoding="utf-8")
+    (output / "conversion-report.json").write_text('{"old": true}\n', encoding="utf-8")
+    before = {path.name: path.read_bytes() for path in output.iterdir()}
+    monkeypatch.setattr(tf.fabric, "Fabric", FailingFabric)
+
+    assert write_tf(data, output) is False
+
+    assert {path.name: path.read_bytes() for path in output.iterdir()} == before
+    assert not any(path.name.startswith(".pseudepigrapha-tf-") for path in tmp_path.iterdir())
