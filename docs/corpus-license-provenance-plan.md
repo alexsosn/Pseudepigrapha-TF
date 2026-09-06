@@ -19,10 +19,11 @@ No full license text is copied into TF nodes.
 
 ## TF generic metadata
 
-Extend `build_tf_data()` / `_metadata()` so generated corpora expose generic metadata fields with explicit scopes:
+Extend `build_tf_data()` / `_metadata()` so a build from the exact verified source tuple exposes generic metadata with explicit scopes:
 
 - `contentLicense = CC-BY-4.0`;
-- `contentLicenseUrl` pointing to the OCP CC BY license file/evidence;
+- `contentLicenseStatus = verified`;
+- `contentLicenseUrl` pointing to the OCP CC BY license evidence;
 - `contentLicenseScope = OCP static/docs text editions and TEI XML files`;
 - `converterSoftwareLicense = MIT`;
 - `upstreamSoftwareLicense = GPL-3.0`;
@@ -34,25 +35,27 @@ Per-document citation/editor/copyright information remains on existing `document
 
 ## Source/license consistency
 
-The canonical CC BY assertion is valid for the supported OCP repository at the supported pin. Add a validation helper invoked by the production build path:
+The canonical CC BY assertion is verified only for the researched source tuple: canonical OCP repository plus exact supported pin.
 
-- canonical repository + exact supported pin: emit canonical corpus-license metadata;
-- canonical repository with no commit: do not silently claim reproducible pinned provenance; raise for the CLI/build path that promises the supported corpus;
-- canonical repository with another commit, or another repository with the canonical license claim: fail closed unless an explicit future provenance profile is added in code after research.
+The existing converter intentionally supports nonstandard checkouts and an `--upstream-commit` override. Preserve that behavior while failing closed on *license claims*:
 
-This intentionally narrows `--upstream-commit` for release/canonical builds. A future source refresh must update the provenance profile in the same PR that changes the supported pin; arbitrary moving commits cannot inherit a license assertion merely by sharing a repository name.
+- canonical repository + exact supported pin: emit the verified canonical corpus-license profile;
+- missing commit, another OCP commit, or another repository: conversion may proceed, but generic metadata must say `contentLicenseStatus = unverified`, must not emit `contentLicense = CC-BY-4.0`, and must include a concise machine-readable diagnostic identifying the unverified source tuple;
+- no unknown source tuple may inherit the verified license merely because its repository name resembles OCP;
+- a future source refresh adds a new verified profile only in a source-grounded change that updates the supported pin/evidence.
 
-To keep low-level unit construction usable for synthetic fixtures, expose provenance validation as an explicit helper and have the CLI canonical conversion path call it before graph construction. Tests that build small in-memory graphs may pass an explicit validated provenance mapping or omit corpus license metadata when they are not modeling a canonical OCP build.
+This preserves research and custom-conversion ergonomics while preventing an overbroad license assertion. Low-level synthetic fixtures with no real Git commit remain usable and are explicitly unverified rather than rejected.
 
 ## Conversion report
 
-Mirror the exact generic corpus metadata into `report["provenance"]` and add a semantic check that the graph's canonical source/license tuple equals the expected profile. The report must never derive its license independently from README strings.
+Mirror the graph's generic corpus provenance into `report["provenance"]` and add a semantic consistency check. The report must never derive its license independently from README strings.
 
-At minimum report:
+For a verified pinned build report at least:
 
 - `upstream_repository`;
 - `upstream_commit`;
 - `content_license`;
+- `content_license_status`;
 - `content_license_scope`;
 - `converter_software_license`;
 - `upstream_software_license`;
@@ -60,7 +63,7 @@ At minimum report:
 - `content_attribution` / citation;
 - existing converter version.
 
-A mismatched or missing canonical tuple becomes a failed semantic check rather than a warning.
+For an unverified tuple, report the same source identity plus `content_license_status = unverified` and the diagnostic, while omitting any verified CC-BY identifier/scope/evidence fields. The semantic check succeeds only when the metadata shape matches the expected verified-or-unverified profile for the supplied tuple; contradictory combinations fail.
 
 ## Serialization/reload
 
@@ -73,6 +76,7 @@ The public metadata attachment must not overwrite corpus provenance. Per-work `i
 - Keep root `LICENSE` and `pyproject.toml` as MIT for converter software.
 - Add a README licensing/provenance section that distinguishes converter MIT from generated corpus CC BY 4.0 and links attribution to the OCP project/per-work metadata.
 - Document the exact supported OCP pin and the evidence commit, without suggesting that arbitrary third-party XML or future OCP commits automatically receive the same profile.
+- Document that nonstandard source tuples are marked license-unverified rather than blocked or guessed.
 - No generated corpus data or upstream license file is vendored into the repository.
 
 There is currently no checked-in Hugging Face data card or release data artifact to update. If one is added later, it should consume the same provenance constants/profile rather than duplicate values.
@@ -81,14 +85,15 @@ There is currently no checked-in Hugging Face data card or release data artifact
 
 Before production changes, add red tests proving current behavior lacks:
 
-1. canonical `CC-BY-4.0` corpus content license in generic TF metadata;
+1. canonical `CC-BY-4.0` corpus content license in generic TF metadata for the exact supported source tuple;
 2. separate `MIT` converter software license and upstream GPL software license;
 3. exact repository/pin/license-evidence commit tuple;
 4. general OCP attribution/citation metadata;
 5. conversion-report parity with graph provenance;
-6. fail-closed behavior for a non-pinned source/license combination;
-7. real Text-Fabric save/reload preservation of generic provenance;
-8. coexistence with existing per-document citation/copyright metadata without mutation.
+6. explicit `unverified` status and absence of a CC-BY claim for a non-pinned source tuple;
+7. consistency validation rejecting a contradictory verified license/source tuple;
+8. real Text-Fabric save/reload preservation of generic provenance;
+9. coexistence with existing per-document citation/copyright metadata without mutation.
 
 Observe an isolated red commit before adding implementation.
 
@@ -103,6 +108,7 @@ After implementation:
 - public metadata parity/reload gate;
 - existing apparatus and source reconstruction gates;
 - README/package consistency check where deterministic;
+- nonstandard-checkout regression proving conversion remains possible without a guessed license;
 - current performance sanity (constant-size provenance validation must not add corpus-scale scans).
 
 ## Logically independent adversarial review
@@ -114,6 +120,7 @@ On the exact green head, a separate reviewer pass must re-read the upstream lice
 - a CC BY claim broader than `static/docs/` text editions/TEI XML;
 - stale or moving source SHA;
 - assertion of the profile for an unverified arbitrary commit;
+- accidental breakage of nonstandard conversion ergonomics;
 - missing general/per-work attribution paths;
 - disagreement among TF generic metadata, conversion report, README and package metadata;
 - serialization loss of generic metadata;
