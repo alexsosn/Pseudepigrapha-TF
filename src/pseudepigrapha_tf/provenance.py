@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Mapping, MutableMapping
 
 
 OCP_REPOSITORY = "https://github.com/OnlineCriticalPseudepigrapha/Online-Critical-Pseudepigrapha"
@@ -10,9 +10,7 @@ CONVERTER_SOFTWARE_LICENSE = "MIT"
 OCP_SOFTWARE_LICENSE = "GPL-3.0"
 OCP_CONTENT_LICENSE = "CC-BY-4.0"
 OCP_CONTENT_LICENSE_URL = "https://creativecommons.org/licenses/by/4.0/"
-OCP_CONTENT_LICENSE_SOURCE = (
-    f"{OCP_REPOSITORY}/blob/{OCP_PIN}/LICENSE.CC-BY-4.0"
-)
+OCP_CONTENT_LICENSE_SOURCE = f"{OCP_REPOSITORY}/blob/{OCP_PIN}/LICENSE.CC-BY-4.0"
 OCP_CONTENT_LICENSE_SCOPE = "OCP text editions and TEI XML files under static/docs/"
 OCP_CONTENT_ATTRIBUTION = (
     "Online Critical Pseudepigrapha (OCP) and the individual editor named in each "
@@ -35,17 +33,33 @@ _VERIFIED_ONLY_KEYS = frozenset(
         "contentCitation",
     }
 )
+_PROFILE_KEYS = frozenset(
+    {
+        "converterSoftwareLicense",
+        "contentLicenseStatus",
+        "contentLicenseDiagnostic",
+        "sourceIdentityStatus",
+        "sourceIdentityDiagnostic",
+        *_VERIFIED_ONLY_KEYS,
+    }
+)
 
 
-def corpus_license_metadata(repository: str, commit: str) -> dict[str, str]:
+def corpus_license_metadata(
+    repository: str,
+    commit: str,
+    *,
+    source_identity_verified: bool = True,
+) -> dict[str, str]:
     """Return the researched license profile for one exact source tuple.
 
-    The source repository may still be converted when it is not the supported
-    OCP pin, but such a tuple must not inherit the verified CC BY assertion.
+    A caller that has independent access to the source checkout can set
+    ``source_identity_verified=False`` so a recorded pin cannot by itself create
+    a verified license assertion.
     """
 
     base = {"converterSoftwareLicense": CONVERTER_SOFTWARE_LICENSE}
-    if repository == OCP_REPOSITORY and commit == OCP_PIN:
+    if source_identity_verified and repository == OCP_REPOSITORY and commit == OCP_PIN:
         return {
             **base,
             "contentLicenseStatus": "verified",
@@ -59,14 +73,53 @@ def corpus_license_metadata(repository: str, commit: str) -> dict[str, str]:
             "contentCitation": OCP_CONTENT_CITATION,
         }
 
+    if not source_identity_verified:
+        diagnostic = (
+            "recorded upstream commit was not independently verified against the source checkout: "
+            f"upstreamRepository={repository!r}, upstreamCommit={commit!r}"
+        )
+    else:
+        diagnostic = (
+            "no verified corpus-license profile for "
+            f"upstreamRepository={repository!r}, upstreamCommit={commit!r}"
+        )
     return {
         **base,
         "contentLicenseStatus": "unverified",
-        "contentLicenseDiagnostic": (
-            "no verified corpus-license profile for "
-            f"upstreamRepository={repository!r}, upstreamCommit={commit!r}"
-        ),
+        "contentLicenseDiagnostic": diagnostic,
     }
+
+
+def attest_corpus_license_source_identity(
+    generic: MutableMapping[str, str],
+    detected_commit: str,
+) -> None:
+    """Rebuild license metadata from independently detected checkout identity.
+
+    The recorded upstream commit remains useful provenance even when explicitly
+    overridden, but an override cannot make a mismatching/non-Git checkout look
+    like the researched source pin.
+    """
+
+    repository = str(generic.get("upstreamRepository", ""))
+    recorded_commit = str(generic.get("upstreamCommit", ""))
+    identity_verified = bool(detected_commit) and detected_commit == recorded_commit
+
+    for key in _PROFILE_KEYS:
+        generic.pop(key, None)
+    generic.update(
+        corpus_license_metadata(
+            repository,
+            recorded_commit,
+            source_identity_verified=identity_verified,
+        )
+    )
+    generic["sourceIdentityStatus"] = "verified" if identity_verified else "unverified"
+    if not identity_verified:
+        generic["sourceIdentityDiagnostic"] = (
+            "recorded upstream commit does not match an independently detected source checkout: "
+            f"recorded={recorded_commit!r}, detected={detected_commit!r}"
+        )
 
 
 def corpus_license_provenance_is_consistent(generic: Mapping[str, object]) -> bool:
@@ -74,16 +127,28 @@ def corpus_license_provenance_is_consistent(generic: Mapping[str, object]) -> bo
 
     repository = str(generic.get("upstreamRepository", ""))
     commit = str(generic.get("upstreamCommit", ""))
-    expected = corpus_license_metadata(repository, commit)
+    identity_status = generic.get("sourceIdentityStatus")
+    if identity_status not in (None, "verified", "unverified"):
+        return False
+    source_identity_verified = identity_status != "unverified"
+    expected = corpus_license_metadata(
+        repository,
+        commit,
+        source_identity_verified=source_identity_verified,
+    )
 
     if any(generic.get(key) != value for key, value in expected.items()):
         return False
     if expected["contentLicenseStatus"] == "unverified":
         if any(key in generic for key in _VERIFIED_ONLY_KEYS):
             return False
-    else:
-        if "contentLicenseDiagnostic" in generic:
-            return False
+    elif "contentLicenseDiagnostic" in generic:
+        return False
+
+    if identity_status == "verified" and "sourceIdentityDiagnostic" in generic:
+        return False
+    if identity_status == "unverified" and "sourceIdentityDiagnostic" not in generic:
+        return False
     return True
 
 
@@ -94,6 +159,8 @@ def report_provenance(generic: Mapping[str, object]) -> dict[str, str]:
         ("upstreamRepository", "upstream_repository"),
         ("upstreamCommit", "upstream_commit"),
         ("converterVersion", "converter_version"),
+        ("sourceIdentityStatus", "source_identity_status"),
+        ("sourceIdentityDiagnostic", "source_identity_diagnostic"),
         ("contentLicenseStatus", "content_license_status"),
         ("contentLicense", "content_license"),
         ("contentLicenseUrl", "content_license_url"),
