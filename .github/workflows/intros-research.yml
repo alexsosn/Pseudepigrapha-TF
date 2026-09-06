@@ -1,0 +1,20 @@
+name: intros-research
+
+on:
+  pull_request:
+
+jobs:
+  pinned-intros-inventory:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Clone refreshed pinned OCP source
+        run: |
+          git clone https://github.com/OnlineCriticalPseudepigrapha/Online-Critical-Pseudepigrapha.git /tmp/ocp
+          git -C /tmp/ocp checkout c939dcbacad78c5d18d2c4282cad23c47e19ac07
+      - name: Inventory refreshed pinned OCP introductions
+        run: python scripts/inspect_intros.py /tmp/ocp/static/docs/intros.json
