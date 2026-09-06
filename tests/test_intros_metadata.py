@@ -215,3 +215,30 @@ def test_work_without_intro_metadata_remains_explicit_and_valid(tmp_path):
     assert work not in data.node_features.get("intro_title_json", {})
     book = next(node for node, kind in data.node_features["otype"].items() if kind == "book")
     assert data.edge_features["version_of"][book] == {work}
+
+
+def test_conversion_report_rejects_extra_graph_metadata_without_intro_title(tmp_path):
+    _copy_fixture(tmp_path, "sample.xml")
+    _write_intros(tmp_path, {})
+    books, _ = load_source_directory(tmp_path)
+    data = build_tf_data(books, document_metadata=_catalog(tmp_path))
+    work = _work_nodes(data)[0]
+
+    data.node_features["intro_bibliography_json"][work] = json.dumps(
+        "<p>not present upstream</p>", ensure_ascii=False
+    )
+    data.node_features["has_intro_metadata"][work] = 1
+
+    report = build_conversion_report(tmp_path, books, data)
+
+    assert report["status"] == "failed"
+    assert report["semantic_checks"]["document_metadata_exact"] is False
+    assert report["graph"]["document_metadata_documents"] == 1
+    assert report["diagnostics"]["document_metadata_mismatches"] == [
+        {
+            "source_file": "sample.xml",
+            "kind": "extra_graph",
+            "source_sha256": "",
+            "graph_sha256": report["diagnostics"]["document_metadata_mismatches"][0]["graph_sha256"],
+        }
+    ]
