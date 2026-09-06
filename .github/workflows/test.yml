@@ -223,6 +223,11 @@ jobs:
           assert len(api.F.otype.s('document_metadata')) == 32
 
           M = WorkMetadata(api)
+          expected_work_ids = tuple(sorted(filename.removesuffix('.xml') for filename in source))
+          assert M.keys() == expected_work_ids
+          for filename, expected in source.items():
+              assert M[filename] == expected, filename
+
           assert M['3Macc'] == source['3Macc.xml']
           assert not any(api.F.ocp_book.v(n) == '3Macc' for n in api.F.otype.s('book'))
 
