@@ -42,6 +42,8 @@ jobs:
         run: |
           git clone https://github.com/OnlineCriticalPseudepigrapha/Online-Critical-Pseudepigrapha.git /tmp/ocp
           git -C /tmp/ocp checkout c939dcbacad78c5d18d2c4282cad23c47e19ac07
+      - name: Inventory pinned OCP introductions
+        run: python scripts/inspect_intros.py /tmp/ocp/static/docs/intros.json
       - name: Convert and audit complete OCP XML set
         run: |
           time pseudepigrapha-tf convert /tmp/ocp/static/docs \
@@ -65,11 +67,37 @@ jobs:
           assert report['graph']['slots'] > 0
           assert report['graph']['oslots_edges'] > 0
           assert report['diagnostics']['excluded_generated_translation_versions']
+
+          expected_fields = {
+              'bibliography': 32,
+              'copyright': 32,
+              'corrections': 10,
+              'introduction': 9,
+              'manuscripts': 10,
+              'provenance': 9,
+              'sigla': 11,
+              'status': 31,
+              'themes': 4,
+          }
+          assert report['source']['document_metadata_documents'] == 32
+          assert report['graph']['document_metadata_documents'] == 32
+          assert report['source']['document_metadata_citations'] == 32
+          assert report['graph']['document_metadata_citations'] == 32
+          assert report['source']['document_metadata_fields'] == expected_fields
+          assert report['graph']['document_metadata_fields'] == expected_fields
+          assert report['graph']['works'] == 39
+          assert report['graph']['metadata_only_works'] == 1
+          assert report['diagnostics']['document_metadata_mismatches'] == []
+          assert report['diagnostics']['document_metadata_decode_errors'] == []
+          assert report['provenance']['intro_export_meta']['exported'] == '2026-09-05'
           print(json.dumps({'source': report['source'], 'graph': report['graph'], 'diagnostics': report['diagnostics']}, indent=2))
           PY
       - name: Reload generated Text-Fabric dataset and verify interface semantics
         run: |
           python - <<'PY'
+          import json
+          from pathlib import Path
+
           from tf.fabric import Fabric
           from pseudepigrapha_tf import Apparatus
 
@@ -77,14 +105,18 @@ jobs:
           api = TF.load(
               'reading_text ms_abbrev ms_language ms_name ms_show undefined_manuscript resource_name source_ref is_primary '
               'unit_id is_missing_unit_id is_source_anomaly prefix_utf8 g_word_utf8 trailer_utf8 boundary_utf8 linebreak '
-              'version_title version_id is_metadata_only ocp_book title language author '
-              'reading_of witness manuscript_of',
+              'version_title version_id is_metadata_only ocp_book title language author source_file '
+              'intro_title_json intro_version_json intro_field_order intro_citation_json '
+              'intro_introduction_json intro_provenance_json intro_themes_json intro_status_json '
+              'intro_manuscripts_json intro_bibliography_json intro_corrections_json intro_sigla_json intro_copyright_json '
+              'has_intro_metadata is_metadata_only_work reading_of witness manuscript_of version_of',
               silent='deep',
           )
           assert api is not None
           assert api.F.otype.maxSlot > 0
           assert api.F.otype.slotType == 'word'
           assert tuple(api.T.sectionTypes) == ('book', 'chapter', 'verse')
+          assert len(api.F.otype.s('work')) == 39
 
           # Generated OCP translation witnesses are deliberately excluded by #72.
           assert not any(
@@ -148,6 +180,37 @@ jobs:
           )
 
           A = Apparatus(api)
+
+          raw_documents = json.loads(
+              Path('/tmp/ocp/static/docs/intros.json').read_text(encoding='utf-8')
+          )['documents']
+          tjob_metadata = A.work_metadata('TJob')
+          tjob_raw = raw_documents['TJob.xml']
+          assert tjob_metadata['source_file'] == 'TJob.xml'
+          assert tjob_metadata['metadata_title'] == tjob_raw['title']
+          assert tjob_metadata['metadata_version'] == tjob_raw['version']
+          assert tjob_metadata['fields'] == tjob_raw['fields']
+          assert tjob_metadata['citation'] == tjob_raw.get('citation')
+          assert tjob_metadata['has_text'] is True
+          assert tjob_metadata['metadata_only'] is False
+
+          macc_metadata = A.work_metadata('3Macc')
+          macc_raw = raw_documents['3Macc.xml']
+          assert macc_metadata['source_file'] == '3Macc.xml'
+          assert macc_metadata['metadata_title'] == macc_raw['title']
+          assert macc_metadata['fields'] == macc_raw['fields']
+          assert macc_metadata['citation'] == macc_raw.get('citation')
+          assert macc_metadata['has_text'] is False
+          assert macc_metadata['metadata_only'] is True
+
+          esdl_metadata = A.work_metadata('Esdl')
+          assert esdl_metadata['source_file'] == 'Esdl.xml'
+          assert esdl_metadata['metadata_title'] is None
+          assert esdl_metadata['metadata_version'] is None
+          assert esdl_metadata['fields'] == {}
+          assert esdl_metadata['citation'] is None
+          assert esdl_metadata['has_text'] is True
+          assert esdl_metadata['metadata_only'] is False
 
           # 1 Enoch has four top-level OCP source textual versions. Generated
           # English/French versions are intentionally absent until #76.
