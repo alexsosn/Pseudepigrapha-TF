@@ -107,3 +107,21 @@ def test_real_text_fabric_write_does_not_mutate_reused_graph_payloads(tmp_path):
 
     assert data.node_features == node_snapshot
     assert data.edge_features == edge_snapshot
+
+
+def test_real_text_fabric_rewrite_removes_feature_files_absent_from_new_graph(tmp_path):
+    data = build_tf_data([parse_file(FIXTURES / "sample.xml")])
+    output = tmp_path / "tf"
+    sentinel = output / "conversion-report.json"
+    data.node_features["temporary_probe"] = {1: "present-only-in-first-write"}
+
+    assert write_tf(data, output)
+    stale_feature = output / "temporary_probe.tf"
+    assert stale_feature.is_file()
+    sentinel.write_text('{"sentinel": true}\n', encoding="utf-8")
+
+    del data.node_features["temporary_probe"]
+    assert write_tf(data, output)
+
+    assert not stale_feature.exists()
+    assert sentinel.read_text(encoding="utf-8") == '{"sentinel": true}\n'
