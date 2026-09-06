@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import re
 from pathlib import Path
+from tempfile import TemporaryDirectory
 from typing import Callable, Protocol
 
 from .graph import EDGE_DESCRIPTIONS, INT_FEATURES, TFData
@@ -97,16 +98,14 @@ def _metadata_with_serialized_features(
     return metadata
 
 
-def _remove_stale_tf_features(
-    output: Path,
-    node_features: dict[str, dict[int, str | int]],
-    edge_features: dict[str, dict[int, set[int]]],
-) -> None:
-    """Remove obsolete feature files after a successful standard TF save."""
+def _install_staged_tf_features(stage: Path, output: Path) -> None:
+    """Install exactly the TF files produced by one successful staged save."""
 
-    expected = set(node_features) | set(edge_features)
+    staged = {path.name: path for path in stage.glob("*.tf")}
+    for name, path in staged.items():
+        path.replace(output / name)
     for path in output.glob("*.tf"):
-        if path.stem not in expected:
+        if path.name not in staged:
             path.unlink()
 
 
@@ -137,19 +136,32 @@ def _serialize_tf(
     edge_features = _edge_features_with_api_dependencies(data, isolate=isolate_payload)
     metadata = _metadata_with_serialized_features(data, node_features, edge_features)
     fabric = fabric_factory(locations=[], modules=[], silent="deep")
-    saved = bool(
-        fabric.save(
-            nodeFeatures=node_features,
-            edgeFeatures=edge_features,
-            metaData=metadata,
-            location=str(output),
-            module="",
-            silent="deep",
+
+    def save(location: Path) -> bool:
+        return bool(
+            fabric.save(
+                nodeFeatures=node_features,
+                edgeFeatures=edge_features,
+                metaData=metadata,
+                location=str(location),
+                module="",
+                silent="deep",
+            )
         )
-    )
-    if saved and uses_standard_fabric:
-        _remove_stale_tf_features(output, node_features, edge_features)
-    return saved
+
+    if not uses_standard_fabric:
+        return save(output)
+
+    # Text-Fabric writes support files in addition to the supplied feature maps
+    # (for example ``__characters__.tf``). Let it produce the complete current
+    # artifact set in isolation, then reconcile only ``*.tf`` into the output.
+    # A false/raising save leaves the previously generated corpus untouched.
+    with TemporaryDirectory(prefix=".pseudepigrapha-tf-", dir=output.parent) as stage_dir:
+        stage = Path(stage_dir)
+        if not save(stage):
+            return False
+        _install_staged_tf_features(stage, output)
+    return True
 
 
 def _write_prevalidated_tf(data: TFData, output_dir: str | Path) -> bool:
