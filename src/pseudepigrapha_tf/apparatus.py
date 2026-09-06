@@ -36,28 +36,33 @@ class Apparatus:
         return edge
 
     def _book_id(self, book_node: int) -> str:
-        """Resolve the canonical TF book/section id for a textual version.
-
-        ``book`` is the top-level Text-Fabric section node, so the canonical
-        section API can resolve it directly without enumerating its word slots.
-        """
+        """Resolve the canonical TF book/section id for a textual version."""
 
         section = self.api.T.sectionFromNode(book_node)
         if not section or not section[0]:
             raise ValueError(f"cannot resolve TF book section id for textual OCP version node {book_node}")
         return str(section[0])
 
+    def _is_generated_book(self, book_node: int) -> bool:
+        version_kind = getattr(self.api.F, "version_kind", None)
+        return version_kind is not None and version_kind.v(book_node) == "generated_translation"
+
     def _witnesses(self, owner: int) -> dict[str, dict[str, object]]:
-        """Return all linked witnesses with explicit upstream declaration provenance."""
+        """Return historical witnesses, excluding source-declared synthetic provenance nodes."""
 
         manuscript_of = getattr(self.api.E, "manuscript_of", None)
         if manuscript_of is None:
             raise ValueError("manuscript_of edge feature must be loaded for this Apparatus operation")
         ms_abbrev = self._require_feature("ms_abbrev")
         undefined_manuscript = self._require_feature("undefined_manuscript")
+        synthetic_witness = getattr(self.api.F, "synthetic_witness", None)
         nodes = tuple(
             sorted(
-                manuscript_of.t(owner),
+                (
+                    node
+                    for node in manuscript_of.t(owner)
+                    if synthetic_witness is None or synthetic_witness.v(node) != 1
+                ),
                 key=lambda node: (
                     str(self._required_feature_value(ms_abbrev, "ms_abbrev", node)),
                     node,
@@ -87,13 +92,7 @@ class Apparatus:
         return self.api.F.reading_text.v(reading) or ""
 
     def reading_tokens(self, reading: int) -> tuple[int, ...]:
-        """Return the actual token nodes of one reading, never its technical locus.
-
-        Primary textual readings return their Text-Fabric ``word`` slots.
-        Non-primary textual readings return their ``variant_word`` nodes.
-        Explicit omissions return no token nodes, including when Text-Fabric
-        gives the reading a technical/shared ``oslots`` locus.
-        """
+        """Return the actual token nodes of one reading, never its technical locus."""
 
         reading_text = self._require_feature("reading_text")
         is_primary = self._require_feature("is_primary")
@@ -117,9 +116,7 @@ class Apparatus:
             )
         variants = tuple(sorted(variant_word_of.t(reading)))
         if not variants:
-            raise ValueError(
-                f"non-primary reading {reading} has text but no variant_word tokens"
-            )
+            raise ValueError(f"non-primary reading {reading} has text but no variant_word tokens")
         return variants
 
     def witness_reading(self, unit: int, manuscript: int) -> int | None:
@@ -140,8 +137,6 @@ class Apparatus:
         *,
         unit_id_feature=None,
     ) -> dict[str, object]:
-        """Build one witness-state record from an already resolved reading."""
-
         if unit_id_feature is None:
             unit_id_feature = self._require_feature("unit_id")
         unit_id = str(self._required_feature_value(unit_id_feature, "unit_id", unit))
@@ -163,13 +158,6 @@ class Apparatus:
         }
 
     def witness_state(self, unit: int, manuscript: int) -> dict[str, object]:
-        """Return an explicit witness state at one apparatus unit.
-
-        ``omission`` means the witness is explicitly assigned to an empty OCP
-        reading. ``unattested`` means no reading at the unit cites the witness.
-        The latter must not be silently interpreted as an omission or lacuna.
-        """
-
         return self._state_for_reading(unit, self.witness_reading(unit, manuscript))
 
     def witness_text(self, manuscript: int, units: Iterable[int] | None = None) -> str:
@@ -177,9 +165,7 @@ class Apparatus:
             otype = getattr(self.api.F, "otype", None)
             node_type = getattr(otype, "v", None) if otype is not None else None
             if node_type is None:
-                raise ValueError(
-                    "units must be supplied when the TF otype feature has no type lookup"
-                )
+                raise ValueError("units must be supplied when the TF otype feature has no type lookup")
 
             witness = getattr(self.api.E, "witness", None)
             witness_sources = getattr(witness, "t", None) if witness is not None else None
@@ -236,14 +222,22 @@ class Apparatus:
     def apparatus(self, unit: int) -> tuple[dict[str, object], ...]:
         is_primary = self._require_feature("is_primary")
         witness = self._require_edge("witness")
+        synthetic_witness = getattr(self.api.F, "synthetic_witness", None)
         result = []
         for reading in self.unit_readings(unit):
+            witness_nodes = tuple(
+                sorted(
+                    manuscript
+                    for manuscript in witness.f(reading)
+                    if synthetic_witness is None or synthetic_witness.v(manuscript) != 1
+                )
+            )
             result.append(
                 {
                     "reading": reading,
                     "text": self.reading_text(reading),
                     "primary": is_primary.v(reading) == 1,
-                    "witnesses": tuple(sorted(witness.f(reading))),
+                    "witnesses": witness_nodes,
                 }
             )
         return tuple(result)
@@ -254,12 +248,11 @@ class Apparatus:
         verse_node: int,
         manuscripts: dict[str, dict[str, object]],
     ) -> dict[str, object]:
-        """Build a passage from already validated, request-local context."""
-
         is_primary = self._require_feature("is_primary")
         ms_abbrev = self._require_feature("ms_abbrev")
         unit_id = self._require_feature("unit_id")
         witness = self._require_edge("witness")
+        synthetic_witness = getattr(self.api.F, "synthetic_witness", None)
         units = tuple(self.api.L.d(verse_node, otype="unit"))
         source_refs: list[str] = []
         unit_records: list[dict[str, object]] = []
@@ -271,7 +264,13 @@ class Apparatus:
             readings: list[dict[str, object]] = []
             unit_witnesses: dict[int, int] = {}
             for reading in self.unit_readings(unit):
-                witness_nodes = tuple(sorted(witness.f(reading)))
+                witness_nodes = tuple(
+                    sorted(
+                        manuscript
+                        for manuscript in witness.f(reading)
+                        if synthetic_witness is None or synthetic_witness.v(manuscript) != 1
+                    )
+                )
                 for manuscript in witness_nodes:
                     previous = unit_witnesses.get(manuscript)
                     if previous is not None:
@@ -341,17 +340,7 @@ class Apparatus:
         }
 
     def passage(self, book: str, chapter: str | int, verse: str | int) -> dict[str, object]:
-        """Return one TF verse together with its full OCP apparatus by witness.
-
-        This is the high-level entry point for questions such as "give me
-        1En 1:2 in every witness". The result preserves the distinction between
-        an explicit empty reading (``omission``) and a witness for which the
-        source gives no reading at that unit (``unattested``).
-
-        A witness-level ``text`` is returned only when every unit in the verse is
-        attested (including explicit omissions). ``attested_text`` is always the
-        concatenation of the non-empty readings that are actually present.
-        """
+        """Return one source-version TF verse together with its OCP apparatus by witness."""
 
         reference = (str(book), str(chapter), str(verse))
         verse_node = self.api.T.nodeFromSection(reference)
@@ -362,26 +351,21 @@ class Apparatus:
         if len(book_nodes) != 1:
             raise ValueError(f"expected one containing book for {reference!r}, found {book_nodes}")
         book_node = book_nodes[0]
+        if self._is_generated_book(book_node):
+            raise ValueError(
+                f"{book!r} is a generated translation; use Translations for aligned translation text, "
+                "not historical apparatus semantics"
+            )
         return self._passage_from_context(reference, verse_node, self._witnesses(book_node))
 
     def work_passage(self, work: str, chapter: str | int, verse: str | int) -> dict[str, object]:
-        """Return the requested passage across every OCP version of one work.
-
-        Textual versions are returned under ``versions`` and keyed by their
-        stable TF book id (for example ``Multi__Greek``). A textual version whose
-        requested section is absent remains in the result with
-        ``status='not_present'`` and ``passage=None`` rather than disappearing.
-
-        Upstream versions that contain metadata but no textual units are returned
-        separately under ``metadata_only_versions``. This preserves the semantic
-        distinction between "this version exists but OCP has no text for it" and
-        "this textual version simply does not attest the requested section".
-        """
+        """Return the requested passage across source/critical OCP versions of one work."""
 
         ocp_book = self._require_feature("ocp_book")
         work = str(work)
         chapter = str(chapter)
         verse = str(verse)
+        version_kind = getattr(self.api.F, "version_kind", None)
 
         textual_versions = tuple(
             sorted(
@@ -389,6 +373,7 @@ class Apparatus:
                     (self._book_id(node), node)
                     for node in self.api.F.otype.s("book")
                     if str(ocp_book.v(node) or "") == work
+                    and (version_kind is None or version_kind.v(node) != "generated_translation")
                 ),
                 key=lambda item: item[0],
             )
@@ -422,6 +407,8 @@ class Apparatus:
                 if len(book_nodes) != 1:
                     raise ValueError(f"expected one containing book for {reference!r}, found {book_nodes}")
                 containing_book = book_nodes[0]
+                if self._is_generated_book(containing_book):
+                    raise ValueError(f"generated translation section leaked into apparatus lookup: {reference!r}")
                 passage_manuscripts = (
                     manuscripts if containing_book == book_node else self._witnesses(containing_book)
                 )

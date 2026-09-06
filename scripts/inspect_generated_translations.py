@@ -1,0 +1,322 @@
+#!/usr/bin/env python3
+"""Inventory OCP generated translations and structural source-version alignment."""
+
+from __future__ import annotations
+
+import hashlib
+import json
+import sys
+from collections import Counter, defaultdict
+from pathlib import Path
+from xml.etree import ElementTree as ET
+
+from pseudepigrapha_tf.source_versions import (
+    GeneratedTranslationClassificationError,
+    is_generated_translation_version,
+)
+
+UnitIdentity = tuple[tuple[str, ...], str]
+UnitSignature = tuple[UnitIdentity, ...]
+
+
+def _units(version: ET.Element) -> list[dict[str, object]]:
+    text = version.find("text")
+    if text is None:
+        return []
+    result: list[dict[str, object]] = []
+
+    def walk(node: ET.Element, path: tuple[str, ...]) -> None:
+        for child in node:
+            tag = child.tag.lower()
+            if tag in {"div", "chapter", "verse"}:
+                number = (
+                    child.get("number")
+                    or child.get("reference")
+                    or child.get("n")
+                    or str(len(path) + 1)
+                )
+                walk(child, (*path, number))
+            elif tag == "unit":
+                reading = child.find("reading[@option='0']")
+                if reading is None:
+                    reading = child.find("reading")
+                result.append(
+                    {
+                        "path": path,
+                        "id": child.get("id", ""),
+                        "text": "".join(reading.itertext()) if reading is not None else "",
+                    }
+                )
+
+    walk(text, ())
+    return result
+
+
+def _source_signature(version: ET.Element) -> UnitSignature:
+    return tuple((tuple(unit["path"]), str(unit["id"])) for unit in _units(version))
+
+
+def _language_prefix(version: ET.Element) -> str:
+    language = (version.get("language") or "").lower()
+    return "en_" if language == "english" else "fr_" if language == "french" else ""
+
+
+def _translation_signature(version: ET.Element) -> UnitSignature:
+    prefix = _language_prefix(version)
+    result: list[UnitIdentity] = []
+    for unit in _units(version):
+        unit_id = str(unit["id"])
+        source_id = unit_id[len(prefix) :] if prefix and unit_id.startswith(prefix) else unit_id
+        result.append((tuple(unit["path"]), source_id))
+    return tuple(result)
+
+
+def _duplicates(values: list[object] | tuple[object, ...]) -> list[object]:
+    counts = Counter(values)
+    return sorted((value for value, count in counts.items() if count > 1), key=repr)
+
+
+def _text_digest(text: str) -> str:
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+
+def _translation_id_collisions(version: ET.Element) -> list[dict[str, object]]:
+    prefix = _language_prefix(version)
+    groups: dict[str, list[dict[str, object]]] = defaultdict(list)
+    for unit in _units(version):
+        generated_id = str(unit["id"])
+        source_id = generated_id[len(prefix) :] if prefix and generated_id.startswith(prefix) else generated_id
+        groups[source_id].append(unit)
+
+    collisions: list[dict[str, object]] = []
+    for source_id, rows in sorted(groups.items()):
+        if len(rows) < 2:
+            continue
+        texts = [str(row["text"]) for row in rows]
+        collisions.append(
+            {
+                "source_unit_id": source_id,
+                "occurrences": len(rows),
+                "paths": [row["path"] for row in rows],
+                "text_sha256": [_text_digest(text) for text in texts],
+                "all_injected_text_equal": len(set(texts)) == 1,
+                "empty_text_occurrences": sum(1 for text in texts if not text.strip()),
+                "placeholder_occurrences": sum(1 for text in texts if text.strip() == "[...]"),
+            }
+        )
+    return collisions
+
+
+def _version_record(index: int, version: ET.Element, *, translated: bool = False) -> dict[str, object]:
+    readings = list(version.iter("reading"))
+    signature = _translation_signature(version) if translated else _source_signature(version)
+    bare_ids = [identity[1] for identity in signature]
+    return {
+        "index": index,
+        "title": version.get("title", ""),
+        "language": version.get("language", ""),
+        "fragment": version.get("fragment", ""),
+        "units": len(signature),
+        "readings": len(readings),
+        "empty_readings": sum(1 for reading in readings if not "".join(reading.itertext()).strip()),
+        "placeholder_readings": sum(1 for reading in readings if "".join(reading.itertext()).strip() == "[...]"),
+        "duplicate_unit_identities": _duplicates(list(signature)),
+        "duplicate_bare_unit_ids": _duplicates(bare_ids),
+        "generator_key_collisions": _translation_id_collisions(version) if translated else [],
+    }
+
+
+def _signature_drift(generated: UnitSignature, source: UnitSignature) -> dict[str, object]:
+    generated_counts = Counter(generated)
+    source_counts = Counter(source)
+    common = sum((generated_counts & source_counts).values())
+    missing = list((source_counts - generated_counts).elements())
+    extra = list((generated_counts - source_counts).elements())
+    first_mismatch = None
+    for position, (generated_item, source_item) in enumerate(zip(generated, source, strict=False)):
+        if generated_item != source_item:
+            first_mismatch = {
+                "position": position,
+                "generated": generated_item,
+                "source": source_item,
+            }
+            break
+    if first_mismatch is None and len(generated) != len(source):
+        first_mismatch = {
+            "position": min(len(generated), len(source)),
+            "generated": generated[min(len(generated), len(source))] if len(generated) > len(source) else None,
+            "source": source[min(len(generated), len(source))] if len(source) > len(generated) else None,
+        }
+    return {
+        "generated_units": len(generated),
+        "source_units": len(source),
+        "common_identities": common,
+        "missing_from_generated_count": len(missing),
+        "extra_in_generated_count": len(extra),
+        "missing_from_generated_sample": missing[:5],
+        "extra_in_generated_sample": extra[:5],
+        "sequence_equal": generated == source,
+        "multiset_equal": generated_counts == source_counts,
+        "first_mismatch": first_mismatch,
+    }
+
+
+def inventory(source_dir: Path) -> dict[str, object]:
+    files: list[dict[str, object]] = []
+    language_counts: Counter[str] = Counter()
+    language_unit_counts: Counter[str] = Counter()
+    language_empty_counts: Counter[str] = Counter()
+    language_placeholder_counts: Counter[str] = Counter()
+    genuine_modern_versions: list[dict[str, object]] = []
+    ambiguous: list[dict[str, object]] = []
+    unmatched: list[dict[str, object]] = []
+    order_drift: list[dict[str, object]] = []
+    source_duplicate_bare_ids: list[dict[str, object]] = []
+    source_duplicate_identities: list[dict[str, object]] = []
+    generated_id_collisions: list[dict[str, object]] = []
+    generated_duplicate_identities: list[dict[str, object]] = []
+    generated_total = 0
+    generated_units = 0
+    generated_empty_readings = 0
+    generated_placeholder_readings = 0
+    generated_documents: set[str] = set()
+    source_versions_total = 0
+
+    xml_paths = sorted(
+        path for path in source_dir.glob("*.xml") if not path.name.startswith(".") and path.read_bytes().strip()
+    )
+    for xml_path in xml_paths:
+        root = ET.fromstring(xml_path.read_bytes())
+        versions = list(root.findall("version"))
+        generated: list[tuple[int, ET.Element]] = []
+        sources: list[tuple[int, ET.Element]] = []
+        for index, version in enumerate(versions):
+            try:
+                is_generated = is_generated_translation_version(version)
+            except GeneratedTranslationClassificationError as exc:
+                raise RuntimeError(f"{xml_path.name}: {exc}") from exc
+            if is_generated:
+                generated.append((index, version))
+            else:
+                sources.append((index, version))
+                source_record = {"file": xml_path.name, **_version_record(index, version)}
+                if source_record["duplicate_bare_unit_ids"]:
+                    source_duplicate_bare_ids.append(source_record)
+                if source_record["duplicate_unit_identities"]:
+                    source_duplicate_identities.append(source_record)
+                if (version.get("language") or "").lower() in {"english", "french"}:
+                    genuine_modern_versions.append(source_record)
+
+        source_versions_total += len(sources)
+        source_multisets: dict[frozenset[tuple[UnitIdentity, int]], list[tuple[int, ET.Element]]] = {}
+        for pair in sources:
+            multiset_key = frozenset(Counter(_source_signature(pair[1])).items())
+            source_multisets.setdefault(multiset_key, []).append(pair)
+
+        generated_records: list[dict[str, object]] = []
+        for index, version in generated:
+            target = version.get("language", "")
+            signature = _translation_signature(version)
+            multiset_key = frozenset(Counter(signature).items())
+            candidates = source_multisets.get(multiset_key, [])
+            record: dict[str, object] = {
+                "file": xml_path.name,
+                **_version_record(index, version, translated=True),
+                "candidate_sources": [
+                    {
+                        "index": source_index,
+                        "title": source.get("title", ""),
+                        "language": source.get("language", ""),
+                        "fragment": source.get("fragment", ""),
+                        "sequence_equal": signature == _source_signature(source),
+                    }
+                    for source_index, source in candidates
+                ],
+            }
+            if len(candidates) == 0:
+                nearest = []
+                for source_index, source in sources:
+                    drift = _signature_drift(signature, _source_signature(source))
+                    nearest.append(
+                        {
+                            "index": source_index,
+                            "title": source.get("title", ""),
+                            "language": source.get("language", ""),
+                            "fragment": source.get("fragment", ""),
+                            **drift,
+                        }
+                    )
+                nearest.sort(
+                    key=lambda item: (
+                        -int(item["common_identities"]),
+                        int(item["missing_from_generated_count"]) + int(item["extra_in_generated_count"]),
+                        int(item["index"]),
+                    )
+                )
+                record["nearest_sources"] = nearest[:3]
+                unmatched.append(record)
+            elif len(candidates) > 1:
+                ambiguous.append(record)
+            elif not bool(record["candidate_sources"][0]["sequence_equal"]):  # type: ignore[index]
+                order_drift.append(record)
+            if record["generator_key_collisions"]:
+                generated_id_collisions.append(record)
+            if record["duplicate_unit_identities"]:
+                generated_duplicate_identities.append(record)
+            generated_records.append(record)
+            generated_total += 1
+            generated_documents.add(xml_path.name)
+            language_counts[target] += 1
+            units = len(signature)
+            language_unit_counts[target] += units
+            generated_units += units
+            readings = list(version.iter("reading"))
+            empty_count = sum(1 for reading in readings if not "".join(reading.itertext()).strip())
+            placeholder_count = sum(1 for reading in readings if "".join(reading.itertext()).strip() == "[...]")
+            language_empty_counts[target] += empty_count
+            language_placeholder_counts[target] += placeholder_count
+            generated_empty_readings += empty_count
+            generated_placeholder_readings += placeholder_count
+
+        files.append(
+            {
+                "file": xml_path.name,
+                "source_versions": [_version_record(index, version) for index, version in sources],
+                "generated_versions": generated_records,
+            }
+        )
+
+    return {
+        "nonempty_xml_documents": len(xml_paths),
+        "source_versions": source_versions_total,
+        "generated_documents": len(generated_documents),
+        "generated_versions": generated_total,
+        "generated_units": generated_units,
+        "generated_empty_readings": generated_empty_readings,
+        "generated_placeholder_readings": generated_placeholder_readings,
+        "generated_versions_by_language": dict(sorted(language_counts.items())),
+        "generated_units_by_language": dict(sorted(language_unit_counts.items())),
+        "generated_empty_readings_by_language": dict(sorted(language_empty_counts.items())),
+        "generated_placeholder_readings_by_language": dict(sorted(language_placeholder_counts.items())),
+        "genuine_non_generated_english_french_versions": genuine_modern_versions,
+        "source_versions_with_duplicate_bare_unit_ids": source_duplicate_bare_ids,
+        "source_versions_with_duplicate_unit_identities": source_duplicate_identities,
+        "generated_versions_with_generator_key_collisions": generated_id_collisions,
+        "generated_versions_with_duplicate_unit_identities": generated_duplicate_identities,
+        "unmatched_generated_versions": unmatched,
+        "ambiguous_generated_versions": ambiguous,
+        "generated_versions_with_order_drift": order_drift,
+        "files": files,
+    }
+
+
+def main(argv: list[str] | None = None) -> int:
+    args = sys.argv[1:] if argv is None else argv
+    if len(args) != 1:
+        raise SystemExit("usage: inspect_generated_translations.py PATH/TO/static/docs")
+    print(json.dumps(inventory(Path(args[0])), ensure_ascii=False, indent=2, sort_keys=True))
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

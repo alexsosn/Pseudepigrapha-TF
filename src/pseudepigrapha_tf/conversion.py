@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from collections import defaultdict
 from dataclasses import dataclass, replace
 from typing import Iterable
 
@@ -17,6 +18,7 @@ from .model import (
     Book,
     Div,
     Ellipsis,
+    GeneratedTranslation,
     OrphanReading,
     Unit,
     Version,
@@ -40,6 +42,13 @@ class _VersionTreeShape:
     known_blank_unit_refs: tuple[str, ...]
 
 
+@dataclass(frozen=True)
+class _SourceGraphVersion:
+    version_id: str
+    book_key: str
+    units_by_identity: dict[tuple[tuple[str, ...], str], tuple[str, ...]]
+
+
 def _is_known_blank_unit_id(unit: Unit) -> bool:
     """Accept only parser-marked blanks that already passed source validation."""
 
@@ -49,7 +58,7 @@ def _is_known_blank_unit_id(unit: Unit) -> bool:
 def _validate_and_classify_model(
     books: Iterable[Book],
 ) -> tuple[tuple[_VersionTreeShape, ...], ...]:
-    """Validate source identities and classify every version in one tree pass."""
+    """Validate source identities and classify every source version in one tree pass."""
 
     book_shapes: list[tuple[_VersionTreeShape, ...]] = []
     for book in books:
@@ -105,7 +114,8 @@ def _validate_unique_manuscript_abbreviations(books: Iterable[Book]) -> None:
     """Reject ambiguous non-blank witness identity before graph mutation."""
 
     for book in books:
-        for version in book.versions:
+        versions = [*book.versions, *(item.version for item in book.generated_translations)]
+        for version in versions:
             seen: set[str] = set()
             for manuscript in version.manuscripts:
                 abbrev = manuscript.abbrev
@@ -123,6 +133,97 @@ def _stamp_version_identity(builder: _Builder, start: int, version_id: str) -> N
 
     for index in range(start, len(builder.objects)):
         builder.objects[index].features["version_id"] = version_id
+
+
+def _stamp_version_kind(
+    builder: _Builder,
+    object_start: int,
+    slot_start: int,
+    kind: str,
+    *,
+    generation: GeneratedTranslation | None = None,
+) -> None:
+    """Stamp ownership/provenance without changing source book-id semantics."""
+
+    values: dict[str, str | int] = {"version_kind": kind}
+    if generation is not None:
+        values.update(
+            generation_marker=generation.marker,
+            generation_method=generation.generation_method,
+            generation_model=generation.generation_model,
+            generated_language=generation.target_language,
+        )
+    for index in range(object_start, len(builder.objects)):
+        obj = builder.objects[index]
+        obj.features.update(values)
+        if generation is not None and obj.kind == "manuscript" and obj.features.get("ms_abbrev") == generation.marker:
+            obj.features["synthetic_witness"] = 1
+    for slot in range(slot_start, builder.next_slot):
+        for name, value in values.items():
+            builder.set_slot_feature(slot, name, value)
+
+
+def _unit_key_index(
+    builder: _Builder,
+    object_start: int,
+    *,
+    strip_prefix: str = "",
+) -> dict[tuple[tuple[str, ...], str], tuple[str, ...]]:
+    grouped: dict[tuple[tuple[str, ...], str], list[str]] = defaultdict(list)
+    for obj in builder.objects[object_start:]:
+        if obj.kind != "unit":
+            continue
+        parts_raw = obj.features.get("source_ref_parts")
+        unit_id = str(obj.features.get("unit_id", ""))
+        if strip_prefix and unit_id.startswith(strip_prefix):
+            unit_id = unit_id[len(strip_prefix) :]
+        parts = tuple(json.loads(str(parts_raw))) if parts_raw else ()
+        grouped[(parts, unit_id)].append(obj.key)
+    return {identity: tuple(keys) for identity, keys in grouped.items()}
+
+
+def _validate_generated_alignment(data: TFData) -> None:
+    """Fail closed if generated provenance edges violate their semantic contract."""
+
+    otype = data.node_features.get("otype", {})
+    kind = data.node_features.get("version_kind", {})
+    translation_of = data.edge_features.get("translation_of", {})
+    translation_unit_of = data.edge_features.get("translation_unit_of", {})
+
+    errors: list[str] = []
+    for node, node_kind in kind.items():
+        node_type = otype.get(node)
+        if node_kind != "generated_translation":
+            continue
+        if node_type == "book":
+            targets = translation_of.get(node, set())
+            if len(targets) != 1:
+                errors.append(f"generated book {node} has {len(targets)} translation_of targets; expected exactly 1")
+            elif kind.get(next(iter(targets))) != "source":
+                errors.append(f"generated book {node} translation_of target is not a source version")
+        elif node_type == "unit":
+            targets = translation_unit_of.get(node, set())
+            if len(targets) != 1:
+                errors.append(
+                    f"generated unit {node} has {len(targets)} translation_unit_of targets; expected exactly 1"
+                )
+            elif otype.get(next(iter(targets))) != "unit" or kind.get(next(iter(targets))) != "source":
+                errors.append(f"generated unit {node} translation_unit_of target is not a source unit")
+
+    for source, targets in translation_of.items():
+        if otype.get(source) != "book" or kind.get(source) != "generated_translation":
+            errors.append(f"translation_of source {source} is not a generated book")
+        for target in targets:
+            if otype.get(target) != "book" or kind.get(target) != "source":
+                errors.append(f"translation_of target {target} is not a source book")
+    for source, targets in translation_unit_of.items():
+        if otype.get(source) != "unit" or kind.get(source) != "generated_translation":
+            errors.append(f"translation_unit_of source {source} is not a generated unit")
+        for target in targets:
+            if otype.get(target) != "unit" or kind.get(target) != "source":
+                errors.append(f"translation_unit_of target {target} is not a source unit")
+    if errors:
+        raise ValueError("invalid generated translation alignment: " + "; ".join(errors))
 
 
 def _without_special_div_items(div: Div) -> Div:
@@ -316,13 +417,7 @@ def _add_metadata_version(
     version_index: int,
     anchor: int,
 ) -> None:
-    """Preserve an upstream version that declares metadata but no textual units.
-
-    Text-Fabric requires non-slot nodes to have an ``oslots`` anchor. The one
-    supplied slot is purely technical: this node is deliberately *not* a TF
-    ``book`` section, and its type-specific text format renders ``version_title``
-    instead of descending to the anchor text.
-    """
+    """Preserve an upstream version that declares metadata but no textual units."""
 
     start = len(builder.objects)
     vkey = f"book:{book_index}:version:{version_index}"
@@ -505,8 +600,8 @@ def _mark_known_missing_unit_ids(
     for ocp_book, version_id, source_ref in expected:
         matches = [
             node
-            for node, kind in otype.items()
-            if kind == "unit"
+            for node, node_kind in otype.items()
+            if node_kind == "unit"
             and ocp_books.get(node) == ocp_book
             and version_ids.get(node) == version_id
             and source_refs.get(node) == source_ref
@@ -522,6 +617,71 @@ def _mark_known_missing_unit_ids(
         data.node_features.setdefault("is_source_anomaly", {})[node] = 1
 
 
+def _generated_version_id(
+    source_version_id: str,
+    translation: GeneratedTranslation,
+    seen: dict[str, int],
+) -> str:
+    base = f"{source_version_id}__translation__{_slug(translation.target_language)}"
+    seen[base] = seen.get(base, 0) + 1
+    return base if seen[base] == 1 else f"{base}_{seen[base]}"
+
+
+def _add_generated_translation(
+    builder: _Builder,
+    *,
+    book: Book,
+    translation: GeneratedTranslation,
+    generated_version_id: str,
+    book_index: int,
+    graph_version_index: int,
+    source_graph: _SourceGraphVersion,
+) -> None:
+    object_start = len(builder.objects)
+    slot_start = builder.next_slot
+    _add_version(
+        builder,
+        book,
+        translation.version,
+        generated_version_id,
+        book_index,
+        graph_version_index,
+    )
+    _stamp_version_identity(builder, object_start, generated_version_id)
+    _stamp_version_kind(
+        builder,
+        object_start,
+        slot_start,
+        "generated_translation",
+        generation=translation,
+    )
+
+    generated_vkey = f"book:{book_index}:version:{graph_version_index}"
+    generated_book_key = f"{generated_vkey}:book"
+    builder.edge("translation_of", generated_book_key, source_graph.book_key)
+
+    language = translation.target_language.strip().lower()
+    prefix = f"{language[:2]}_" if language else ""
+    generated_units = _unit_key_index(builder, object_start, strip_prefix=prefix)
+    source_units = source_graph.units_by_identity
+    if set(generated_units) != set(source_units):
+        missing = sorted(set(source_units) - set(generated_units), key=repr)[:3]
+        extra = sorted(set(generated_units) - set(source_units), key=repr)[:3]
+        raise ValueError(
+            f"{book.filename}/{translation.version.title}: generated/source unit identity mismatch; "
+            f"missing={missing!r}; extra={extra!r}"
+        )
+    for identity, generated_keys in generated_units.items():
+        source_keys = source_units[identity]
+        if len(generated_keys) != len(source_keys):
+            raise ValueError(
+                f"{book.filename}/{translation.version.title}: generated/source multiplicity mismatch "
+                f"for {identity!r}: {len(generated_keys)} != {len(source_keys)}"
+            )
+        for generated_key, source_key in zip(generated_keys, source_keys):
+            builder.edge("translation_unit_of", generated_key, source_key)
+
+
 def build_tf_data(
     books: Iterable[Book],
     *,
@@ -529,7 +689,7 @@ def build_tf_data(
     upstream_commit: str = "",
     converter_version: str = "0.1.0",
 ) -> TFData:
-    """Build TF while preserving declared upstream versions that contain no text."""
+    """Build TF with source versions and an explicitly provenance-marked translation layer."""
 
     books = list(books)
     book_shapes = _validate_and_classify_model(books)
@@ -541,9 +701,10 @@ def build_tf_data(
         version_ids = _book_ids(book)
         book_anchor: int | None = None
         metadata: list[_PendingMetadataVersion] = []
+        source_graphs: dict[int, _SourceGraphVersion] = {}
 
-        # Textual versions go first so metadata-only siblings can use a technical
-        # anchor from the same OCP work even when upstream lists the empty version first.
+        # Source textual versions go first so their existing TF book ids and
+        # source order remain stable when generated translations are added.
         for vidx, (version, version_id, shape) in enumerate(
             zip(book.versions, version_ids, shapes),
             1,
@@ -573,15 +734,46 @@ def build_tf_data(
                         manuscripts,
                     )
                 _stamp_version_identity(builder, start, version_id)
+                _stamp_version_kind(builder, start, first_slot, "source")
+                vkey = f"book:{bidx}:version:{vidx}"
+                source_graphs[vidx - 1] = _SourceGraphVersion(
+                    version_id=version_id,
+                    book_key=f"{vkey}:book",
+                    units_by_identity=_unit_key_index(builder, start),
+                )
                 if book_anchor is None and builder.next_slot > first_slot:
                     book_anchor = first_slot
             else:
                 metadata.append(_PendingMetadataVersion(book, version, version_id, bidx, vidx))
 
+        generated_id_counts: dict[str, int] = {}
+        for generated_index, translation in enumerate(book.generated_translations, 1):
+            source_graph = source_graphs.get(translation.source_version_index)
+            if source_graph is None:
+                raise ValueError(
+                    f"{book.filename}/{translation.version.title}: generated translation source version "
+                    f"{translation.source_version_index} is not textual"
+                )
+            generated_version_id = _generated_version_id(
+                source_graph.version_id,
+                translation,
+                generated_id_counts,
+            )
+            _add_generated_translation(
+                builder,
+                book=book,
+                translation=translation,
+                generated_version_id=generated_version_id,
+                book_index=bidx,
+                graph_version_index=len(book.versions) + generated_index,
+                source_graph=source_graph,
+            )
+
         if book_anchor is None:
             pending.extend(metadata)
         else:
             for item in metadata:
+                start = len(builder.objects)
                 _add_metadata_version(
                     builder,
                     item.book,
@@ -591,6 +783,7 @@ def build_tf_data(
                     item.version_index,
                     book_anchor,
                 )
+                _stamp_version_kind(builder, start, builder.next_slot, "source")
 
     # A work with only metadata can reuse a corpus-level technical anchor. This
     # does not create a section or claim textual containment. A corpus with no
@@ -600,6 +793,7 @@ def build_tf_data(
             names = ", ".join(f"{item.book.filename}/{item.version.title}" for item in pending)
             raise ValueError(f"metadata-only corpus has no word slot for TF anchoring: {names}")
         for item in pending:
+            start = len(builder.objects)
             _add_metadata_version(
                 builder,
                 item.book,
@@ -609,6 +803,7 @@ def build_tf_data(
                 item.version_index,
                 1,
             )
+            _stamp_version_kind(builder, start, builder.next_slot, "source")
 
     data = builder.finalize(
         upstream_repository=upstream_repository,
@@ -616,6 +811,8 @@ def build_tf_data(
         converter_version=converter_version,
     )
     _mark_known_missing_unit_ids(data, books, book_shapes)
+    _validate_generated_alignment(data)
+
     data.metadata["otext"]["fmt:version_metadata-default"] = "{version_title}"
     data.metadata["otext"]["fmt:ellipsis-default"] = "{ellipsis_text}"
     data.metadata["otext"]["fmt:orphan_reading-default"] = "{reading_text}"
@@ -634,6 +831,31 @@ def build_tf_data(
             "valueType": "int",
             "description": "1 when the upstream unit explicitly has an empty id and no id is inferred",
         }
+    if "synthetic_witness" in data.node_features:
+        data.metadata["synthetic_witness"] = {
+            "valueType": "int",
+            "description": "1 for a source-declared synthetic provenance witness rather than a historical manuscript",
+        }
+    if "version_kind" in data.metadata:
+        data.metadata["version_kind"]["description"] = (
+            "source for critical/source versions; generated_translation for OCP machine translations"
+        )
+    if "generation_marker" in data.metadata:
+        data.metadata["generation_marker"]["description"] = "explicit upstream generated-translation provenance marker"
+    if "generation_method" in data.metadata:
+        data.metadata["generation_method"]["description"] = "upstream generation method recorded for this translation"
+    if "generation_model" in data.metadata:
+        data.metadata["generation_model"]["description"] = "upstream model recorded for the pinned generated translation layer"
+    if "generated_language" in data.metadata:
+        data.metadata["generated_language"]["description"] = "target language of an upstream generated translation"
+    data.metadata["translation_of"] = {
+        "valueType": "str",
+        "description": "generated translation TF book to its exact source-version TF book",
+    }
+    data.metadata["translation_unit_of"] = {
+        "valueType": "str",
+        "description": "generated translation unit to occurrence-aligned source unit",
+    }
     if "version_id" in data.metadata:
         data.metadata["version_id"]["description"] = (
             "stable converter identifier for the exact upstream version owning this node"

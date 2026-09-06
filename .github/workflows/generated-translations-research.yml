@@ -1,0 +1,78 @@
+name: generated-translations-research
+
+on:
+  pull_request:
+
+jobs:
+  pinned-inventory:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install research branch
+        run: pip install -e .
+      - name: Clone exact OCP pin
+        run: |
+          git clone https://github.com/OnlineCriticalPseudepigrapha/Online-Critical-Pseudepigrapha.git /tmp/ocp
+          git -C /tmp/ocp checkout c939dcbacad78c5d18d2c4282cad23c47e19ac07
+      - name: Inventory generated translation layer
+        run: |
+          python scripts/inspect_generated_translations.py /tmp/ocp/static/docs > /tmp/generated-translations.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          report = json.loads(Path('/tmp/generated-translations.json').read_text(encoding='utf-8'))
+          summary_keys = (
+              'nonempty_xml_documents',
+              'source_versions',
+              'generated_documents',
+              'generated_versions',
+              'generated_units',
+              'generated_empty_readings',
+              'generated_placeholder_readings',
+              'generated_versions_by_language',
+              'generated_units_by_language',
+              'generated_empty_readings_by_language',
+              'generated_placeholder_readings_by_language',
+              'genuine_non_generated_english_french_versions',
+              'source_versions_with_duplicate_bare_unit_ids',
+              'source_versions_with_duplicate_unit_identities',
+              'generated_versions_with_generator_key_collisions',
+              'generated_versions_with_duplicate_unit_identities',
+              'unmatched_generated_versions',
+              'ambiguous_generated_versions',
+              'generated_versions_with_order_drift',
+          )
+          print(json.dumps({key: report[key] for key in summary_keys}, ensure_ascii=False, indent=2))
+          PY
+      - name: Reconcile omissions and generator id collisions
+        run: |
+          python scripts/inspect_translation_omissions.py /tmp/ocp/static/docs > /tmp/translation-omissions.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          report = json.loads(Path('/tmp/translation-omissions.json').read_text(encoding='utf-8'))
+          print(json.dumps({
+              'by_language': report['by_language'],
+              'omission_mismatch_count': len(report['omission_mismatches']),
+              'omission_mismatches': report['omission_mismatches'],
+              'ambiguous_omission_group_count': len(report['ambiguous_omission_groups']),
+              'collision_version_count': report['collision_version_count'],
+              'collision_group_count': report['collision_group_count'],
+              'collision_unit_occurrence_count': report['collision_unit_occurrence_count'],
+          }, ensure_ascii=False, indent=2))
+          PY
+      - name: Preserve exact research evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: generated-translations-research
+          path: |
+            /tmp/generated-translations.json
+            /tmp/translation-omissions.json
+          if-no-files-found: error
+          retention-days: 7

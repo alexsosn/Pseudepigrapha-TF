@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import re
+from collections import Counter
 from pathlib import Path
 from xml.etree import ElementTree as ET
 from xml.sax.saxutils import escape
@@ -11,7 +12,7 @@ from .model import (
     Div,
     DivisionSpec,
     Ellipsis,
-    GeneratedTranslationExclusion,
+    GeneratedTranslation,
     Manuscript,
     OrphanReading,
     Reading,
@@ -23,6 +24,7 @@ from .model import (
 )
 from .source_structure import SourceStructureError, validate_source_structure
 from .source_versions import (
+    GENERATED_TRANSLATION_MARKER,
     GeneratedTranslationClassificationError,
     is_generated_translation_version,
     is_wrapped_legacy_version,
@@ -141,9 +143,6 @@ def _parse_div(element: ET.Element) -> Div:
         if child.tag == "div":
             items.append(_parse_div(child))
         elif child.tag == "unit":
-            # Modern source structure has already passed validation before this
-            # parser runs. Therefore a remaining literal blank unit ID can only
-            # be an explicitly provenance-approved anomaly.
             items.append(_parse_unit(child, validated_modern=True))
         elif child.tag == "elipsis":
             items.append(Ellipsis(text=_plain_text(child)))
@@ -265,6 +264,77 @@ def _parse_legacy_version(root: ET.Element) -> Version:
     )
 
 
+def _raw_unit_identities(version: ET.Element, *, generated: bool) -> tuple[tuple[tuple[str, ...], str], ...]:
+    """Return structural unit identities using the generator's traversal rules."""
+
+    text = version.find("text")
+    if text is None:
+        return ()
+    prefix = ""
+    if generated:
+        language = (version.get("language") or "").strip().lower()
+        prefix = f"{language[:2]}_" if language else ""
+
+    result: list[tuple[tuple[str, ...], str]] = []
+
+    def walk(node: ET.Element, path: tuple[str, ...]) -> None:
+        for child in node:
+            tag = child.tag.lower()
+            if tag in {"div", "chapter", "verse"}:
+                number = (
+                    child.get("number")
+                    or child.get("reference")
+                    or child.get("n")
+                    or str(len(path) + 1)
+                )
+                walk(child, (*path, number))
+            elif tag == "unit":
+                unit_id = child.get("id", "")
+                if generated and prefix and unit_id.startswith(prefix):
+                    unit_id = unit_id[len(prefix) :]
+                result.append((path, unit_id))
+
+    walk(text, ())
+    return tuple(result)
+
+
+def _generated_translation_records(
+    source_elements: list[ET.Element],
+    source_versions: tuple[Version, ...],
+    generated_elements: list[ET.Element],
+    *,
+    source_path: str,
+) -> tuple[GeneratedTranslation, ...]:
+    source_signatures = [Counter(_raw_unit_identities(element, generated=False)) for element in source_elements]
+    records: list[GeneratedTranslation] = []
+    location = source_path or "<memory>"
+
+    for element in generated_elements:
+        title = element.get("title", "")
+        target_language = element.get("language", "")
+        signature = Counter(_raw_unit_identities(element, generated=True))
+        candidates = [index for index, source_signature in enumerate(source_signatures) if source_signature == signature]
+        if len(candidates) != 1:
+            reason = "no source version" if not candidates else f"{len(candidates)} source versions"
+            raise InvalidSourceError(
+                f"{location}: generated translation {title!r} ({target_language}) matches {reason}; "
+                "source version mapping must be unique"
+            )
+        source_index = candidates[0]
+        source_version = source_versions[source_index]
+        records.append(
+            GeneratedTranslation(
+                version=_parse_version(element),
+                target_language=target_language,
+                source_version_index=source_index,
+                source_version_title=source_version.title,
+                source_version_language=source_version.language,
+                marker=GENERATED_TRANSLATION_MARKER,
+            )
+        )
+    return tuple(records)
+
+
 def parse_bytes(data: bytes, *, source_path: str = "") -> Book:
     if not data.strip():
         raise EmptySourceError(f"empty XML source: {source_path or '<memory>'}")
@@ -289,29 +359,34 @@ def parse_bytes(data: bytes, *, source_path: str = "") -> Book:
     except SourceStructureError as exc:
         raise InvalidSourceError(str(exc)) from exc
 
-    parsed_versions: list[Version] = []
-    excluded: list[GeneratedTranslationExclusion] = []
+    source_elements: list[ET.Element] = []
+    generated_elements: list[ET.Element] = []
     for version_element in version_elements:
         try:
             generated = is_generated_translation_version(version_element)
         except GeneratedTranslationClassificationError as exc:
             location = source_path or "<memory>"
             raise InvalidSourceError(f"{location}: {exc}") from exc
-        if generated:
-            excluded.append(
-                GeneratedTranslationExclusion(
-                    version_title=version_element.get("title", ""),
-                    language=version_element.get("language", ""),
-                )
-            )
-            continue
-        parsed_versions.append(_parse_version(version_element))
+        (generated_elements if generated else source_elements).append(version_element)
 
-    versions = tuple(parsed_versions)
+    parsed_versions = tuple(_parse_version(element) for element in source_elements)
+    versions = parsed_versions
     if not versions and is_legacy:
         versions = (_parse_legacy_version(root),)
     if not versions:
         raise InvalidSourceError(f"book has no supported non-generated text structure: {source_path or '<memory>'}")
+
+    generated_translations = (
+        _generated_translation_records(
+            source_elements,
+            versions,
+            generated_elements,
+            source_path=source_path,
+        )
+        if generated_elements
+        else ()
+    )
+
     return Book(
         filename=root.get("filename", ""),
         title=root.get("title", ""),
@@ -319,7 +394,7 @@ def parse_bytes(data: bytes, *, source_path: str = "") -> Book:
         versions=versions,
         source_path=source_path,
         source_sha256=source_sha256,
-        excluded_generated_translations=tuple(excluded),
+        generated_translations=generated_translations,
     )
 
 
