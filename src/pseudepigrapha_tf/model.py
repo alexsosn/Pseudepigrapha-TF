@@ -29,6 +29,29 @@ def _is_validated_blank_unit_id(value: object) -> bool:
     return value is _VALIDATED_BLANK_UNIT_ID
 
 
+JsonScalar = str | int | float | bool | None
+
+
+@dataclass(frozen=True)
+class DocumentMetadata:
+    """One public document record exported by OCP ``static/docs/intros.json``."""
+
+    source_file: str
+    title: str
+    version: JsonScalar
+    fields: tuple[tuple[str, str], ...]
+    citation: str | None = None
+    xml_empty: bool = False
+
+
+@dataclass(frozen=True)
+class DocumentMetadataCatalog:
+    """Lossless public document metadata plus export provenance."""
+
+    meta: tuple[tuple[str, JsonScalar], ...]
+    documents: tuple[DocumentMetadata, ...]
+
+
 @dataclass
 class Token:
     text: str

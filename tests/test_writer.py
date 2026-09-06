@@ -1,3 +1,4 @@
+import json
 from pathlib import Path
 
 import pytest
@@ -107,6 +108,29 @@ def test_real_text_fabric_write_does_not_mutate_reused_graph_payloads(tmp_path):
 
     assert data.node_features == node_snapshot
     assert data.edge_features == edge_snapshot
+
+
+def test_real_text_fabric_round_trips_json_encoded_html_and_control_characters(tmp_path):
+    from tf.fabric import Fabric
+
+    data = build_tf_data([parse_file(FIXTURES / "sample.xml")])
+    book = next(node for node, kind in data.node_features["otype"].items() if kind == "book")
+    value = (
+        '<table class="metadata">\r\n'
+        '<tr><td>Ἰώβ &amp; Ethiopic ሀ</td></tr>\r\n'
+        '<tr><td>literal \\n sequence\tand a tab:\tC:\\OCP\\docs</td></tr>\r\n'
+        '</table>'
+    )
+    encoded = json.dumps(value, ensure_ascii=False)
+    data.node_features["roundtrip_probe_json"] = {book: encoded}
+    output = tmp_path / "tf"
+
+    assert write_tf(data, output)
+
+    tf = Fabric(locations=[str(output)], modules=[""], silent="deep")
+    api = tf.load("roundtrip_probe_json", silent="deep")
+    assert api is not None
+    assert json.loads(api.F.roundtrip_probe_json.v(book)) == value
 
 
 def test_real_text_fabric_rewrite_removes_feature_files_absent_from_new_graph(tmp_path):

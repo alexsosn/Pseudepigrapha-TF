@@ -2,7 +2,7 @@
 
 __version__ = "0.1.0"
 
-from .apparatus import Apparatus
-from .conversion import build_tf_data
+from .document_apparatus import Apparatus
+from .document_conversion import build_tf_data
 
 __all__ = ["Apparatus", "build_tf_data", "__version__"]

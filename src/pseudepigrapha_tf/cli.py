@@ -7,9 +7,9 @@ from tempfile import TemporaryDirectory
 from time import perf_counter
 
 from . import __version__
-from .conversion import build_tf_data
-from .semantic_audit import build_conversion_report, write_conversion_report
-from .source import detect_git_commit, load_source_directory
+from .document_audit import build_conversion_report, write_conversion_report
+from .document_conversion import build_tf_data
+from .source import detect_git_commit, load_document_metadata, load_source_directory
 from .writer import _write_prevalidated_tf
 
 UPSTREAM_REPOSITORY = "https://github.com/OnlineCriticalPseudepigrapha/Online-Critical-Pseudepigrapha"
@@ -48,6 +48,7 @@ def main(argv: list[str] | None = None) -> int:
 
     total_started = stage_started = perf_counter()
     books, source_warnings = load_source_directory(args.source)
+    document_metadata = load_document_metadata(args.source)
     stage_started = _stage("load_source", stage_started)
     if not books:
         raise SystemExit("no non-empty OCP XML files found")
@@ -55,6 +56,7 @@ def main(argv: list[str] | None = None) -> int:
     upstream_commit = args.upstream_commit if args.upstream_commit is not None else detect_git_commit(args.source)
     data = build_tf_data(
         books,
+        document_metadata=document_metadata,
         upstream_repository=UPSTREAM_REPOSITORY,
         upstream_commit=upstream_commit,
         converter_version=__version__,
