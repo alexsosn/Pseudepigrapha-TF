@@ -29,6 +29,7 @@ _DOCUMENT_KEYS = frozenset(
 _FEATURE_DOC_ID = "historical_ocp_doc_id"
 _FEATURE_GENRES = "historical_genres_json"
 _FEATURE_FIGURES = "historical_biblical_figures_json"
+_VOCABULARY_METADATA_KEY = "controlledVocabularyJson"
 
 _PROVENANCE_KEYS = {
     "repository": "historicalClassificationsSourceRepository",
@@ -273,10 +274,18 @@ def attach_historical_classifications(
     data.metadata[_FEATURE_GENRES] = {
         "valueType": "str",
         "description": "JSON array of exact public OCP genre labels from the historical 2017 catalogue",
+        _VOCABULARY_METADATA_KEY: json.dumps(
+            list(classifications.genres.values()), ensure_ascii=False, separators=(",", ":")
+        ),
     }
     data.metadata[_FEATURE_FIGURES] = {
         "valueType": "str",
         "description": "JSON array of exact public OCP biblical-figure labels from the historical 2017 catalogue",
+        _VOCABULARY_METADATA_KEY: json.dumps(
+            list(classifications.biblical_figures.values()),
+            ensure_ascii=False,
+            separators=(",", ":"),
+        ),
     }
 
     generic = data.metadata.setdefault("", {})
@@ -307,6 +316,10 @@ class HistoricalClassifications:
         self._records: dict[str, dict[str, Any]] = {}
         self._by_genre: dict[str, set[str]] = {}
         self._by_figure: dict[str, set[str]] = {}
+        self._genre_vocabulary = self._decode_controlled_vocabulary(_FEATURE_GENRES, "genre")
+        self._figure_vocabulary = self._decode_controlled_vocabulary(_FEATURE_FIGURES, "biblical figure")
+        genre_vocabulary = set(self._genre_vocabulary)
+        figure_vocabulary = set(self._figure_vocabulary)
 
         for node in api.F.otype.s("document_metadata"):
             historical_doc_id = getattr(api.F, _FEATURE_DOC_ID).v(node)
@@ -320,6 +333,16 @@ class HistoricalClassifications:
                 raise ValueError(f"duplicate classified work identity {work_id!r}")
             genres = self._decode_label_array(node, _FEATURE_GENRES)
             figures = self._decode_label_array(node, _FEATURE_FIGURES)
+            unknown_genres = sorted(set(genres) - genre_vocabulary)
+            unknown_figures = sorted(set(figures) - figure_vocabulary)
+            if unknown_genres:
+                raise ValueError(
+                    f"classified document_metadata node {node} has labels outside genre vocabulary: {unknown_genres!r}"
+                )
+            if unknown_figures:
+                raise ValueError(
+                    f"classified document_metadata node {node} has labels outside biblical-figure vocabulary: {unknown_figures!r}"
+                )
             record = {
                 "historical_doc_id": int(historical_doc_id),
                 "genres": genres,
@@ -330,6 +353,20 @@ class HistoricalClassifications:
                 self._by_genre.setdefault(label, set()).add(work_id)
             for label in figures:
                 self._by_figure.setdefault(label, set()).add(work_id)
+
+    def _decode_controlled_vocabulary(self, feature: str, kind: str) -> tuple[str, ...]:
+        raw = self.api.Fs(feature).meta.get(_VOCABULARY_METADATA_KEY)
+        if raw is None:
+            raise ValueError(f"{feature} lacks {_VOCABULARY_METADATA_KEY} metadata")
+        try:
+            value = json.loads(raw)
+        except (TypeError, json.JSONDecodeError) as exc:
+            raise ValueError(f"{feature} has invalid controlled vocabulary metadata: {exc}") from exc
+        if not isinstance(value, list) or any(not isinstance(item, str) or not item for item in value):
+            raise ValueError(f"{feature} has invalid {kind} controlled vocabulary")
+        if len(value) != len(set(value)):
+            raise ValueError(f"{feature} has duplicate {kind} controlled-vocabulary labels")
+        return tuple(value)
 
     def _decode_label_array(self, node: int, feature: str) -> tuple[str, ...]:
         raw = getattr(self.api.F, feature).v(node)
@@ -366,10 +403,10 @@ class HistoricalClassifications:
         return tuple(sorted(self._by_figure.get(label, ())))
 
     def genres(self) -> tuple[str, ...]:
-        return tuple(sorted(self._by_genre))
+        return tuple(sorted(self._genre_vocabulary))
 
     def figures(self) -> tuple[str, ...]:
-        return tuple(sorted(self._by_figure))
+        return tuple(sorted(self._figure_vocabulary))
 
 
 def _raw_projection(path: str | Path | None) -> tuple[dict[str, Any], dict[str, str], str, set[str], set[str]]:
@@ -455,6 +492,36 @@ def _graph_projection(data: TFData) -> tuple[dict[str, Any], list[str], list[str
     return result, errors, duplicates
 
 
+def _graph_controlled_vocabulary(data: TFData) -> tuple[set[str], set[str], list[str]]:
+    errors: list[str] = []
+    decoded: list[set[str]] = []
+    for feature, kind in (
+        (_FEATURE_GENRES, "genre"),
+        (_FEATURE_FIGURES, "biblical figure"),
+    ):
+        raw = data.metadata.get(feature, {}).get(_VOCABULARY_METADATA_KEY)
+        if not isinstance(raw, str):
+            errors.append(f"{feature}: missing {_VOCABULARY_METADATA_KEY} metadata")
+            decoded.append(set())
+            continue
+        try:
+            value = json.loads(raw)
+        except json.JSONDecodeError as exc:
+            errors.append(f"{feature}: invalid controlled vocabulary JSON: {exc}")
+            decoded.append(set())
+            continue
+        if (
+            not isinstance(value, list)
+            or any(not isinstance(label, str) or not label for label in value)
+            or len(value) != len(set(value))
+        ):
+            errors.append(f"{feature}: invalid or duplicate {kind} controlled vocabulary")
+            decoded.append(set())
+            continue
+        decoded.append(set(value))
+    return decoded[0], decoded[1], errors
+
+
 def augment_conversion_report_with_historical_classifications(
     report: dict[str, Any],
     data: TFData,
@@ -466,14 +533,15 @@ def augment_conversion_report_with_historical_classifications(
     graph, decode_errors, duplicate_works = _graph_projection(data)
     generic = data.metadata.get("", {})
 
-    graph_genres = {label for record in graph.values() for label in record["genres"]}
-    graph_figures = {label for record in graph.values() for label in record["biblical_figures"]}
+    graph_genres, graph_figures, vocabulary_errors = _graph_controlled_vocabulary(data)
 
     checks = report.setdefault("semantic_checks", {})
     checks["historical_classification_documents"] = set(raw) == set(graph) and not duplicate_works
     checks["historical_classification_values"] = raw == graph and not decode_errors and not duplicate_works
     checks["historical_classification_vocabulary"] = (
-        genre_vocab == graph_genres and figure_vocab == graph_figures
+        genre_vocab == graph_genres
+        and figure_vocab == graph_figures
+        and not vocabulary_errors
     )
     checks["historical_classification_provenance"] = all(
         generic.get(metadata_key) == source[source_key]
@@ -505,6 +573,7 @@ def augment_conversion_report_with_historical_classifications(
     report.setdefault("diagnostics", {})["historical_classifications"] = {
         "source_status": source.get("status", ""),
         "decode_errors": decode_errors,
+        "vocabulary_errors": vocabulary_errors,
         "duplicate_graph_works": duplicate_works,
     }
 
