@@ -5,6 +5,7 @@ from dataclasses import dataclass, field
 from typing import Iterable
 
 from .model import Book, Div, DivisionSpec, Reading, Token, Unit, Version
+from .provenance import corpus_license_metadata
 
 INT_FEATURES = {
     "chapter_index", "div_index", "div_level", "is_empty_div", "is_gap", "is_omission", "is_primary",
@@ -267,6 +268,7 @@ def _metadata(node_features, edge_features, repo: str, commit: str, converter_ve
     }
     if commit:
         generic["upstreamCommit"] = commit
+    generic.update(corpus_license_metadata(repo, commit))
     meta = {
         "": generic,
         "otext": {
