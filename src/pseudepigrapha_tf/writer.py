@@ -97,6 +97,19 @@ def _metadata_with_serialized_features(
     return metadata
 
 
+def _remove_stale_tf_features(
+    output: Path,
+    node_features: dict[str, dict[int, str | int]],
+    edge_features: dict[str, dict[int, set[int]]],
+) -> None:
+    """Remove obsolete feature files after a successful standard TF save."""
+
+    expected = set(node_features) | set(edge_features)
+    for path in output.glob("*.tf"):
+        if path.stem not in expected:
+            path.unlink()
+
+
 def _serialize_tf(
     data: TFData,
     output_dir: str | Path,
@@ -111,7 +124,8 @@ def _serialize_tf(
     # The built-in Text-Fabric serializer treats feature mappings as read-only,
     # so its normal CLI path can reuse the graph payload. Explicit custom
     # factories remain an untrusted boundary and receive defensive deep copies.
-    isolate_payload = fabric_factory is not None
+    uses_standard_fabric = fabric_factory is None
+    isolate_payload = not uses_standard_fabric
     if fabric_factory is None:
         try:
             from tf.fabric import Fabric
@@ -123,7 +137,7 @@ def _serialize_tf(
     edge_features = _edge_features_with_api_dependencies(data, isolate=isolate_payload)
     metadata = _metadata_with_serialized_features(data, node_features, edge_features)
     fabric = fabric_factory(locations=[], modules=[], silent="deep")
-    return bool(
+    saved = bool(
         fabric.save(
             nodeFeatures=node_features,
             edgeFeatures=edge_features,
@@ -133,6 +147,9 @@ def _serialize_tf(
             silent="deep",
         )
     )
+    if saved and uses_standard_fabric:
+        _remove_stale_tf_features(output, node_features, edge_features)
+    return saved
 
 
 def _write_prevalidated_tf(data: TFData, output_dir: str | Path) -> bool:
