@@ -15,7 +15,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: issue-72-refresh-upstream
-      - name: Update reproducibility docs and restore normal CI trigger
+      - name: Update reproducibility documentation
         run: |
           python - <<'PY'
           from pathlib import Path
@@ -34,19 +34,11 @@ jobs:
                   raise SystemExit('README insertion anchor not found')
               text = text.replace(anchor, addition + anchor)
           readme.write_text(text)
-
-          workflow = Path('.github/workflows/test.yml')
-          wf = workflow.read_text()
-          wf = wf.replace('branches: [main, issue-72-refresh-upstream]', 'branches: [main]')
-          digest_step = '''      - name: Record pinned AdamEve digest\n        run: sha256sum /tmp/ocp/static/docs/AdamEve.xml\n'''
-          wf = wf.replace(digest_step, '')
-          workflow.write_text(wf)
           PY
-          rm .github/workflows/issue-72-finalize-docs.yml
-      - name: Commit final documentation state
+      - name: Commit documentation
         run: |
           git config user.name github-actions[bot]
           git config user.email 41898282+github-actions[bot]@users.noreply.github.com
-          git add README.md .github/workflows/test.yml .github/workflows/issue-72-finalize-docs.yml
+          git add README.md
           git commit -m 'Document refreshed OCP snapshot boundary'
           git push origin HEAD:issue-72-refresh-upstream
