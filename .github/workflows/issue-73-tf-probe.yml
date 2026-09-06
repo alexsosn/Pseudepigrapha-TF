@@ -4,6 +4,10 @@ on:
   push:
     branches: [issue-73-intros-metadata]
 
+concurrency:
+  group: issue-73-tdd-${{ github.ref }}
+  cancel-in-progress: true
+
 permissions:
   contents: read
 
