@@ -80,15 +80,24 @@ def main(argv: list[str] | None = None) -> int:
             f"report: {report_path}{diagnostic}"
         )
 
+    # Preserve the historical behavior of explicit report symlinks: writing to
+    # the path updates the symlink target rather than replacing the symlink.
+    # Resolve and validate that publication target before installing new TF data
+    # so deterministic report-path errors cannot leave a newer corpus paired
+    # with an older report.
     report_path.parent.mkdir(parents=True, exist_ok=True)
-    with TemporaryDirectory(prefix=".pseudepigrapha-tf-report-", dir=report_path.parent) as report_stage_dir:
-        staged_report = Path(report_stage_dir) / report_path.name
+    publication_path = report_path.resolve(strict=False)
+    if publication_path.is_dir():
+        raise IsADirectoryError(str(report_path))
+
+    with TemporaryDirectory(prefix=".pseudepigrapha-tf-report-", dir=publication_path.parent) as report_stage_dir:
+        staged_report = Path(report_stage_dir) / publication_path.name
         write_conversion_report(report, staged_report)
         stage_started = _stage("write_report", stage_started)
         if not _write_prevalidated_tf(data, args.output):
             raise SystemExit("Text-Fabric refused the generated dataset")
         stage_started = _stage("write_text_fabric", stage_started)
-        staged_report.replace(report_path)
+        staged_report.replace(publication_path)
 
     print(f"timing: total {perf_counter() - total_started:.3f}s", flush=True)
     print(
