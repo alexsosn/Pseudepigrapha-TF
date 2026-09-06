@@ -32,7 +32,7 @@ The refreshed OCP snapshot also contains English and French versions generated b
 
 Current upstream also wraps the legacy chapter/verse `Esdr.xml` source inside a `<version>` while preserving its legacy body. The converter accepts that exact hybrid source shape and retains ordinary Chapter/Verse semantics; this does not broaden modern XML validation for unrelated versions.
 
-Every successful conversion also writes `conversion-report.json` beside the `.tf` features. The conversion fails if the independent raw-XML parity audit detects a semantic mismatch.
+Every successful conversion also writes `conversion-report.json` beside the `.tf` features. The conversion fails if the independent raw-XML and public-document-metadata parity audit detects a semantic mismatch.
 
 ## Data model
 
@@ -45,6 +45,8 @@ The main Text-Fabric shape follows BHSA where OCP semantics permit it:
 | primary Unicode display | `prefix_utf8` + `g_word_utf8` + `trailer_utf8` + `boundary_utf8` |
 | exact source citation | `source_ref` plus JSON `source_ref_parts` |
 | exact upstream-version identity | `version_id` on version-owned non-slot nodes; stable even when sibling versions have the same title |
+| document/work identity | one `work` node per OCP XML document; `book` / `version_metadata` owners link through `version_of` |
+| public scholarly document metadata | JSON-encoded exact `intro_*_json` values stored once on the owning `work` node |
 | source hierarchy | `div` nodes, literal labels/numbers, `parent` edges |
 | empty source `div` inside a textual version | preserved `div` with `is_empty_div=1` and one technical anchor; no fabricated text section |
 | pinned `<elipsis>` structural marker | `ellipsis` node with literal `source_tag=elipsis`, `ellipsis_text`, `source_child_index`, `parent`, and one technical anchor |
@@ -91,11 +93,12 @@ variant_word-default     -> the variant token itself
 manuscript-default       -> manuscript abbreviation
 resource-default         -> resource name
 version_metadata-default -> version title
+work-default             -> work title
 ellipsis-default         -> ellipsis_text
 orphan_reading-default   -> reading_text
 ```
 
-This makes standard `T.text()` calls unsurprising. Text-Fabric 13.1 requires every non-slot node to serialize with an `oslots` anchor, so manuscripts, resources, metadata-only versions, special source-anomaly nodes, and variant tokens use a **single O(1) technical anchor** rather than a fabricated textual span where they do not own ordinary text slots. Their node-type formats prevent that anchor from being rendered as their text.
+This makes standard `T.text()` calls unsurprising. Text-Fabric 13.1 requires every non-slot node to serialize with an `oslots` anchor, so manuscripts, resources, metadata-only versions, document `work` nodes, special source-anomaly nodes, and variant tokens use a **single O(1) technical anchor** rather than a fabricated textual span where they do not own ordinary text slots. Their node-type formats prevent that anchor from being rendered as their text.
 
 For routine apparatus work, the package also provides helpers:
 
@@ -113,6 +116,22 @@ A.apparatus(unit)
 A.passage("1En__Ethiopic", "1", "2")
 A.work_passage("1En", "1", "2")
 ```
+
+### Work-level scholarly metadata
+
+The committed public OCP `intros.json` export is preserved once per OCP document on its `work` node. `Apparatus.work_metadata()` returns the exact decoded introduction, provenance, bibliography, manuscript discussion, citation, and other public fields without copying those long values onto every textual version:
+
+```python
+metadata = A.work_metadata("TJob")
+
+metadata["fields"].get("introduction")
+metadata["fields"].get("provenance")
+metadata["fields"].get("bibliography")
+metadata["fields"].get("manuscripts")
+metadata["citation"]
+```
+
+The returned strings equal the upstream JSON values after reversible JSON transport through Text-Fabric, including HTML, Unicode, CRLF, tabs, and literal backslashes. Missing upstream fields remain absent, while an explicitly empty source string remains an empty string after decoding. The pinned empty `3Macc.xml` is still available as a metadata-only `work` with no fabricated textual version; textual works whose XML has no `intros.json` record return empty scholarly metadata rather than invented values. See `docs/apparatus.md` for selective-load requirements and the complete feature vocabulary.
 
 `reading_tokens(reading)` returns token nodes that actually belong to that reading. A non-empty primary reading returns its `word` slots through Text-Fabric's `oslots.s()` API; a non-empty alternative returns its `variant_word` nodes. An explicit omission returns `()`, so a primary `is_gap` slot or an alternative reading's shared primary locus is never exposed as textual content. A non-primary reading that has text but no variant tokens is treated as an inconsistent graph and raises `ValueError` rather than silently substituting the primary locus.
 
@@ -189,9 +208,11 @@ For an available passage in a selective Text-Fabric load, `passage()` / `work_pa
 
 ## Preservation audit
 
-`conversion-report.json` is built by rereading the raw XML independently of the converter's parsed model and comparing it with the generated TF graph. It checks:
+`conversion-report.json` is built by rereading the raw XML and committed public `intros.json` independently of the converter's parsed models and comparing them with the generated TF graph. It checks:
 
 - source file SHA-256s and every declared version, including metadata-only versions;
+- every public `intros.json` document, citation and body field against the single owning `work` node, with JSON-decoded exact values and concise hash-only mismatch diagnostics;
+- `version_of` ownership between textual/metadata-only versions and one document-level work, including the metadata-only empty-XML work case;
 - explicit modern/legacy child-element and attribute vocabulary plus modern DTD-required attribute presence before inventory extraction, so unsupported or missing source structure cannot be silently ignored or normalized by both parser and audit; duplicate non-empty manuscript abbreviations within one version are rejected at the same boundary because witness citations cannot distinguish them; the five pinned record-specific `ms/@language` omissions are the documented exception and remain empty/unknown;
 - division declarations and every structural division/reference;
 - unit attributes and explicit unit→div parent linkage;
@@ -216,7 +237,7 @@ The report says `status: "ok"` only when every semantic check passes. Section co
 pytest
 ```
 
-The synthetic suite covers parser, graph, apparatus helpers, reading-token semantics on real Text-Fabric, passage-level witness coverage and declaration provenance, work-level multi-version retrieval, semantic parity, ownership-edge corruption, explicit source-structure and required-attribute drift rejection, ambiguous duplicate non-empty witness declarations at XML/raw-audit/direct-model boundaries plus abbreviation-less controls, preserved ellipsis/direct-reading anomalies and their corruption detection, legacy OCP, deep/non-numeric and duplicate references, omissions, empty source divisions, metadata-only versions, and reproducible paths. CI additionally installs real Text-Fabric, verifies node-type `T.text()` behavior and deep/duplicate `T.sectionFromNode()`/`T.nodeFromSection()` addresses, converts and audits the pinned complete OCP checkout (including the real Aristob/PssSol source anomalies and documented manuscript-language omissions), reloads the full dataset, exercises `Apparatus.passage("1En__Ethiopic", "1", "2")`, verifies witness declaration provenance, verifies that `Apparatus.work_passage("1En", "1", "2")` exposes all four real 1 Enoch versions, and verifies that real `TJob/Coptic` remains visible as metadata-only evidence.
+The synthetic suite covers parser, graph, apparatus helpers, reading-token semantics on real Text-Fabric, passage-level witness coverage and declaration provenance, work-level multi-version retrieval, document-level scholarly metadata loading/ownership/serialization/audit, semantic parity, ownership-edge corruption, explicit source-structure and required-attribute drift rejection, ambiguous duplicate non-empty witness declarations at XML/raw-audit/direct-model boundaries plus abbreviation-less controls, preserved ellipsis/direct-reading anomalies and their corruption detection, legacy OCP, deep/non-numeric and duplicate references, omissions, empty source divisions, metadata-only versions, and reproducible paths. CI additionally installs real Text-Fabric, verifies node-type `T.text()` behavior and deep/duplicate `T.sectionFromNode()`/`T.nodeFromSection()` addresses, converts and audits the pinned complete OCP checkout, checks all 32 public document-metadata records against the generated graph, reloads the full dataset and rechecks all 32 raw metadata records through `Apparatus.work_metadata()`, exercises `Apparatus.passage("1En__Ethiopic", "1", "2")`, verifies witness declaration provenance, verifies that `Apparatus.work_passage("1En", "1", "2")` exposes all four real 1 Enoch source versions, and verifies that real `TJob/Coptic` remains visible as metadata-only version evidence while `3Macc` remains a metadata-only document work.
 
 ## Licensing
 
