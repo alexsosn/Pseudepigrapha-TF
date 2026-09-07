@@ -13,9 +13,11 @@ ROOT = Path(__file__).resolve().parents[1]
 FIXTURES = Path(__file__).parent / "fixtures"
 
 
-def _materialize(tmp_path):
+def _materialize(tmp_path, *fixture_names):
     output = tmp_path / "tf"
-    assert write_tf(build_tf_data([parse_file(FIXTURES / "sample.xml")]), output)
+    names = fixture_names or ("sample.xml",)
+    books = [parse_file(FIXTURES / name) for name in names]
+    assert write_tf(build_tf_data(books), output)
     return output
 
 
@@ -33,11 +35,16 @@ def _find_local_app(output, *, version=None):
     )
 
 
-def _load_app_for_rendering(tmp_path):
-    app = _find_local_app(_materialize(tmp_path), version="0.1")
+def _load_app_for_rendering(tmp_path, *fixture_names):
+    app = _find_local_app(_materialize(tmp_path, *fixture_names), version="0.1")
     assert app is not None
     assert app.api is not None
     return app
+
+
+def _anchor_text(api, node):
+    slot = api.E.oslots.s(node)[0]
+    return api.T.text(slot)
 
 
 def test_local_app_loads_materialized_tf_without_remote_distribution_contract(tmp_path):
@@ -58,6 +65,21 @@ def test_pretty_alternative_reading_does_not_render_primary_anchor_text(tmp_path
     )
 
     html = app.pretty(alternative, _asString=True)
+
+    assert "κυρίου" in html, html
+    assert "θεοῦ" not in html, html
+
+
+def test_pretty_variant_word_uses_variant_surface_not_primary_anchor_text(tmp_path):
+    app = _load_app_for_rendering(tmp_path)
+    api = app.api
+    variant_word = next(
+        node
+        for node in api.F.otype.s("variant_word")
+        if api.F.g_word_utf8.v(node) == "κυρίου"
+    )
+
+    html = app.pretty(variant_word, _asString=True)
 
     assert "κυρίου" in html, html
     assert "θεοῦ" not in html, html
@@ -92,6 +114,50 @@ def test_pretty_resource_uses_resource_identity_not_anchor_text(tmp_path):
     assert "λόγος" not in html, html
 
 
+def test_pretty_ellipsis_uses_preserved_marker_not_technical_anchor(tmp_path):
+    app = _load_app_for_rendering(tmp_path, "ellipsis.xml")
+    api = app.api
+    node = next(iter(api.F.otype.s("ellipsis")))
+    own = api.F.ellipsis_text.v(node)
+    anchor = _anchor_text(api, node)
+
+    assert own == "lost passage"
+    assert anchor and anchor != own
+    html = app.pretty(node, _asString=True)
+    assert own in html, html
+    assert anchor not in html, html
+
+
+def test_pretty_orphan_reading_uses_own_reading_not_technical_anchor(tmp_path):
+    app = _load_app_for_rendering(tmp_path, "orphan_reading.xml")
+    api = app.api
+    node = next(iter(api.F.otype.s("orphan_reading")))
+    own = api.F.reading_text.v(node)
+    anchor = _anchor_text(api, node)
+
+    assert "orphan" in own and "beta" in own
+    assert anchor and anchor != own
+    html = app.pretty(node, _asString=True)
+    assert "orphan" in html and "beta" in html, html
+    assert anchor not in html, html
+
+
+def test_pretty_metadata_only_version_uses_version_title_not_anchor_text(tmp_path):
+    app = _load_app_for_rendering(tmp_path, "metadata_only_version.xml")
+    api = app.api
+    node = next(
+        n
+        for n in api.F.otype.s("version_metadata")
+        if api.F.version_title.v(n) == "Coptic"
+    )
+    anchor = _anchor_text(api, node)
+
+    assert anchor and anchor != "Coptic"
+    html = app.pretty(node, _asString=True)
+    assert "Coptic" in html, html
+    assert anchor not in html, html
+
+
 def test_hidden_technical_type_remains_directly_inspectable(tmp_path):
     app = _load_app_for_rendering(tmp_path)
     api = app.api
@@ -102,3 +168,4 @@ def test_hidden_technical_type_remains_directly_inspectable(tmp_path):
     html = app.pretty(manuscript, hideTypes=False, _asString=True)
 
     assert "A" in html, html
+    assert "λόγος" not in html, html
