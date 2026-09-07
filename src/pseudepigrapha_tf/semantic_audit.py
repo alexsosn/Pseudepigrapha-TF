@@ -28,6 +28,7 @@ def _metadata_version_inventory(
                 "fragment": base._feature(data, "version_fragment", node),
                 "source_file": base._feature(data, "source_file", node),
                 "source_sha256": base._feature(data, "source_sha256", node),
+                "version_kind": base._feature(data, "version_kind", node, "source"),
             }
         )
         labels = json.loads(base._feature(data, "division_labels", node, "[]"))
@@ -333,6 +334,121 @@ def _section_addresses_unique(
     return _section_addresses_unique_from_records(_section_address_records(data, node_index))
 
 
+
+def _graph_generated_translation_inventory(
+    data: TFData,
+    node_index: dict[str, list[int]],
+) -> list[dict]:
+    """Project generated/source alignment independently from graph provenance."""
+
+    version_kind = data.node_features.get("version_kind", {})
+    version_id = data.node_features.get("version_id", {})
+    translation_of = data.edge_features.get("translation_of", {})
+    translation_unit_of = data.edge_features.get("translation_unit_of", {})
+    units_by_version: dict[str, list[int]] = {}
+    for unit in node_index.get("unit", []):
+        units_by_version.setdefault(str(version_id.get(unit, "")), []).append(unit)
+
+    records: list[dict] = []
+    for book in node_index.get("book", []):
+        if version_kind.get(book) != "generated_translation":
+            continue
+
+        targets = translation_of.get(book, set())
+        source_book = next(iter(targets)) if len(targets) == 1 else None
+        generated_version_id = str(version_id.get(book, ""))
+        source_version_id = (
+            str(version_id.get(source_book, "")) if source_book is not None else ""
+        )
+        language = str(
+            base._feature(
+                data,
+                "generated_language",
+                book,
+                base._feature(data, "language", book),
+            )
+        )
+        prefix = f"{language.strip().lower()[:2]}_" if language.strip() else ""
+        generated_units = units_by_version.get(generated_version_id, [])
+
+        aligned = 0
+        seen_targets: set[int] = set()
+        for unit in generated_units:
+            unit_targets = translation_unit_of.get(unit, set())
+            if len(unit_targets) != 1 or source_book is None:
+                continue
+            target = next(iter(unit_targets))
+            generated_id = str(base._feature(data, "unit_id", unit))
+            if prefix and generated_id.startswith(prefix):
+                generated_id = generated_id[len(prefix):]
+            if (
+                target not in seen_targets
+                and version_kind.get(target) == "source"
+                and str(version_id.get(target, "")) == source_version_id
+                and str(base._feature(data, "source_ref", unit))
+                == str(base._feature(data, "source_ref", target))
+                and generated_id == str(base._feature(data, "unit_id", target))
+            ):
+                aligned += 1
+                seen_targets.add(target)
+
+        records.append({
+            "ocp_book": base._feature(data, "ocp_book", book),
+            "version_title": base._feature(data, "version_title", book),
+            "language": language,
+            "source_file": base._feature(data, "source_file", book),
+            "marker": base._feature(data, "generation_marker", book),
+            "source_version_title": (
+                base._feature(data, "version_title", source_book)
+                if source_book is not None
+                else ""
+            ),
+            "source_version_language": (
+                base._feature(data, "language", source_book)
+                if source_book is not None
+                else ""
+            ),
+            "unit_count": len(generated_units),
+            "aligned_unit_count": aligned,
+        })
+    return records
+
+
+def _generated_provenance_features_ok(
+    data: TFData,
+    node_index: dict[str, list[int]],
+    upstream_commit: str,
+) -> bool:
+    generated_books = [
+        node
+        for node in node_index.get("book", [])
+        if base._feature(data, "version_kind", node) == "generated_translation"
+    ]
+    marker_ok = all(
+        base._feature(data, "generation_marker", node) == "OCP-Trans"
+        for node in generated_books
+    )
+    if not marker_ok:
+        return False
+
+    if upstream_commit == "c939dcbacad78c5d18d2c4282cad23c47e19ac07":
+        return all(
+            base._feature(data, "generation_method", node) == "llm"
+            and base._feature(data, "generation_model", node)
+            == "openrouter/google/gemini-3.7-flash"
+            for node in generated_books
+        )
+
+    # The XML marker proves generated status, but not which historical generator
+    # implementation/model produced an unresearched snapshot. Unsupported
+    # history-derived claims must therefore be absent rather than guessed.
+    return all(
+        not base._feature(data, "generation_method", node)
+        and not base._feature(data, "generation_model", node)
+        for node in generated_books
+    )
+
+
 def build_conversion_report(source_dir: str | Path, books: list[Book], data: TFData) -> dict:
     """Build an independent source→TF parity report, including source anomalies."""
 
@@ -346,10 +462,13 @@ def build_conversion_report(source_dir: str | Path, books: list[Book], data: TFD
     raw_ellipses = raw["ellipses"]
     raw_orphan_readings = raw["orphan_readings"]
     raw_excluded_translations = raw["excluded_generated_translation_versions"]
+    raw_generated_translations = raw["generated_translations"]
+    raw_generated_mapping_failures = raw["generated_translation_mapping_failures"]
     graph_ellipses = _graph_ellipsis_inventory(data, node_index)
     graph_orphan_readings = _graph_orphan_reading_inventory(data, node_index)
     raw_missing_unit_ids = _raw_missing_unit_id_inventory(raw["units"])
     graph_missing_unit_ids = _graph_missing_unit_id_inventory(data, node_index)
+    graph_generated_translations = _graph_generated_translation_inventory(data, node_index)
 
     model_excluded_translations = [
         {
@@ -368,11 +487,26 @@ def build_conversion_report(source_dir: str | Path, books: list[Book], data: TFD
     model_hashes = {book.source_path: book.source_sha256 for book in books}
     section_address_records = _section_address_records(data, node_index)
     section_address_collisions = _section_address_collisions_from_records(section_address_records)
+    generated_alignment_ok = (
+        not raw_generated_mapping_failures
+        and base._canonical(raw_generated_translations)
+        == base._canonical(graph_generated_translations)
+    )
+    generated_provenance_ok = (
+        generated_alignment_ok
+        and _generated_provenance_features_ok(
+            data,
+            node_index,
+            str(data.metadata.get("", {}).get("upstreamCommit", "")),
+        )
+    )
 
     checks = {
         "source_hashes": source_hashes == model_hashes,
         "generated_translation_exclusions": base._canonical(raw_excluded_translations)
         == base._canonical(model_excluded_translations),
+        "generated_translation_alignment": generated_alignment_ok,
+        "generated_translation_provenance": generated_provenance_ok,
         "versions": base._canonical(raw["versions"]) == base._canonical(graph["versions"]),
         "division_specs": base._canonical(raw["division_specs"]) == base._canonical(graph["division_specs"]),
         "divisions": base._canonical(raw["divs"]) == base._canonical(graph["divs"]),
@@ -425,6 +559,10 @@ def build_conversion_report(source_dir: str | Path, books: list[Book], data: TFD
         "files": len(raw["files"]),
         "versions": len(raw["versions"]),
         "excluded_generated_translation_versions": len(raw_excluded_translations),
+        "generated_translation_versions": len(raw_generated_translations),
+        "generated_translation_units": sum(
+            int(record["unit_count"]) for record in raw_generated_translations
+        ),
         "divisions": len(raw["divs"]),
         "units": len(raw["units"]),
         "missing_unit_ids": len(raw_missing_unit_ids),
@@ -460,7 +598,36 @@ def build_conversion_report(source_dir: str | Path, books: list[Book], data: TFD
         "witness_edges": sum(
             len(targets) for targets in data.edge_features.get("witness", {}).values()
         ),
+        "generated_translation_versions": len(graph_generated_translations),
+        "generated_translation_units": sum(
+            int(record["unit_count"]) for record in graph_generated_translations
+        ),
+        "translation_of_edges": sum(
+            len(targets) for targets in data.edge_features.get("translation_of", {}).values()
+        ),
+        "translation_unit_of_edges": sum(
+            len(targets)
+            for targets in data.edge_features.get("translation_unit_of", {}).values()
+        ),
+        "synthetic_witnesses": sum(
+            1
+            for node in node_index.get("manuscript", [])
+            if base._feature(data, "synthetic_witness", node, 0) == 1
+        ),
     }
+
+    by_language: dict[str, dict[str, int]] = {}
+    for record in raw_generated_translations:
+        language = str(record["language"])
+        summary = by_language.setdefault(language, {"versions": 0, "units": 0})
+        summary["versions"] += 1
+        summary["units"] += int(record["unit_count"])
+    generated_units = sum(
+        int(record["unit_count"]) for record in raw_generated_translations
+    )
+    aligned_units = sum(
+        int(record["aligned_unit_count"]) for record in raw_generated_translations
+    )
 
     generic = data.metadata.get("", {})
     failed = [name for name, ok in checks.items() if not ok]
@@ -471,10 +638,18 @@ def build_conversion_report(source_dir: str | Path, books: list[Book], data: TFD
         "diagnostics": {
             "duplicate_section_addresses": section_address_collisions,
             "excluded_generated_translation_versions": raw_excluded_translations,
+            "generated_translation_mapping_failures": raw_generated_mapping_failures,
         },
         "source": source_counts,
         "graph": graph_counts,
         "source_sha256": source_hashes,
+        "generated_translations": {
+            "by_language": by_language,
+            "versions": len(raw_generated_translations),
+            "units": generated_units,
+            "aligned_units": aligned_units,
+            "alignment_coverage": aligned_units / generated_units if generated_units else 1.0,
+        },
         "provenance": {
             "upstream_repository": generic.get("upstreamRepository", ""),
             "upstream_commit": generic.get("upstreamCommit", ""),
