@@ -1,0 +1,30 @@
+name: issue77-pinned-license-ci
+
+on:
+  push:
+    branches: [feature/corpus-license-provenance]
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feature/corpus-license-provenance
+          fetch-depth: 0
+      - name: Apply pinned provenance assertions
+        run: |
+          python scripts/apply_issue77_pinned_license_ci.py
+          rm scripts/apply_issue77_pinned_license_ci.py
+          git diff --check
+      - name: Commit permanent CI coverage
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add .github/workflows/test.yml scripts/apply_issue77_pinned_license_ci.py
+          git diff --cached --check
+          git commit -m 'test: assert verified license on pinned OCP integration'
+          git push origin HEAD:feature/corpus-license-provenance
