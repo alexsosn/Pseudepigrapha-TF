@@ -172,3 +172,17 @@ def test_apparatus_fails_closed_when_marked_corpus_omits_synthetic_witness():
 
     with pytest.raises(ValueError, match="synthetic_witness"):
         Apparatus(api)._witnesses(2)
+
+
+def test_apparatus_rejects_generated_unit_directly():
+    with pytest.raises(ValueError, match="generated translation"):
+        Apparatus(translation_api()).apparatus(20)
+
+
+def test_apparatus_rejects_explicit_synthetic_manuscript_helpers():
+    apparatus = Apparatus(translation_api())
+
+    with pytest.raises(ValueError, match="synthetic"):
+        apparatus.witness_reading(10, 51)
+    with pytest.raises(ValueError, match="synthetic"):
+        apparatus.witness_text(51, units=(10,))
