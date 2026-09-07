@@ -161,3 +161,28 @@ def test_rollback_failure_reports_both_errors_and_retains_recoverable_backup(mon
     assert retained, "rollback failure must retain a recoverable backup outside the cleaned staging directory"
     old_tf_bytes = {value for name, value in before.items() if name.endswith(".tf")}
     assert any(path.read_bytes() in old_tf_bytes for path in retained)
+
+
+def test_keyboard_interrupt_during_install_restores_previous_tf_set_before_reraise(monkeypatch, tmp_path):
+    output, before = _seed_output(tmp_path)
+    original_replace = Path.replace
+    interrupt = KeyboardInterrupt("install interrupted")
+    staged_installs = 0
+
+    def interrupt_second_staged_install(self: Path, target):
+        nonlocal staged_installs
+        target = Path(target)
+        if CompleteStageFabric.stage is not None and self.parent == CompleteStageFabric.stage and target.parent == output:
+            staged_installs += 1
+            if staged_installs == 2:
+                raise interrupt
+        return original_replace(self, target)
+
+    monkeypatch.setattr(Path, "replace", interrupt_second_staged_install)
+
+    with pytest.raises(KeyboardInterrupt) as caught:
+        _standard_write(monkeypatch, output)
+
+    assert caught.value is interrupt
+    assert staged_installs == 2
+    _assert_exact_output(output, before)
