@@ -19,6 +19,8 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
+      - name: Install test dependencies
+        run: pip install -e '.[dev]'
       - name: Add minimal README query documentation
         run: |
           if grep -q '^## Historical OCP catalogue classifications$' README.md; then
