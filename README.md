@@ -8,9 +8,17 @@ The repository ships the converter, tests, and documentation. It does **not** in
 
 Python 3.10+ is required.
 
+For normal use from a repository checkout, install the runtime package non-editably:
+
 ```bash
 python -m venv .venv
 source .venv/bin/activate
+pip install .
+```
+
+For development and the test suite, use the editable development install instead:
+
+```bash
 pip install -e '.[dev]'
 ```
 
