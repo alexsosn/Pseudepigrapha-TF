@@ -20,14 +20,14 @@ Direct `Book` models are checked again before graph construction so callers cann
 
 ## Pinned missing unit ID
 
-The pinned OCP revision used by CI (`2d1d14d23434a784d377ff7f4409ccdb2d18aafb`) contains one genuine exception: `AdamEve.xml`, version `Latin (Mozley)`, source reference `26:0`, has a literal `<unit id="">`. The surrounding source has unit IDs `26` and `28`; the converter therefore does **not** infer `27`.
+The pinned OCP revision used by CI (`c939dcbacad78c5d18d2c4282cad23c47e19ac07`) contains one genuine exception: `AdamEve.xml`, version `Latin (Mozley)`, source reference `26:0`, has a literal `<unit id="">`. The surrounding source has unit IDs `26` and `28`; the converter therefore does **not** infer `27`.
 
 That unit is preserved with its ordinary text and source location but without a `unit_id` feature. Its TF `unit` node carries:
 
 - `is_missing_unit_id=1`
 - `is_source_anomaly=1`
 
-The source exception requires the exact pinned `AdamEve.xml` bytes (SHA-256 `a63275351e2349ce8a31b7427a28b80db034be670ba545e2398832a3d9ac6358`) in addition to the expected source file, work, version, division path, and literal empty value. After XML validation, the parser carries that approval with an internal marker; direct `Book` models cannot opt into the exception by supplying matching public `source_path` or `source_sha256` fields. A whitespace-only ID, changed source bytes, or the same blank record at another provenance fails validation.
+The source exception requires the exact release-pinned `AdamEve.xml` bytes (SHA-256 `b5e20471d7e1b531df49d81acd19462ee92192c3e20019cb110215611d7b9817`) in addition to the expected source file, work, version, division path, and literal empty value. After XML validation, the parser carries that approval with an internal marker; direct `Book` models cannot opt into the exception by supplying matching public `source_path` or `source_sha256` fields. A whitespace-only ID, changed source bytes, or the same blank record at another provenance fails validation.
 
 The independent conversion report compares the raw blank-ID record with marked TF units. CI requires exactly one such source and graph record in the pinned corpus, and then reloads the generated corpus through Text-Fabric 13.1 to verify that the marker survives serialization while `unit_id` remains absent.
 

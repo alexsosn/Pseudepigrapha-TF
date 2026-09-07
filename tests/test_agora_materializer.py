@@ -42,6 +42,6 @@ def test_agora_materializer_manifest_declares_ocp_to_tf_contract():
 
     acquisitions = {item["type"]: item for item in materializer["acquisition"]}
     assert acquisitions["git"]["url"].endswith("Online-Critical-Pseudepigrapha.git")
-    assert acquisitions["git"]["ref"] == "2d1d14d23434a784d377ff7f4409ccdb2d18aafb"
+    assert acquisitions["git"]["ref"] == "c939dcbacad78c5d18d2c4282cad23c47e19ac07"
     assert acquisitions["git"]["subpath"] == "static/docs"
     assert acquisitions["user-local"]["path_type"] == "directory"
