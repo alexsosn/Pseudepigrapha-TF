@@ -137,6 +137,7 @@ jobs:
           python - <<'PY'
           from collections import Counter
 
+          from tf.core.files import readYaml
           from tf.fabric import Fabric
           from pseudepigrapha_tf import Apparatus, Translations
 
@@ -153,6 +154,18 @@ jobs:
           assert api.F.otype.maxSlot > 0
           assert api.F.otype.slotType == 'word'
           assert tuple(api.T.sectionTypes) == ('book', 'chapter', 'verse')
+
+          # Fail closed if the exact pinned corpus introduces a new runtime node
+          # type without an intentional app display policy. Conversely, a policy
+          # for a type absent from the full corpus is stale and should be removed.
+          app_config = readYaml(asFile='app/config.yaml', plain=True)
+          runtime_types = set(api.F.otype.all)
+          configured_types = set(app_config['typeDisplay'])
+          ordinary_unconfigured = {'word', 'chapter', 'verse'}
+          unconfigured = runtime_types - ordinary_unconfigured - configured_types
+          stale = configured_types - runtime_types
+          assert not unconfigured, sorted(unconfigured)
+          assert not stale, sorted(stale)
 
           generic = api.TF.features['otype'].metaData
           assert generic['sourceIdentityStatus'] == 'verified'
