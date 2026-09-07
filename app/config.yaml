@@ -1,4 +1,81 @@
 apiVersion: 3
+
+dataDisplay:
+  exampleSection: 1En__Ethiopic 1:1
+  exampleSectionHtml: <code>1En__Ethiopic 1:1</code>
+  textFormat: text-orig-full
+
+docs:
+  docBase: https://github.com/alexsosn/Pseudepigrapha-TF/blob/main/docs
+  docExt: .md
+  docPage: tf-app
+
 provenanceSpec:
   corpus: Online Critical Pseudepigrapha (Text-Fabric conversion)
-  version: 0.1
+  version: "0.1"
+
+typeDisplay:
+  book:
+    features: version_title version_kind language
+
+  div:
+    hidden: true
+    label: '{div_label} {div_number}'
+    featuresBare: source_ref
+
+  unit:
+    hidden: true
+    label: 'unit {unit_id}'
+    featuresBare: source_ref
+
+  reading:
+    hidden: true
+    base: true
+    template: true
+    label: 'reading {reading_option_source}'
+    features: is_primary is_omission
+    featuresBare: mss
+
+  variant_word:
+    hidden: true
+    base: true
+    template: true
+    level: 0
+
+  manuscript:
+    hidden: true
+    base: true
+    template: true
+    label: '{ms_abbrev}'
+
+  resource:
+    hidden: true
+    base: true
+    template: true
+    label: '{resource_name}'
+
+  version_metadata:
+    hidden: true
+    base: true
+    template: true
+    label: '{version_title}'
+
+  ellipsis:
+    hidden: true
+    base: true
+    template: true
+    label: '{ellipsis_text}'
+    featuresBare: source_ref
+
+  orphan_reading:
+    hidden: true
+    base: true
+    template: true
+    label: 'orphan reading {reading_option_source}'
+    featuresBare: source_ref
+
+  document_metadata:
+    hidden: true
+    base: true
+    template: true
+    label: '{intro_label}'
