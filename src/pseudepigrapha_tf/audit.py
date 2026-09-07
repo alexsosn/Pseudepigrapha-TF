@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 import re
+from collections import Counter
 from pathlib import Path
 from xml.etree import ElementTree as ET
 from xml.sax.saxutils import escape
@@ -11,12 +12,7 @@ from .graph import TFData
 from .model import Book, DivisionSpec
 from .parser import InvalidSourceError
 from .source_structure import SourceStructureError, validate_source_structure
-from .source_versions import (
-    GENERATED_TRANSLATION_MARKER,
-    GeneratedTranslationClassificationError,
-    is_generated_translation_version,
-    is_wrapped_legacy_version,
-)
+from .source_versions import GENERATED_TRANSLATION_MARKER, is_wrapped_legacy_version
 
 
 def _plain_text(element: ET.Element | None) -> str:
@@ -45,11 +41,88 @@ def _canonical(records: list[dict]) -> list[str]:
     return sorted(json.dumps(record, ensure_ascii=False, sort_keys=True) for record in records)
 
 
+
+def _audit_is_generated_translation_version(version: ET.Element) -> bool:
+    """Independently classify the strict source-declared OCP-Trans structure.
+
+    This deliberately does not call the parser's classifier: semantic parity must
+    be able to catch a regression in that implementation rather than echo it.
+    """
+
+    manuscripts = list(version.findall("manuscripts/ms"))
+    manuscript_abbrevs = [ms.get("abbrev", "") for ms in manuscripts]
+    readings = list(version.iter("reading"))
+    reading_witnesses = [tuple(reading.get("mss", "").split()) for reading in readings]
+
+    marker_in_manuscripts = GENERATED_TRANSLATION_MARKER in manuscript_abbrevs
+    marker_in_readings = any(
+        GENERATED_TRANSLATION_MARKER in witnesses for witnesses in reading_witnesses
+    )
+    if not marker_in_manuscripts and not marker_in_readings:
+        return False
+
+    title = version.get("title", "")
+    context = f"version {title!r}" if title else "version"
+    if manuscript_abbrevs != [GENERATED_TRANSLATION_MARKER]:
+        raise ValueError(
+            f"{context}: OCP-Trans generated translation marker is mixed with other manuscripts"
+        )
+    if not readings:
+        raise ValueError(
+            f"{context}: OCP-Trans generated translation marker has no readings"
+        )
+    if any(witnesses != (GENERATED_TRANSLATION_MARKER,) for witnesses in reading_witnesses):
+        raise ValueError(
+            f"{context}: OCP-Trans generated translation marker is mixed with other reading witnesses"
+        )
+    return True
+
+
+def _raw_translation_unit_identities(
+    version: ET.Element,
+    *,
+    generated: bool,
+) -> tuple[tuple[tuple[str, ...], str], ...]:
+    """Return raw structural unit identities for independent translation mapping."""
+
+    text = version.find("text")
+    if text is None:
+        return ()
+
+    prefix = ""
+    if generated:
+        language = (version.get("language") or "").strip().lower()
+        prefix = f"{language[:2]}_" if language else ""
+
+    result: list[tuple[tuple[str, ...], str]] = []
+
+    def walk(node: ET.Element, path: tuple[str, ...]) -> None:
+        for child in node:
+            tag = child.tag.lower()
+            if tag in {"div", "chapter", "verse"}:
+                number = (
+                    child.get("number")
+                    or child.get("reference")
+                    or child.get("n")
+                    or str(len(path) + 1)
+                )
+                walk(child, (*path, number))
+            elif tag == "unit":
+                unit_id = child.get("id", "")
+                if generated and prefix and unit_id.startswith(prefix):
+                    unit_id = unit_id[len(prefix):]
+                result.append((path, unit_id))
+
+    walk(text, ())
+    return tuple(result)
+
+
 def _raw_inventory(source_dir: Path) -> dict:
     inventory = {
         "files": [], "versions": [], "division_specs": [], "divs": [], "units": [],
         "readings": [], "manuscripts": [], "resources": [], "annotated_words": [],
         "ellipses": [], "orphan_readings": [], "excluded_generated_translation_versions": [],
+        "generated_translations": [], "generated_translation_mapping_failures": [],
     }
 
     def add_manuscripts(container: ET.Element, ocp_book: str, version_title: str) -> None:
@@ -199,21 +272,23 @@ def _raw_inventory(source_dir: Path) -> dict:
         ocp_book = root.get("filename", "")
         inventory["files"].append({"file": path.name, "sha256": source_sha256})
         if versions:
+            classified_versions: list[tuple[ET.Element, bool]] = []
+            source_versions: list[ET.Element] = []
             for version in versions:
                 try:
-                    generated = is_generated_translation_version(version)
-                except GeneratedTranslationClassificationError as exc:
+                    generated = _audit_is_generated_translation_version(version)
+                except ValueError as exc:
                     raise InvalidSourceError(f"{path.name}: {exc}") from exc
-                if generated:
-                    inventory["excluded_generated_translation_versions"].append({
-                        "ocp_book": ocp_book,
-                        "version_title": version.get("title", ""),
-                        "language": version.get("language", ""),
-                        "source_file": path.name,
-                        "marker": GENERATED_TRANSLATION_MARKER,
-                    })
-                    continue
+                classified_versions.append((version, generated))
+                if not generated:
+                    source_versions.append(version)
 
+            source_signatures = [
+                Counter(_raw_translation_unit_identities(version, generated=False))
+                for version in source_versions
+            ]
+
+            for version, generated in classified_versions:
                 version_title = version.get("title", "")
                 inventory["versions"].append({
                     "ocp_book": ocp_book,
@@ -225,7 +300,41 @@ def _raw_inventory(source_dir: Path) -> dict:
                     "fragment": version.get("fragment", ""),
                     "source_file": path.name,
                     "source_sha256": source_sha256,
+                    "version_kind": "generated_translation" if generated else "source",
                 })
+
+                if generated:
+                    identities = _raw_translation_unit_identities(version, generated=True)
+                    signature = Counter(identities)
+                    candidates = [
+                        source
+                        for source, source_signature in zip(
+                            source_versions, source_signatures, strict=True
+                        )
+                        if source_signature == signature
+                    ]
+                    common = {
+                        "ocp_book": ocp_book,
+                        "version_title": version_title,
+                        "language": version.get("language", ""),
+                        "source_file": path.name,
+                    }
+                    if len(candidates) != 1:
+                        inventory["generated_translation_mapping_failures"].append({
+                            **common,
+                            "candidate_count": len(candidates),
+                        })
+                    else:
+                        source = candidates[0]
+                        inventory["generated_translations"].append({
+                            **common,
+                            "marker": GENERATED_TRANSLATION_MARKER,
+                            "source_version_title": source.get("title", ""),
+                            "source_version_language": source.get("language", ""),
+                            "unit_count": len(identities),
+                            "aligned_unit_count": len(identities),
+                        })
+
                 if is_wrapped_legacy_version(version):
                     specs = (DivisionSpec("Chapter", ":"), DivisionSpec("Verse", ""))
                 else:
@@ -236,7 +345,11 @@ def _raw_inventory(source_dir: Path) -> dict:
                             d.get("delimiter", d.get("Delimiter", "")),
                             _plain_text(d),
                         )
-                        for d in (divisions.findall("division") if divisions is not None else [])
+                        for d in (
+                            divisions.findall("division")
+                            if divisions is not None
+                            else []
+                        )
                     )
                 add_specs(ocp_book, version_title, specs)
                 add_manuscripts(version, ocp_book, version_title)
@@ -260,6 +373,7 @@ def _raw_inventory(source_dir: Path) -> dict:
                 "fragment": "",
                 "source_file": path.name,
                 "source_sha256": source_sha256,
+                "version_kind": "source",
             })
             specs = (DivisionSpec("Chapter", ":"), DivisionSpec("Verse", ""))
             add_specs(ocp_book, version_title, specs)
@@ -317,6 +431,7 @@ def _graph_inventory(
             "fragment": _feature(data, "version_fragment", node),
             "source_file": _feature(data, "source_file", node),
             "source_sha256": _feature(data, "source_sha256", node),
+            "version_kind": _feature(data, "version_kind", node, "source"),
         })
         labels = json.loads(_feature(data, "division_labels", node, "[]"))
         delimiters = json.loads(_feature(data, "division_delimiters", node, "[]"))

@@ -6,10 +6,12 @@ from .apparatus import Apparatus
 from .classifications import HistoricalClassifications
 from .conversion import build_tf_data
 from .metadata import WorkMetadata
+from .translations import Translations
 
 __all__ = [
     "Apparatus",
     "HistoricalClassifications",
+    "Translations",
     "WorkMetadata",
     "build_tf_data",
     "__version__",

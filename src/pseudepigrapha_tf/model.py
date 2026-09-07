@@ -140,11 +140,32 @@ class Version:
 
 @dataclass(frozen=True)
 class GeneratedTranslationExclusion:
-    """Source-declared generated OCP translation intentionally omitted from TF."""
+    """Deprecated compatibility record for source-declared generated OCP translations.
+
+    Generated translations are represented explicitly from #76 onward.  The
+    field remains on ``Book`` for downstream code that may still inspect it,
+    but new parses leave the collection empty.
+    """
 
     version_title: str
     language: str
     marker: str = "OCP-Trans"
+
+
+@dataclass(frozen=True)
+class GeneratedTranslation:
+    """One source-declared machine-generated translation and its source mapping."""
+
+    version: Version
+    target_language: str
+    source_version_index: int
+    source_version_title: str
+    source_version_language: str
+    marker: str = "OCP-Trans"
+    # Method/model come from repository history, not from the XML marker.
+    # They remain unknown until conversion is tied to an evidenced snapshot.
+    generation_method: str = ""
+    generation_model: str = ""
 
 
 @dataclass
@@ -156,3 +177,4 @@ class Book:
     source_path: str = ""
     source_sha256: str = ""
     excluded_generated_translations: tuple[GeneratedTranslationExclusion, ...] = ()
+    generated_translations: tuple[GeneratedTranslation, ...] = ()
