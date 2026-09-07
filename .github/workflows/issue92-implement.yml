@@ -1,0 +1,83 @@
+name: issue92-implement
+
+on:
+  push:
+    branches:
+      - perf/issue-92-unit-ref-features
+
+permissions:
+  contents: write
+
+jobs:
+  implement:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: perf/issue-92-unit-ref-features
+      - name: Apply unit-local source-reference reuse
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('src/pseudepigrapha_tf/graph.py')
+          text = path.read_text(encoding='utf-8')
+
+          old = '''def _surface(token: Token, book: Book, version: Version, unit: Unit, reading: Reading,
+                       option: int, path: tuple[str, ...], specs: tuple[DivisionSpec, ...]) -> dict:
+              return {
+          '''
+          new = '''def _surface(token: Token, book: Book, version: Version, unit: Unit, reading: Reading,
+                       option: int, ref_features: dict[str, str]) -> dict:
+              return {
+          '''
+          assert text.count(old) == 1, text.count(old)
+          text = text.replace(old, new)
+
+          old = '        **_ref_features(path, specs),\n    }\n\n\ndef _boundary'
+          new = '        **ref_features,\n    }\n\n\ndef _boundary'
+          assert text.count(old) == 1, text.count(old)
+          text = text.replace(old, new)
+
+          old = '''    if not unit.readings:
+              raise ValueError(f"{book.filename}/{version.title}: unit {unit.unit_id!r} has no readings")
+          pidx = next((i for i, r in enumerate(unit.readings) if r.option == "0"), 0)
+          '''
+          new = '''    if not unit.readings:
+              raise ValueError(f"{book.filename}/{version.title}: unit {unit.unit_id!r} has no readings")
+          ref_features = _ref_features(path, specs)
+          pidx = next((i for i, r in enumerate(unit.readings) if r.option == "0"), 0)
+          '''
+          assert text.count(old) == 1, text.count(old)
+          text = text.replace(old, new)
+
+          old = '_surface(t, book, version, unit, primary, poption, path, specs)'
+          new = '_surface(t, book, version, unit, primary, poption, ref_features)'
+          assert text.count(old) == 1, text.count(old)
+          text = text.replace(old, new)
+
+          # Within _add_unit, the gap, unit node, and reading nodes share the
+          # same source locus. Restrict replacements to that function body.
+          start = text.index('def _add_unit(')
+          end = text.index('\n\ndef _add_version(', start)
+          body = text[start:end]
+          assert body.count('**_ref_features(path, specs)') == 3, body.count('**_ref_features(path, specs)')
+          body = body.replace('**_ref_features(path, specs)', '**ref_features')
+          old = '_surface(token, book, version, unit, reading, option, path, specs)'
+          new = '_surface(token, book, version, unit, reading, option, ref_features)'
+          assert body.count(old) == 1, body.count(old)
+          body = body.replace(old, new)
+          text = text[:start] + body + text[end:]
+
+          path.write_text(text, encoding='utf-8')
+          PY
+          git diff --check
+          git diff -- src/pseudepigrapha_tf/graph.py
+      - name: Commit implementation
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add src/pseudepigrapha_tf/graph.py
+          git commit -m 'perf: reuse unit source reference features'
+          git push origin HEAD:perf/issue-92-unit-ref-features
