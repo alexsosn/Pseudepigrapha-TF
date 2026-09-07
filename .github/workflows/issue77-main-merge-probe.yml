@@ -1,21 +1,22 @@
-name: issue77-main-merge-probe
+name: issue77-main-sync
 
 on:
   push:
     branches: [feature/corpus-license-provenance]
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
-  probe:
+  sync:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
         with:
           ref: feature/corpus-license-provenance
           fetch-depth: 0
-      - name: Probe merge with current main
+      - name: Merge current main and resolve semantic audit composition
         run: |
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
@@ -23,8 +24,59 @@ jobs:
           set +e
           git merge --no-commit --no-ff origin/main
           rc=$?
-          echo "merge_rc=$rc"
-          git status --short
-          echo "conflicts:"
-          git diff --name-only --diff-filter=U
-          exit $rc
+          set -e
+          if [ "$rc" -ne 0 ]; then
+            conflicts="$(git diff --name-only --diff-filter=U)"
+            test "$conflicts" = "src/pseudepigrapha_tf/semantic_audit.py"
+            git checkout --theirs src/pseudepigrapha_tf/semantic_audit.py
+            python - <<'PY'
+          from pathlib import Path
+
+          path = Path('src/pseudepigrapha_tf/semantic_audit.py')
+          text = path.read_text(encoding='utf-8')
+
+          old = 'from .model import Book\n'
+          new = old + 'from .provenance import corpus_license_provenance_is_consistent, report_provenance\n'
+          assert old in text and 'from .provenance import corpus_license_provenance_is_consistent' not in text
+          text = text.replace(old, new, 1)
+
+          old = '''    section_address_records = _section_address_records(data, node_index)\n    section_address_collisions = _section_address_collisions_from_records(section_address_records)\n    generated_alignment_ok = (\n'''
+          new = '''    section_address_records = _section_address_records(data, node_index)\n    section_address_collisions = _section_address_collisions_from_records(section_address_records)\n    generic = data.metadata.get("", {})\n    generated_alignment_ok = (\n'''
+          assert old in text
+          text = text.replace(old, new, 1)
+
+          old = '''    checks = {\n        "source_hashes": source_hashes == model_hashes,\n'''
+          new = '''    checks = {\n        "source_hashes": source_hashes == model_hashes,\n        "corpus_license_provenance": corpus_license_provenance_is_consistent(generic),\n'''
+          assert old in text
+          text = text.replace(old, new, 1)
+
+          old = '''    generic = data.metadata.get("", {})\n    failed = [name for name, ok in checks.items() if not ok]\n'''
+          new = '''    failed = [name for name, ok in checks.items() if not ok]\n'''
+          assert old in text
+          text = text.replace(old, new, 1)
+
+          old = '''        "provenance": {\n            "upstream_repository": generic.get("upstreamRepository", ""),\n            "upstream_commit": generic.get("upstreamCommit", ""),\n            "converter_version": generic.get("converterVersion", ""),\n        },\n'''
+          new = '''        "provenance": report_provenance(generic),\n'''
+          assert old in text
+          text = text.replace(old, new, 1)
+
+          path.write_text(text, encoding='utf-8')
+          PY
+            git add src/pseudepigrapha_tf/semantic_audit.py
+          fi
+          git diff --check
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+      - name: Install and run full suite
+        run: |
+          pip install -e '.[dev]'
+          pytest
+      - name: Commit synchronized branch
+        run: |
+          git rm .github/workflows/issue77-main-merge-probe.yml
+          git add -A
+          git diff --cached --check
+          git commit -m 'Merge main after generated translations into issue 77'
+          git push origin HEAD:feature/corpus-license-provenance
