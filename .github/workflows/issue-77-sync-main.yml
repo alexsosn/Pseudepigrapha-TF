@@ -1,0 +1,26 @@
+name: issue-77-sync-main
+
+on:
+  push:
+    branches: [feature/corpus-license-provenance]
+
+permissions:
+  contents: write
+
+jobs:
+  sync:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feature/corpus-license-provenance
+          fetch-depth: 0
+      - name: Merge current main
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git fetch origin main
+          git merge --no-edit origin/main
+          git push origin HEAD:feature/corpus-license-provenance
