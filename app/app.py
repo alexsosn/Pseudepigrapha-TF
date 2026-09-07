@@ -39,7 +39,12 @@ class TfApp(App):
         """
 
         node = chunk[0]
-        if node_type == "reading" and self.api.F.is_omission.v(node) == 1:
+        omission_feature = getattr(self.api.F, "is_omission", None)
+        if (
+            node_type == "reading"
+            and omission_feature is not None
+            and omission_feature.v(node) == 1
+        ):
             return '<span title="is_omission">[omission]</span>'
 
         return self.getText(
