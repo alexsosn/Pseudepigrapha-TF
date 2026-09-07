@@ -31,7 +31,7 @@ OCP supplies this general citation:
 
 > Ian W. Scott and Ken M. Penner, eds. The Online Critical Pseudepigrapha. Atlanta: Society of Biblical Literature / Online: pseudepigrapha.org.
 
-OCP also requires attribution to the individual editor identified for an edition. Pseudepigrapha-TF preserves source version/editor metadata and, when OCP `intros.json` is present, preserves each work's `citation` and `copyright` values losslessly on its `document_metadata` node. Researchers redistributing or adapting corpus text should retain the general OCP attribution together with the relevant per-work/editor attribution supplied by OCP.
+OCP also requires attribution to the individual editor identified for an edition. Pseudepigrapha-TF preserves each source version's literal `author` value without treating it as an editor identity; when OCP `intros.json` is present, it also preserves each work's `citation` and `copyright` values losslessly on its `document_metadata` node. Researchers redistributing or adapting corpus text should retain the general OCP attribution together with whatever per-work/editor attribution OCP actually supplies in those source metadata fields; no editor identity is inferred from `author` or from bibliographic text.
 
 ## Machine-generated OCP translations
 
