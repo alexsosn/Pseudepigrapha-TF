@@ -303,6 +303,7 @@ class Apparatus:
         unit_records: list[dict[str, object]] = []
         reading_by_witness: dict[int, dict[int, int]] = {}
         for unit in units:
+            self._reject_generated_unit(unit)
             source_ref = str(self._feature("source_ref", unit, ""))
             if source_ref and source_ref not in source_refs:
                 source_refs.append(source_ref)
