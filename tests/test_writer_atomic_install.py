@@ -186,3 +186,37 @@ def test_keyboard_interrupt_during_install_restores_previous_tf_set_before_rerai
     assert caught.value is interrupt
     assert staged_installs == 2
     _assert_exact_output(output, before)
+
+
+def test_successful_rollback_cleanup_failure_warns_and_reraises_original(monkeypatch, tmp_path):
+    output, before = _seed_output(tmp_path)
+    original_replace = Path.replace
+    original_rmdir = Path.rmdir
+    install_error = OSError("install boom")
+    cleanup_error = OSError("backup cleanup boom")
+    staged_installs = 0
+
+    def fail_second_staged_install(self: Path, target):
+        nonlocal staged_installs
+        target = Path(target)
+        if CompleteStageFabric.stage is not None and self.parent == CompleteStageFabric.stage and target.parent == output:
+            staged_installs += 1
+            if staged_installs == 2:
+                raise install_error
+        return original_replace(self, target)
+
+    def fail_backup_rmdir(self: Path):
+        if self.parent == tmp_path and self.name.startswith(".pseudepigrapha-tf-backup-"):
+            raise cleanup_error
+        return original_rmdir(self)
+
+    monkeypatch.setattr(Path, "replace", fail_second_staged_install)
+    monkeypatch.setattr(Path, "rmdir", fail_backup_rmdir)
+
+    with pytest.warns(RuntimeWarning, match="backup cleanup boom"):
+        with pytest.raises(OSError) as caught:
+            _standard_write(monkeypatch, output)
+
+    assert caught.value is install_error
+    assert staged_installs == 2
+    _assert_exact_output(output, before)
