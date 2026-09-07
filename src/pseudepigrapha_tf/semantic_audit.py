@@ -417,17 +417,34 @@ def _graph_generated_translation_inventory(
 def _generated_provenance_features_ok(
     data: TFData,
     node_index: dict[str, list[int]],
+    upstream_commit: str,
 ) -> bool:
     generated_books = [
         node
         for node in node_index.get("book", [])
         if base._feature(data, "version_kind", node) == "generated_translation"
     ]
-    return all(
+    marker_ok = all(
         base._feature(data, "generation_marker", node) == "OCP-Trans"
-        and base._feature(data, "generation_method", node) == "llm"
-        and base._feature(data, "generation_model", node)
-        == "openrouter/google/gemini-3.7-flash"
+        for node in generated_books
+    )
+    if not marker_ok:
+        return False
+
+    if upstream_commit == "c939dcbacad78c5d18d2c4282cad23c47e19ac07":
+        return all(
+            base._feature(data, "generation_method", node) == "llm"
+            and base._feature(data, "generation_model", node)
+            == "openrouter/google/gemini-3.7-flash"
+            for node in generated_books
+        )
+
+    # The XML marker proves generated status, but not which historical generator
+    # implementation/model produced an unresearched snapshot. Unsupported
+    # history-derived claims must therefore be absent rather than guessed.
+    return all(
+        not base._feature(data, "generation_method", node)
+        and not base._feature(data, "generation_model", node)
         for node in generated_books
     )
 
@@ -477,7 +494,11 @@ def build_conversion_report(source_dir: str | Path, books: list[Book], data: TFD
     )
     generated_provenance_ok = (
         generated_alignment_ok
-        and _generated_provenance_features_ok(data, node_index)
+        and _generated_provenance_features_ok(
+            data,
+            node_index,
+            str(data.metadata.get("", {}).get("upstreamCommit", "")),
+        )
     )
 
     checks = {

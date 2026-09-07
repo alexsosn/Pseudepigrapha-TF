@@ -162,8 +162,10 @@ class GeneratedTranslation:
     source_version_title: str
     source_version_language: str
     marker: str = "OCP-Trans"
-    generation_method: str = "llm"
-    generation_model: str = "openrouter/google/gemini-3.7-flash"
+    # Method/model come from repository history, not from the XML marker.
+    # They remain unknown until conversion is tied to an evidenced snapshot.
+    generation_method: str = ""
+    generation_model: str = ""
 
 
 @dataclass

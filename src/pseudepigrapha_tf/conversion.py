@@ -14,6 +14,14 @@ from .graph import (
     _ref_features,
     _slug,
 )
+PINNED_GENERATION_PROVENANCE = {
+    "c939dcbacad78c5d18d2c4282cad23c47e19ac07": (
+        "llm",
+        "openrouter/google/gemini-3.7-flash",
+    ),
+}
+
+
 from .model import (
     Book,
     Div,
@@ -149,10 +157,12 @@ def _stamp_version_kind(
     if generation is not None:
         values.update(
             generation_marker=generation.marker,
-            generation_method=generation.generation_method,
-            generation_model=generation.generation_model,
             generated_language=generation.target_language,
         )
+        if generation.generation_method:
+            values["generation_method"] = generation.generation_method
+        if generation.generation_model:
+            values["generation_model"] = generation.generation_model
     for index in range(object_start, len(builder.objects)):
         obj = builder.objects[index]
         obj.features.update(values)
@@ -747,7 +757,16 @@ def build_tf_data(
                 metadata.append(_PendingMetadataVersion(book, version, version_id, bidx, vidx))
 
         generated_id_counts: dict[str, int] = {}
+        generation_method, generation_model = PINNED_GENERATION_PROVENANCE.get(
+            upstream_commit, ("", "")
+        )
         for generated_index, translation in enumerate(book.generated_translations, 1):
+            if generation_method or generation_model:
+                translation = replace(
+                    translation,
+                    generation_method=generation_method,
+                    generation_model=generation_model,
+                )
             source_graph = source_graphs.get(translation.source_version_index)
             if source_graph is None:
                 raise ValueError(

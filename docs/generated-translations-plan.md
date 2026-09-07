@@ -17,7 +17,7 @@ Add a generated-translation record containing:
 - strict provenance marker (`OCP-Trans`);
 - source-version ordinal/index within `Book.versions`;
 - source-version title/language for diagnostics only;
-- exact generation method/model facts evidenced by the selected OCP snapshot (`llm`, `openrouter/google/gemini-3.7-flash`);
+- exact generation method/model facts evidenced by the selected OCP snapshot (`llm`, `openrouter/google/gemini-3.7-flash`); these history-derived values are attached only when the conversion identifies that evidenced upstream commit, never inferred from the XML marker on an arbitrary snapshot;
 - alignment diagnostics needed to fail closed on a future source snapshot.
 
 Generated status is established only by `is_generated_translation_version()`; language and title remain descriptive fields.

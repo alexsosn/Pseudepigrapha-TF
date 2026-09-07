@@ -84,8 +84,10 @@ def test_parser_preserves_generated_translation_without_misclassifying_genuine_e
     assert generated.marker == "OCP-Trans"
     assert generated.source_version_index == 0
     assert generated.source_version_title == "Greek"
-    assert generated.generation_method == "llm"
-    assert generated.generation_model == "openrouter/google/gemini-3.7-flash"
+    # The parser sees XML structure only; history-derived generator claims
+    # are attached later only when conversion identifies an evidenced snapshot.
+    assert generated.generation_method == ""
+    assert generated.generation_model == ""
 
 
 def test_generated_translation_keeps_existing_source_book_id_and_adds_explicit_version_edge() -> None:
@@ -119,8 +121,8 @@ def test_generated_translation_keeps_existing_source_book_id_and_adds_explicit_v
     assert data.node_features["book"][generated] == "Demo__translation__English"
     assert data.edge_features["translation_of"][generated] == {source}
     assert data.node_features["generation_marker"][generated] == "OCP-Trans"
-    assert data.node_features["generation_method"][generated] == "llm"
-    assert data.node_features["generation_model"][generated] == "openrouter/google/gemini-3.7-flash"
+    assert generated not in data.node_features.get("generation_method", {})
+    assert generated not in data.node_features.get("generation_model", {})
 
     synthetic = next(
         node
