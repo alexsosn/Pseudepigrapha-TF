@@ -101,7 +101,12 @@ def translation_api():
         manuscript_of=Edge({50: {1}, 51: {2}}),
         witness=Edge({30: {50}, 40: {51}}),
     )
-    return SimpleNamespace(F=F, E=E, L=Locality(), T=Text())
+    TF = SimpleNamespace(
+        features={
+            "otype": SimpleNamespace(metaData={"generatedTranslationLayer": "1"}),
+        }
+    )
+    return SimpleNamespace(F=F, E=E, L=Locality(), T=Text(), TF=TF)
 
 
 def test_translations_lists_generated_versions_with_explicit_source_and_provenance():
@@ -153,7 +158,7 @@ def test_apparatus_rejects_direct_generated_translation_passage():
         Apparatus(translation_api()).passage("Demo__translation__French", "1", "1")
 
 
-def test_apparatus_fails_closed_when_version_kind_is_not_loaded():
+def test_apparatus_fails_closed_when_marked_corpus_omits_version_kind():
     api = translation_api()
     delattr(api.F, "version_kind")
 
@@ -161,7 +166,7 @@ def test_apparatus_fails_closed_when_version_kind_is_not_loaded():
         Apparatus(api).passage("Demo__translation__French", "1", "1")
 
 
-def test_apparatus_fails_closed_when_synthetic_witness_is_not_loaded():
+def test_apparatus_fails_closed_when_marked_corpus_omits_synthetic_witness():
     api = translation_api()
     delattr(api.F, "synthetic_witness")
 
