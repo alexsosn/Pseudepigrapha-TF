@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 import re
+import shutil
 from pathlib import Path
-from tempfile import TemporaryDirectory
+from tempfile import TemporaryDirectory, mkdtemp
 from typing import Callable, Protocol
 
 from .graph import EDGE_DESCRIPTIONS, INT_FEATURES, TFData
@@ -10,6 +11,25 @@ from .graph import EDGE_DESCRIPTIONS, INT_FEATURES, TFData
 
 class _FabricLike(Protocol):
     def save(self, **kwargs) -> bool: ...
+
+
+class _TFInstallRollbackError(RuntimeError):
+    """Installation failed and the previous TF set could not be fully restored."""
+
+    def __init__(
+        self,
+        install_error: BaseException,
+        rollback_error: BaseException,
+        backup: Path,
+    ) -> None:
+        super().__init__(
+            "Text-Fabric installation failed "
+            f"({install_error}); rollback also failed ({rollback_error}); "
+            f"recoverable backup retained at {backup}"
+        )
+        self.install_error = install_error
+        self.rollback_error = rollback_error
+        self.backup = backup
 
 
 _FORMAT_FEATURE = re.compile(r"\{([^}:]+)(?::[^}]*)?\}")
@@ -98,15 +118,58 @@ def _metadata_with_serialized_features(
     return metadata
 
 
-def _install_staged_tf_features(stage: Path, output: Path) -> None:
-    """Install exactly the TF files produced by one successful staged save."""
+def _rollback_tf_features(output: Path, backup: Path, original_names: frozenset[str]) -> None:
+    """Restore the pre-install TF set while leaving non-TF sidecars untouched."""
 
-    staged = {path.name: path for path in stage.glob("*.tf")}
-    for name, path in staged.items():
-        path.replace(output / name)
-    for path in output.glob("*.tf"):
-        if path.name not in staged:
+    # New-only files have no counterpart in the previous generation. Common
+    # names are overwritten below from backup, and untouched old files remain
+    # in place when failure happened part-way through the backup phase.
+    for path in sorted(output.glob("*.tf"), key=lambda item: item.name):
+        if path.name not in original_names:
             path.unlink()
+    for path in sorted(backup.glob("*.tf"), key=lambda item: item.name):
+        path.replace(output / path.name)
+
+
+def _install_staged_tf_features(stage: Path, output: Path) -> None:
+    """Install one staged TF generation and restore the previous set on failure.
+
+    The stage and backup are siblings of ``output``, so normal ``Path.replace``
+    operations stay on one filesystem. This guarantees recovery after a failed
+    transaction; it does not claim lock-free atomic visibility to concurrent
+    readers during the finite sequence of renames.
+    """
+
+    staged = tuple(sorted(stage.glob("*.tf"), key=lambda item: item.name))
+    existing = tuple(sorted(output.glob("*.tf"), key=lambda item: item.name))
+    original_names = frozenset(path.name for path in existing)
+    backup = Path(mkdtemp(prefix=".pseudepigrapha-tf-backup-", dir=output.parent))
+
+    try:
+        for path in existing:
+            path.replace(backup / path.name)
+        for path in staged:
+            path.replace(output / path.name)
+    except BaseException as install_error:
+        try:
+            _rollback_tf_features(output, backup, original_names)
+        except BaseException as rollback_error:
+            raise _TFInstallRollbackError(
+                install_error,
+                rollback_error,
+                backup,
+            ) from rollback_error
+        else:
+            shutil.rmtree(backup)
+            raise
+    else:
+        try:
+            shutil.rmtree(backup)
+        except BaseException as cleanup_error:
+            raise RuntimeError(
+                "Text-Fabric features were installed successfully, but the old "
+                f"backup could not be removed and remains at {backup}: {cleanup_error}"
+            ) from cleanup_error
 
 
 def _serialize_tf(
