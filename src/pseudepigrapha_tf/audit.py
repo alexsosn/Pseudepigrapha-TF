@@ -12,12 +12,7 @@ from .graph import TFData
 from .model import Book, DivisionSpec
 from .parser import InvalidSourceError
 from .source_structure import SourceStructureError, validate_source_structure
-from .source_versions import (
-    GENERATED_TRANSLATION_MARKER,
-    GeneratedTranslationClassificationError,
-    is_generated_translation_version,
-    is_wrapped_legacy_version,
-)
+from .source_versions import GENERATED_TRANSLATION_MARKER, is_wrapped_legacy_version
 
 
 def _plain_text(element: ET.Element | None) -> str:
@@ -45,6 +40,42 @@ def _reference(path: tuple[str, ...], specs: tuple[DivisionSpec, ...]) -> str:
 def _canonical(records: list[dict]) -> list[str]:
     return sorted(json.dumps(record, ensure_ascii=False, sort_keys=True) for record in records)
 
+
+
+def _audit_is_generated_translation_version(version: ET.Element) -> bool:
+    """Independently classify the strict source-declared OCP-Trans structure.
+
+    This deliberately does not call the parser's classifier: semantic parity must
+    be able to catch a regression in that implementation rather than echo it.
+    """
+
+    manuscripts = list(version.findall("manuscripts/ms"))
+    manuscript_abbrevs = [ms.get("abbrev", "") for ms in manuscripts]
+    readings = list(version.iter("reading"))
+    reading_witnesses = [tuple(reading.get("mss", "").split()) for reading in readings]
+
+    marker_in_manuscripts = GENERATED_TRANSLATION_MARKER in manuscript_abbrevs
+    marker_in_readings = any(
+        GENERATED_TRANSLATION_MARKER in witnesses for witnesses in reading_witnesses
+    )
+    if not marker_in_manuscripts and not marker_in_readings:
+        return False
+
+    title = version.get("title", "")
+    context = f"version {title!r}" if title else "version"
+    if manuscript_abbrevs != [GENERATED_TRANSLATION_MARKER]:
+        raise ValueError(
+            f"{context}: OCP-Trans generated translation marker is mixed with other manuscripts"
+        )
+    if not readings:
+        raise ValueError(
+            f"{context}: OCP-Trans generated translation marker has no readings"
+        )
+    if any(witnesses != (GENERATED_TRANSLATION_MARKER,) for witnesses in reading_witnesses):
+        raise ValueError(
+            f"{context}: OCP-Trans generated translation marker is mixed with other reading witnesses"
+        )
+    return True
 
 
 def _raw_translation_unit_identities(
@@ -245,8 +276,8 @@ def _raw_inventory(source_dir: Path) -> dict:
             source_versions: list[ET.Element] = []
             for version in versions:
                 try:
-                    generated = is_generated_translation_version(version)
-                except GeneratedTranslationClassificationError as exc:
+                    generated = _audit_is_generated_translation_version(version)
+                except ValueError as exc:
                     raise InvalidSourceError(f"{path.name}: {exc}") from exc
                 classified_versions.append((version, generated))
                 if not generated:
