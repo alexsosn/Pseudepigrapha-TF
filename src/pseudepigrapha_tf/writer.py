@@ -18,8 +18,8 @@ class _TFInstallRollbackError(RuntimeError):
 
     def __init__(
         self,
-        install_error: BaseException,
-        rollback_error: BaseException,
+        install_error: Exception,
+        rollback_error: Exception,
         backup: Path,
     ) -> None:
         super().__init__(
@@ -150,22 +150,30 @@ def _install_staged_tf_features(stage: Path, output: Path) -> None:
             path.replace(backup / path.name)
         for path in staged:
             path.replace(output / path.name)
-    except BaseException as install_error:
+    except Exception as install_error:
         try:
             _rollback_tf_features(output, backup, original_names)
-        except BaseException as rollback_error:
+        except Exception as rollback_error:
             raise _TFInstallRollbackError(
                 install_error,
                 rollback_error,
                 backup,
             ) from rollback_error
         else:
-            shutil.rmtree(backup)
+            # A successful rollback moves every backed-up TF file back out, so
+            # only the empty directory remains. Preserve the original install
+            # exception even if housekeeping of that empty directory fails.
+            try:
+                backup.rmdir()
+            except OSError as cleanup_error:
+                install_error.add_note(
+                    f"previous TF set was restored, but empty backup cleanup failed at {backup}: {cleanup_error}"
+                )
             raise
     else:
         try:
             shutil.rmtree(backup)
-        except BaseException as cleanup_error:
+        except Exception as cleanup_error:
             raise RuntimeError(
                 "Text-Fabric features were installed successfully, but the old "
                 f"backup could not be removed and remains at {backup}: {cleanup_error}"
