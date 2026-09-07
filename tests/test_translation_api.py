@@ -151,3 +151,19 @@ def test_apparatus_default_witness_view_excludes_synthetic_translation_witness()
 def test_apparatus_rejects_direct_generated_translation_passage():
     with pytest.raises(ValueError, match="generated translation"):
         Apparatus(translation_api()).passage("Demo__translation__French", "1", "1")
+
+
+def test_apparatus_fails_closed_when_version_kind_is_not_loaded():
+    api = translation_api()
+    delattr(api.F, "version_kind")
+
+    with pytest.raises(ValueError, match="version_kind"):
+        Apparatus(api).passage("Demo__translation__French", "1", "1")
+
+
+def test_apparatus_fails_closed_when_synthetic_witness_is_not_loaded():
+    api = translation_api()
+    delattr(api.F, "synthetic_witness")
+
+    with pytest.raises(ValueError, match="synthetic_witness"):
+        Apparatus(api)._witnesses(2)
