@@ -340,7 +340,7 @@ def _ref_features(path: tuple[str, ...], specs: tuple[DivisionSpec, ...]) -> dic
 
 
 def _surface(token: Token, book: Book, version: Version, unit: Unit, reading: Reading,
-             option: int, path: tuple[str, ...], specs: tuple[DivisionSpec, ...]) -> dict:
+             option: int, ref_features: dict[str, str]) -> dict:
     return {
         "g_word_utf8": token.text,
         "trailer_utf8": token.trailer,
@@ -356,7 +356,7 @@ def _surface(token: Token, book: Book, version: Version, unit: Unit, reading: Re
         "unit_id": unit.unit_id,
         "reading_option": option,
         "reading_option_source": reading.option,
-        **_ref_features(path, specs),
+        **ref_features,
     }
 
 
@@ -374,6 +374,7 @@ def _add_unit(builder: _Builder, book: Book, version: Version, vkey: str, unit: 
               parent_div: str, endings: list[tuple[int, str]]) -> set[int]:
     if not unit.readings:
         raise ValueError(f"{book.filename}/{version.title}: unit {unit.unit_id!r} has no readings")
+    ref_features = _ref_features(path, specs)
     pidx = next((i for i, r in enumerate(unit.readings) if r.option == "0"), 0)
     if unit.readings[pidx].option != "0":
         builder.warnings.append(
@@ -382,19 +383,19 @@ def _add_unit(builder: _Builder, book: Book, version: Version, vkey: str, unit: 
     primary = unit.readings[pidx]
     poption = _option(primary, pidx)
     ordered = [
-        builder.slot(**_surface(t, book, version, unit, primary, poption, path, specs))
+        builder.slot(**_surface(t, book, version, unit, primary, poption, ref_features))
         for t in primary.tokens
     ]
     if not ordered:
         ordered = [builder.slot(
             is_gap=1, language=version.language, ocp_book=book.filename, version_title=version.title,
             unit_id=unit.unit_id, reading_option=poption, reading_option_source=primary.option,
-            **_ref_features(path, specs),
+            **ref_features,
         )]
     slots = set(ordered)
     ukey = f"{vkey}:unit:{index}"
     builder.node(
-        ukey, "unit", slots, **_common(book, version), **_ref_features(path, specs),
+        ukey, "unit", slots, **_common(book, version), **ref_features,
         unit_id=unit.unit_id, unit_index=index, group=unit.group, parallel=unit.parallel,
         unit_linebreak=unit.linebreak,
     )
@@ -405,7 +406,7 @@ def _add_unit(builder: _Builder, book: Book, version: Version, vkey: str, unit: 
         primary_flag = ridx - 1 == pidx
         rkey = f"{ukey}:reading:{ridx}"
         builder.node(
-            rkey, "reading", slots, **_common(book, version), **_ref_features(path, specs),
+            rkey, "reading", slots, **_common(book, version), **ref_features,
             unit_id=unit.unit_id, reading_option=option, reading_option_source=reading.option,
             reading_index=ridx, reading_text=reading.text, reading_xml=reading.content_xml,
             mss=reading.mss_raw.strip(), linebreak=reading.linebreak, indent=reading.indent,
@@ -431,7 +432,7 @@ def _add_unit(builder: _Builder, book: Book, version: Version, vkey: str, unit: 
             anchor = {ordered[0]}
             for pos, token in enumerate(reading.tokens, 1):
                 wkey = f"{rkey}:word:{pos}"
-                surface = _surface(token, book, version, unit, reading, option, path, specs)
+                surface = _surface(token, book, version, unit, reading, option, ref_features)
                 surface.pop("ocp_book", None)
                 surface.pop("version_title", None)
                 builder.node(
