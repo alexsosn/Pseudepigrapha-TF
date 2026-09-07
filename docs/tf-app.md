@@ -23,7 +23,9 @@ Several non-slot node types preserve source structure or scholarly apparatus whi
 The app therefore distinguishes two groups:
 
 - `div` and `unit` are hidden by default but remain structural. Revealing them can show the primary textual locus they organize.
-- `reading`, `variant_word`, `manuscript`, `resource`, `version_metadata`, `ellipsis`, `orphan_reading`, and `document_metadata` are hidden by default and configured as Text-Fabric base types. Their own type-specific text formats are authoritative, so pretty rendering stops at the node instead of recursively presenting its technical anchor as content.
+- `reading`, `variant_word`, `manuscript`, `resource`, `version_metadata`, `ellipsis`, `orphan_reading`, and `document_metadata` are hidden by default and configured as Text-Fabric base types. Their browser templates explicitly mirror the same own-content features used by their dedicated TF text formats, so pretty rendering stops at the node instead of recursively presenting its technical anchor as content.
+
+The explicit templates matter because the app-wide default format is `text-orig-full`: Text-Fabric applies that requested format during advanced rendering even for a non-slot base node. A bare `template: true` would therefore descend through the node's `oslots` support and could display primary anchor text. The per-type templates prevent that ambiguity without custom Python rendering.
 
 Hidden types are not removed from the graph. Researchers can reveal them with Text-Fabric display options such as `hideTypes=False`, query them normally through the TF API, and traverse their explicit edges.
 
@@ -33,7 +35,7 @@ In particular:
 - `variant_word` nodes render their own variant-token surface;
 - `manuscript` nodes render `ms_abbrev`;
 - `resource` nodes render `resource_name`;
-- metadata and preserved anomaly nodes use their dedicated text formats rather than the anchor word.
+- metadata and preserved anomaly nodes use their own identity/content features rather than the anchor word.
 
 For witness reconstruction and omission/unattested semantics, use the public `Apparatus` API. Browser display is a presentation layer and does not replace the graph's `reading_of`, `witness`, `variant_word_of`, or other scholarly relations.
 
