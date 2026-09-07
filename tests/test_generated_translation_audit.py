@@ -78,7 +78,13 @@ def test_raw_audit_does_not_depend_on_parser_generated_classifier(tmp_path: Path
 
     # Simulate a broken/shared parser classifier. A logically independent raw
     # audit must still reconstruct the OCP-Trans structure directly from XML.
-    monkeypatch.setattr(audit, "is_generated_translation_version", lambda _version: False)
+    # raising=False also proves the audit no longer needs that imported symbol.
+    monkeypatch.setattr(
+        audit,
+        "is_generated_translation_version",
+        lambda _version: False,
+        raising=False,
+    )
 
     raw = audit._raw_inventory(tmp_path)
 
