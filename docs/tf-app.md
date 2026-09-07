@@ -23,15 +23,18 @@ Several non-slot node types preserve source structure or scholarly apparatus whi
 The app therefore distinguishes two groups:
 
 - `div` and `unit` are hidden by default but remain structural. Revealing them can show the primary textual locus they organize.
-- `reading`, `variant_word`, `manuscript`, `resource`, `version_metadata`, `ellipsis`, `orphan_reading`, and `document_metadata` are hidden by default and configured as Text-Fabric base types. Their browser templates explicitly mirror the same own-content features used by their dedicated TF text formats, so pretty rendering stops at the node instead of recursively presenting its technical anchor as content.
+- `reading`, `variant_word`, `manuscript`, `resource`, `version_metadata`, `ellipsis`, `orphan_reading`, and `document_metadata` are hidden by default and configured as Text-Fabric base types. Their browser templates mirror the same own-content features used by their dedicated TF text formats.
 
-The explicit templates matter because the app-wide default format is `text-orig-full`: Text-Fabric applies that requested format during advanced rendering even for a non-slot base node. A bare `template: true` would therefore descend through the node's `oslots` support and could display primary anchor text. The per-type templates prevent that ambiguity without custom Python rendering.
+Text-Fabric 13.1 needs one small Python hook in addition to those templates. During `pretty()` rendering of a base non-slot, Text-Fabric internally asks for a plain rendering of the same unravel tree. Even after an explicit parent template is rendered, that plain pass normally continues into the node's `oslots` children. For the technical-anchor node types above this can append unrelated primary-locus text after the node's own content.
+
+`app/app.py` therefore registers one shared `plainCustom` hook for those node types. The hook delegates the node's actual content back to Text-Fabric's configured template renderer and stops the plain pass before it descends into the technical anchor. It does not reconstruct apparatus or witness semantics. The only semantic presentation special case is an explicit empty `reading`, which is shown as `[omission]` instead of as visually empty content.
 
 Hidden types are not removed from the graph. Researchers can reveal them with Text-Fabric display options such as `hideTypes=False`, query them normally through the TF API, and traverse their explicit edges.
 
 In particular:
 
 - alternative `reading` nodes render their own `reading_text`, not the primary reading occupying the locus;
+- explicit empty readings remain visibly marked as omissions;
 - `variant_word` nodes render their own variant-token surface;
 - `manuscript` nodes render `ms_abbrev`;
 - `resource` nodes render `resource_name`;
