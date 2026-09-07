@@ -5,7 +5,7 @@ Pseudepigrapha-TF can act as a locally trusted Agora materializer without redist
 The repository-level [`agora.materializer.json`](../agora.materializer.json) declares:
 
 - materializer id `ocp-text-fabric`;
-- automatic source: the official Online Critical Pseudepigrapha Git repository pinned to commit `2d1d14d23434a784d377ff7f4409ccdb2d18aafb`, using `static/docs` as input;
+- automatic source: the official Online Critical Pseudepigrapha Git repository pinned to commit `c939dcbacad78c5d18d2c4282cad23c47e19ac07`, using `static/docs` as input;
 - fallback source mode: a user-provided local `static/docs` directory;
 - required direct `*.xml` input with symlinks disallowed by the host contract;
 - execution through the existing `pseudepigrapha_tf.cli convert` command;
