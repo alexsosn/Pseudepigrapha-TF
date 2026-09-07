@@ -40,17 +40,12 @@ jobs:
           assert text.count(old) == 1, text.count(old)
           text = text.replace(old, new)
 
-          old = '''    if not unit.readings:
-              raise ValueError(f"{book.filename}/{version.title}: unit {unit.unit_id!r} has no readings")
-          pidx = next((i for i, r in enumerate(unit.readings) if r.option == "0"), 0)
-          '''
-          new = '''    if not unit.readings:
-              raise ValueError(f"{book.filename}/{version.title}: unit {unit.unit_id!r} has no readings")
-          ref_features = _ref_features(path, specs)
-          pidx = next((i for i, r in enumerate(unit.readings) if r.option == "0"), 0)
-          '''
-          assert text.count(old) == 1, text.count(old)
-          text = text.replace(old, new)
+          pidx = '    pidx = next((i for i, r in enumerate(unit.readings) if r.option == "0"), 0)'
+          assert text.count(pidx) == 1, text.count(pidx)
+          text = text.replace(
+              pidx,
+              '    ref_features = _ref_features(path, specs)\n' + pidx,
+          )
 
           old = '_surface(t, book, version, unit, primary, poption, path, specs)'
           new = '_surface(t, book, version, unit, primary, poption, ref_features)'
