@@ -73,6 +73,20 @@ def test_raw_audit_independently_classifies_and_maps_generated_translation(tmp_p
     }
 
 
+def test_raw_audit_does_not_depend_on_parser_generated_classifier(tmp_path: Path, monkeypatch) -> None:
+    (tmp_path / "Demo.xml").write_text(XML, encoding="utf-8")
+
+    # Simulate a broken/shared parser classifier. A logically independent raw
+    # audit must still reconstruct the OCP-Trans structure directly from XML.
+    monkeypatch.setattr(audit, "is_generated_translation_version", lambda _version: False)
+
+    raw = audit._raw_inventory(tmp_path)
+
+    assert len(raw["generated_translations"]) == 1
+    assert raw["generated_translations"][0]["marker"] == "OCP-Trans"
+    assert raw["generated_translations"][0]["unit_count"] == 3
+
+
 def test_conversion_report_proves_generated_text_and_alignment_from_raw_xml(tmp_path: Path) -> None:
     books = _source(tmp_path)
     data = build_tf_data(books, upstream_commit="pinned-ocp")
