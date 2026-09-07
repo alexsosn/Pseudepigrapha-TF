@@ -42,3 +42,35 @@ def detect_git_commit(path: str | Path) -> str:
     except (OSError, subprocess.CalledProcessError, subprocess.TimeoutExpired):
         return ""
     return result.stdout.strip()
+
+
+def git_source_is_clean(path: str | Path) -> bool:
+    """Return whether the supplied source directory exactly reflects Git HEAD.
+
+    Verification is deliberately conservative: any tracked, untracked, or
+    ignored filesystem change below the supplied directory makes the source
+    unsuitable for an exact pinned-source license assertion. Conversion may
+    still proceed; callers can downgrade provenance to unverified.
+    """
+
+    try:
+        result = subprocess.run(
+            [
+                "git",
+                "-C",
+                str(Path(path)),
+                "status",
+                "--porcelain=v1",
+                "--untracked-files=all",
+                "--ignored=matching",
+                "--",
+                ".",
+            ],
+            check=True,
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+    except (OSError, subprocess.CalledProcessError, subprocess.TimeoutExpired):
+        return False
+    return not result.stdout.strip()

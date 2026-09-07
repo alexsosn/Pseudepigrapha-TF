@@ -6,6 +6,7 @@ from pathlib import Path
 from . import audit as base
 from .graph import TFData
 from .model import Book
+from .provenance import corpus_license_provenance_is_consistent, report_provenance
 
 
 def _metadata_version_inventory(
@@ -487,6 +488,7 @@ def build_conversion_report(source_dir: str | Path, books: list[Book], data: TFD
     model_hashes = {book.source_path: book.source_sha256 for book in books}
     section_address_records = _section_address_records(data, node_index)
     section_address_collisions = _section_address_collisions_from_records(section_address_records)
+    generic = data.metadata.get("", {})
     generated_alignment_ok = (
         not raw_generated_mapping_failures
         and base._canonical(raw_generated_translations)
@@ -503,6 +505,7 @@ def build_conversion_report(source_dir: str | Path, books: list[Book], data: TFD
 
     checks = {
         "source_hashes": source_hashes == model_hashes,
+        "corpus_license_provenance": corpus_license_provenance_is_consistent(generic),
         "generated_translation_exclusions": base._canonical(raw_excluded_translations)
         == base._canonical(model_excluded_translations),
         "generated_translation_alignment": generated_alignment_ok,
@@ -629,7 +632,6 @@ def build_conversion_report(source_dir: str | Path, books: list[Book], data: TFD
         int(record["aligned_unit_count"]) for record in raw_generated_translations
     )
 
-    generic = data.metadata.get("", {})
     failed = [name for name, ok in checks.items() if not ok]
     return {
         "status": "ok" if not failed else "failed",
@@ -650,11 +652,7 @@ def build_conversion_report(source_dir: str | Path, books: list[Book], data: TFD
             "aligned_units": aligned_units,
             "alignment_coverage": aligned_units / generated_units if generated_units else 1.0,
         },
-        "provenance": {
-            "upstream_repository": generic.get("upstreamRepository", ""),
-            "upstream_commit": generic.get("upstreamCommit", ""),
-            "converter_version": generic.get("converterVersion", ""),
-        },
+        "provenance": report_provenance(generic),
     }
 
 

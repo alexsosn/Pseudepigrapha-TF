@@ -56,7 +56,18 @@ jobs:
           report = json.loads(Path('/tmp/pseudepigrapha-tf/0.1/conversion-report.json').read_text())
           assert report['status'] == 'ok', report['failed_checks']
           assert all(report['semantic_checks'].values())
+          assert report['provenance']['upstream_repository'] == 'https://github.com/OnlineCriticalPseudepigrapha/Online-Critical-Pseudepigrapha'
           assert report['provenance']['upstream_commit'] == 'c939dcbacad78c5d18d2c4282cad23c47e19ac07'
+          assert report['provenance']['source_identity_status'] == 'verified'
+          assert report['provenance']['content_license_status'] == 'verified'
+          assert report['provenance']['content_license'] == 'CC-BY-4.0'
+          assert report['provenance']['converter_software_license'] == 'MIT'
+          assert report['provenance']['upstream_software_license'] == 'GPL-3.0'
+          assert report['provenance']['upstream_license_commit'] == '8c8c2c55a2c55ba4b23ac506956f98dcc25045b2'
+          assert report['provenance']['content_license_source'].endswith('/blob/c939dcbacad78c5d18d2c4282cad23c47e19ac07/LICENSE.CC-BY-4.0')
+          assert 'content_license_diagnostic' not in report['provenance']
+          assert 'source_identity_diagnostic' not in report['provenance']
+          assert report['semantic_checks']['corpus_license_provenance'] is True
           assert report['source']['versions'] == report['graph']['versions']
           assert report['source']['readings'] == report['graph']['readings']
           assert report['source']['missing_unit_ids'] == report['graph']['missing_unit_ids'] == 1
@@ -91,7 +102,7 @@ jobs:
           assert report['semantic_checks']['public_metadata_provenance'] is True
           assert report['provenance']['intros_source'] == 'intros.json'
           assert len(report['provenance']['intros_sha256']) == 64
-          print(json.dumps({'source': report['source'], 'graph': report['graph'], 'generated_translations': report['generated_translations'], 'diagnostics': report['diagnostics']}, indent=2))
+          print(json.dumps({'source': report['source'], 'graph': report['graph'], 'generated_translations': report['generated_translations'], 'provenance': report['provenance'], 'diagnostics': report['diagnostics']}, indent=2))
           PY
       - name: Reload generated Text-Fabric dataset and verify interface semantics
         run: |
@@ -114,6 +125,18 @@ jobs:
           assert api.F.otype.maxSlot > 0
           assert api.F.otype.slotType == 'word'
           assert tuple(api.T.sectionTypes) == ('book', 'chapter', 'verse')
+
+          generic = api.TF.features['otype'].metaData
+          assert generic['sourceIdentityStatus'] == 'verified'
+          assert generic['contentLicenseStatus'] == 'verified'
+          assert generic['contentLicense'] == 'CC-BY-4.0'
+          assert generic['converterSoftwareLicense'] == 'MIT'
+          assert generic['upstreamSoftwareLicense'] == 'GPL-3.0'
+          assert generic['upstreamCommit'] == 'c939dcbacad78c5d18d2c4282cad23c47e19ac07'
+          assert generic['upstreamLicenseCommit'] == '8c8c2c55a2c55ba4b23ac506956f98dcc25045b2'
+          assert generic['contentLicenseSource'].endswith('/blob/c939dcbacad78c5d18d2c4282cad23c47e19ac07/LICENSE.CC-BY-4.0')
+          assert 'contentLicenseDiagnostic' not in generic
+          assert 'sourceIdentityDiagnostic' not in generic
 
           synthetic = [
               n for n in api.F.otype.s('manuscript')
