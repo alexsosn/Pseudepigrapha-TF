@@ -69,7 +69,9 @@ def test_app_does_not_claim_unpublished_remote_tf_data_or_single_writing_system(
     cfg = _config()
     provenance = cfg["provenanceSpec"]
 
-    assert provenance["version"] == 0.1 or provenance["version"] == "0.1"
+    # Text-Fabric composes provenance paths from strings; an unquoted YAML
+    # 0.1 becomes a float and crashes advanced-app startup in TF 13.1.0.
+    assert provenance["version"] == "0.1"
     assert not ({"org", "repo", "relative"} & set(provenance))
     assert not ({"webBase", "webUrl", "webUrlLex"} & set(provenance))
     assert "writing" not in cfg
