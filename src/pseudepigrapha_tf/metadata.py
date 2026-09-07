@@ -356,12 +356,23 @@ def _raw_public_metadata(source_dir: Path) -> tuple[dict[str, Any], str, dict[st
     return documents, hashlib.sha256(raw).hexdigest(), source_meta
 
 
-def _graph_public_metadata(data: TFData) -> tuple[dict[str, Any], list[str], list[str]]:
+def _graph_public_metadata(
+    data: TFData,
+) -> tuple[dict[str, Any], list[str], list[str], list[dict[str, Any]]]:
     documents: dict[str, Any] = {}
     errors: list[str] = []
     duplicates: list[str] = []
+    orphan_feature_owners: list[dict[str, Any]] = []
     otype = data.node_features.get("otype", {})
     source_files = data.node_features.get("source_file", {})
+
+    for feature in ALL_INTRO_FEATURES:
+        for node in data.node_features.get(feature, {}):
+            node_type = otype.get(node)
+            if node_type != "document_metadata":
+                orphan_feature_owners.append(
+                    {"node": node, "node_type": node_type, "feature": feature}
+                )
 
     for node, kind in otype.items():
         if kind != "document_metadata":
@@ -388,7 +399,10 @@ def _graph_public_metadata(data: TFData) -> tuple[dict[str, Any], list[str], lis
         except (TypeError, ValueError, json.JSONDecodeError) as exc:
             errors.append(f"{filename}: {exc}")
         documents[filename] = entry
-    return documents, errors, duplicates
+    orphan_feature_owners.sort(
+        key=lambda record: (record["feature"], repr(record["node"]))
+    )
+    return documents, errors, duplicates, orphan_feature_owners
 
 
 def _public_scalar_count(documents: Mapping[str, Any]) -> int:
@@ -416,7 +430,12 @@ def augment_conversion_report_with_public_metadata(
         return report
 
     raw_documents, raw_sha256, source_meta = _raw_public_metadata(source_dir)
-    graph_documents, decode_errors, duplicate_files = _graph_public_metadata(data)
+    (
+        graph_documents,
+        decode_errors,
+        duplicate_files,
+        orphan_feature_owners,
+    ) = _graph_public_metadata(data)
     generic = data.metadata.get("", {})
 
     checks = report.setdefault("semantic_checks", {})
@@ -424,7 +443,10 @@ def augment_conversion_report_with_public_metadata(
         set(raw_documents) == set(graph_documents) and not duplicate_files
     )
     checks["public_metadata_values"] = (
-        raw_documents == graph_documents and not decode_errors and not duplicate_files
+        raw_documents == graph_documents
+        and not decode_errors
+        and not duplicate_files
+        and not orphan_feature_owners
     )
     checks["public_metadata_provenance"] = (
         generic.get("introsSource") == intro_path.name
@@ -444,6 +466,7 @@ def augment_conversion_report_with_public_metadata(
         "source_meta": source_meta,
         "decode_errors": decode_errors,
         "duplicate_graph_files": duplicate_files,
+        "orphan_feature_owners": orphan_feature_owners,
     }
 
     failed = [name for name, ok in checks.items() if not ok]
