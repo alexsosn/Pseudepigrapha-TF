@@ -49,19 +49,21 @@ def corpus_license_metadata(
     repository: str,
     commit: str,
     *,
-    source_identity_verified: bool = True,
+    source_identity_verified: bool = False,
 ) -> dict[str, str]:
     """Return the researched license profile for one exact source tuple.
 
-    A caller that has independent access to the source checkout can set
-    ``source_identity_verified=False`` so a recorded pin cannot by itself create
-    a verified license assertion.
+    Merely recording a repository and SHA cannot attest the bytes being
+    converted. Low-level graph construction therefore starts unverified by
+    default. A caller with independent access to the checkout must explicitly
+    attest source identity before the verified profile can be emitted.
     """
 
     base = {"converterSoftwareLicense": CONVERTER_SOFTWARE_LICENSE}
     if source_identity_verified and repository == OCP_REPOSITORY and commit == OCP_PIN:
         return {
             **base,
+            "sourceIdentityStatus": "verified",
             "contentLicenseStatus": "verified",
             "contentLicense": OCP_CONTENT_LICENSE,
             "contentLicenseUrl": OCP_CONTENT_LICENSE_URL,
@@ -85,6 +87,8 @@ def corpus_license_metadata(
         )
     return {
         **base,
+        "sourceIdentityStatus": "unverified",
+        "sourceIdentityDiagnostic": "source checkout identity has not been independently attested",
         "contentLicenseStatus": "unverified",
         "contentLicenseDiagnostic": diagnostic,
     }
@@ -136,16 +140,22 @@ def corpus_license_provenance_is_consistent(generic: Mapping[str, object]) -> bo
     repository = str(generic.get("upstreamRepository", ""))
     commit = str(generic.get("upstreamCommit", ""))
     identity_status = generic.get("sourceIdentityStatus")
-    if identity_status not in (None, "verified", "unverified"):
+    if identity_status not in ("verified", "unverified"):
         return False
-    source_identity_verified = identity_status != "unverified"
+    source_identity_verified = identity_status == "verified"
     expected = corpus_license_metadata(
         repository,
         commit,
         source_identity_verified=source_identity_verified,
     )
 
-    if any(generic.get(key) != value for key, value in expected.items()):
+    # The source-identity diagnostic is allowed to be more specific after the
+    # CLI has compared recorded/detected commits and filesystem cleanliness.
+    if any(
+        generic.get(key) != value
+        for key, value in expected.items()
+        if key != "sourceIdentityDiagnostic"
+    ):
         return False
     if expected["contentLicenseStatus"] == "unverified":
         if any(key in generic for key in _VERIFIED_ONLY_KEYS):
