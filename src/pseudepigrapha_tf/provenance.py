@@ -51,19 +51,27 @@ def corpus_license_metadata(
     *,
     source_identity_verified: bool = False,
 ) -> dict[str, str]:
-    """Return the researched license profile for one exact source tuple.
+    """Return source-identity and researched license provenance for one source tuple.
 
-    Merely recording a repository and SHA cannot attest the bytes being
-    converted. Low-level graph construction therefore starts unverified by
-    default. A caller with independent access to the checkout must explicitly
-    attest source identity before the verified profile can be emitted.
+    Source identity and license verification are separate claims. Merely recording
+    a repository and SHA cannot attest the bytes being converted, so low-level
+    graph construction starts source-unverified. Once a caller independently
+    attests the checkout, the source identity can become verified even when this
+    converter has no researched license profile for that exact repository/commit.
     """
 
-    base = {"converterSoftwareLicense": CONVERTER_SOFTWARE_LICENSE}
+    base = {
+        "converterSoftwareLicense": CONVERTER_SOFTWARE_LICENSE,
+        "sourceIdentityStatus": "verified" if source_identity_verified else "unverified",
+    }
+    if not source_identity_verified:
+        base["sourceIdentityDiagnostic"] = (
+            "source checkout identity has not been independently attested"
+        )
+
     if source_identity_verified and repository == OCP_REPOSITORY and commit == OCP_PIN:
         return {
             **base,
-            "sourceIdentityStatus": "verified",
             "contentLicenseStatus": "verified",
             "contentLicense": OCP_CONTENT_LICENSE,
             "contentLicenseUrl": OCP_CONTENT_LICENSE_URL,
@@ -75,20 +83,18 @@ def corpus_license_metadata(
             "contentCitation": OCP_CONTENT_CITATION,
         }
 
-    if not source_identity_verified:
-        diagnostic = (
-            "recorded upstream commit/source tree was not independently verified: "
-            f"upstreamRepository={repository!r}, upstreamCommit={commit!r}"
-        )
-    else:
+    if source_identity_verified:
         diagnostic = (
             "no verified corpus-license profile for "
             f"upstreamRepository={repository!r}, upstreamCommit={commit!r}"
         )
+    else:
+        diagnostic = (
+            "recorded upstream commit/source tree was not independently verified: "
+            f"upstreamRepository={repository!r}, upstreamCommit={commit!r}"
+        )
     return {
         **base,
-        "sourceIdentityStatus": "unverified",
-        "sourceIdentityDiagnostic": "source checkout identity has not been independently attested",
         "contentLicenseStatus": "unverified",
         "contentLicenseDiagnostic": diagnostic,
     }
@@ -100,11 +106,12 @@ def attest_corpus_license_source_identity(
     *,
     source_tree_clean: bool = True,
 ) -> None:
-    """Rebuild license metadata from independently detected checkout identity.
+    """Rebuild provenance from independently detected checkout identity.
 
     The recorded upstream commit remains useful provenance even when explicitly
     overridden, but an override or dirty source tree cannot make a checkout look
-    like the researched source pin.
+    like the researched source pin. A clean exact checkout of an unresearched
+    commit is still source-verified while its license profile remains unverified.
     """
 
     repository = str(generic.get("upstreamRepository", ""))
@@ -121,7 +128,6 @@ def attest_corpus_license_source_identity(
             source_identity_verified=identity_verified,
         )
     )
-    generic["sourceIdentityStatus"] = "verified" if identity_verified else "unverified"
     if not identity_verified:
         reasons: list[str] = []
         if not commit_matches:
@@ -135,7 +141,7 @@ def attest_corpus_license_source_identity(
 
 
 def corpus_license_provenance_is_consistent(generic: Mapping[str, object]) -> bool:
-    """Check that a graph neither drops nor overclaims its source license profile."""
+    """Check that a graph neither drops nor overclaims its source/license profile."""
 
     repository = str(generic.get("upstreamRepository", ""))
     commit = str(generic.get("upstreamCommit", ""))
@@ -149,8 +155,8 @@ def corpus_license_provenance_is_consistent(generic: Mapping[str, object]) -> bo
         source_identity_verified=source_identity_verified,
     )
 
-    # The source-identity diagnostic is allowed to be more specific after the
-    # CLI has compared recorded/detected commits and filesystem cleanliness.
+    # The source-identity diagnostic may be more specific after the CLI has
+    # compared recorded/detected commits and filesystem cleanliness.
     if any(
         generic.get(key) != value
         for key, value in expected.items()
