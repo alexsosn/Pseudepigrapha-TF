@@ -9,6 +9,7 @@ from tf.fabric import Fabric
 from pseudepigrapha_tf.conversion import build_tf_data
 from pseudepigrapha_tf.metadata import attach_public_metadata, load_public_metadata
 from pseudepigrapha_tf.parser import parse_file
+from pseudepigrapha_tf.provenance import attest_corpus_license_source_identity
 from pseudepigrapha_tf.semantic_audit import build_conversion_report
 from pseudepigrapha_tf.source import load_source_directory
 from pseudepigrapha_tf.writer import write_tf
@@ -24,12 +25,17 @@ GENERAL_CITATION = (
 )
 
 
-def _pinned_data():
-    return build_tf_data(
+def _pinned_data(*, attested: bool = True):
+    data = build_tf_data(
         [parse_file(FIXTURES / "sample.xml")],
         upstream_repository=OCP_REPOSITORY,
         upstream_commit=OCP_PIN,
     )
+    if attested:
+        attest_corpus_license_source_identity(
+            data.metadata[""], OCP_PIN, source_tree_clean=True
+        )
+    return data
 
 
 def _single_source(tmp_path: Path) -> Path:
@@ -39,9 +45,21 @@ def _single_source(tmp_path: Path) -> Path:
     return docs
 
 
-def test_exact_supported_ocp_pin_exposes_verified_content_license_and_separate_software_licenses():
+def test_low_level_build_cannot_self_attest_verified_content_license_from_sha_alone():
+    generic = _pinned_data(attested=False).metadata[""]
+
+    assert generic["upstreamCommit"] == OCP_PIN
+    assert generic["sourceIdentityStatus"] == "unverified"
+    assert generic["contentLicenseStatus"] == "unverified"
+    assert "contentLicense" not in generic
+    assert "upstreamLicenseCommit" not in generic
+    assert generic["sourceIdentityDiagnostic"]
+
+
+def test_exact_supported_ocp_pin_exposes_verified_content_license_and_separate_software_licenses_after_attestation():
     generic = _pinned_data().metadata[""]
 
+    assert generic["sourceIdentityStatus"] == "verified"
     assert generic["contentLicense"] == "CC-BY-4.0"
     assert generic["contentLicenseStatus"] == "verified"
     assert generic["contentLicenseScope"] == "OCP text editions and TEI XML files under static/docs/"
@@ -65,6 +83,7 @@ def test_non_pinned_source_remains_convertible_but_cannot_inherit_verified_cc_by
     generic = data.metadata[""]
 
     assert generic["upstreamCommit"] == "deadbeef"
+    assert generic["sourceIdentityStatus"] == "unverified"
     assert generic["contentLicenseStatus"] == "unverified"
     assert "contentLicense" not in generic
     assert "contentLicenseScope" not in generic
@@ -80,6 +99,7 @@ def test_conversion_report_mirrors_verified_graph_provenance(tmp_path: Path):
         upstream_repository=OCP_REPOSITORY,
         upstream_commit=OCP_PIN,
     )
+    attest_corpus_license_source_identity(data.metadata[""], OCP_PIN, source_tree_clean=True)
 
     report = build_conversion_report(docs, books, data)
     provenance = report["provenance"]
@@ -87,6 +107,7 @@ def test_conversion_report_mirrors_verified_graph_provenance(tmp_path: Path):
     assert report["semantic_checks"]["corpus_license_provenance"] is True
     assert provenance["upstream_repository"] == OCP_REPOSITORY
     assert provenance["upstream_commit"] == OCP_PIN
+    assert provenance["source_identity_status"] == "verified"
     assert provenance["content_license"] == data.metadata[""]["contentLicense"]
     assert provenance["content_license_status"] == "verified"
     assert provenance["content_license_scope"] == data.metadata[""]["contentLicenseScope"]
@@ -104,6 +125,7 @@ def test_semantic_audit_rejects_contradictory_verified_license_source_tuple(tmp_
         upstream_repository=OCP_REPOSITORY,
         upstream_commit=OCP_PIN,
     )
+    attest_corpus_license_source_identity(data.metadata[""], OCP_PIN, source_tree_clean=True)
 
     data.metadata[""]["upstreamCommit"] = "different-source"
     report = build_conversion_report(docs, books, data)
@@ -125,6 +147,7 @@ def test_generic_license_provenance_survives_real_text_fabric_reload(tmp_path: P
     # Text-Fabric applies generic metadata to serialized features. Read it back
     # from a mandatory loaded feature instead of inspecting the pre-save object.
     generic = api.TF.features["otype"].metaData
+    assert generic["sourceIdentityStatus"] == "verified"
     assert generic["contentLicense"] == "CC-BY-4.0"
     assert generic["contentLicenseStatus"] == "verified"
     assert generic["converterSoftwareLicense"] == "MIT"
@@ -164,6 +187,7 @@ def test_corpus_license_metadata_coexists_with_lossless_per_work_attribution(tmp
         upstream_repository=OCP_REPOSITORY,
         upstream_commit=OCP_PIN,
     )
+    attest_corpus_license_source_identity(data.metadata[""], OCP_PIN, source_tree_clean=True)
     attach_public_metadata(data, load_public_metadata(docs))
 
     node = next(
