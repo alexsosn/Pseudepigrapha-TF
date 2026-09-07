@@ -21,6 +21,17 @@ TECHNICAL_TYPES = {
     "document_metadata",
 }
 
+OWN_CONTENT_TEMPLATES = {
+    "reading": "{reading_text}",
+    "variant_word": "{prefix_utf8}{g_word_utf8}{trailer_utf8}",
+    "manuscript": "{ms_abbrev}",
+    "resource": "{resource_name}",
+    "version_metadata": "{version_title}",
+    "ellipsis": "{ellipsis_text}",
+    "orphan_reading": "{reading_text}",
+    "document_metadata": "{intro_label}",
+}
+
 
 def _config():
     return readYaml(asFile=str(CONFIG), plain=True)
@@ -50,6 +61,16 @@ def test_app_has_explicit_policies_for_all_technical_anchor_types():
     assert TECHNICAL_TYPES <= set(type_display)
     for node_type in TECHNICAL_TYPES:
         assert type_display[node_type].get("hidden") is True, node_type
+
+    # Structural locus nodes remain traversable structures. Nodes whose own
+    # content differs from their oslots support are base nodes with explicit
+    # own-content templates, so the global text-orig-full format cannot leak
+    # technical anchor words into their advanced-app rendering.
+    assert type_display["div"].get("base") is not True
+    assert type_display["unit"].get("base") is not True
+    for node_type, template in OWN_CONTENT_TEMPLATES.items():
+        assert type_display[node_type].get("base") is True, node_type
+        assert type_display[node_type].get("template") == template, node_type
 
     assert type_display["variant_word"]["level"] == 0
     assert type_display["manuscript"]["label"] == "{ms_abbrev}"
