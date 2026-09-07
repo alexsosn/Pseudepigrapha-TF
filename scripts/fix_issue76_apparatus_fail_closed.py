@@ -39,14 +39,8 @@ replace_exact(
 replace_exact(
     '                    if synthetic_witness is None or synthetic_witness.v(manuscript) != 1\n',
     '                    if synthetic_witness.v(manuscript) != 1\n',
-    1,
-    "unit apparatus synthetic filter",
-)
-replace_exact(
-    '                        if synthetic_witness is None or synthetic_witness.v(manuscript) != 1\n',
-    '                        if synthetic_witness.v(manuscript) != 1\n',
-    1,
-    "passage synthetic filter",
+    2,
+    "apparatus and passage synthetic filters",
 )
 
 replace_exact(
