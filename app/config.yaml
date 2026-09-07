@@ -31,7 +31,7 @@ typeDisplay:
   reading:
     hidden: true
     base: true
-    template: true
+    template: '{reading_text}'
     label: 'reading {reading_option_source}'
     features: is_primary is_omission
     featuresBare: mss
@@ -39,43 +39,43 @@ typeDisplay:
   variant_word:
     hidden: true
     base: true
-    template: true
+    template: '{prefix_utf8}{g_word_utf8}{trailer_utf8}'
     level: 0
 
   manuscript:
     hidden: true
     base: true
-    template: true
+    template: '{ms_abbrev}'
     label: '{ms_abbrev}'
 
   resource:
     hidden: true
     base: true
-    template: true
+    template: '{resource_name}'
     label: '{resource_name}'
 
   version_metadata:
     hidden: true
     base: true
-    template: true
+    template: '{version_title}'
     label: '{version_title}'
 
   ellipsis:
     hidden: true
     base: true
-    template: true
+    template: '{ellipsis_text}'
     label: '{ellipsis_text}'
     featuresBare: source_ref
 
   orphan_reading:
     hidden: true
     base: true
-    template: true
+    template: '{reading_text}'
     label: 'orphan reading {reading_option_source}'
     featuresBare: source_ref
 
   document_metadata:
     hidden: true
     base: true
-    template: true
+    template: '{intro_label}'
     label: '{intro_label}'
