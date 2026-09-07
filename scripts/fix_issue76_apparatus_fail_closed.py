@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 
+# Temporary fail-closed transform; removed by its green runner.
 ROOT = Path(__file__).resolve().parents[1]
 PATH = ROOT / "src" / "pseudepigrapha_tf" / "apparatus.py"
 text = PATH.read_text(encoding="utf-8")
