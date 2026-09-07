@@ -186,3 +186,14 @@ def test_apparatus_rejects_explicit_synthetic_manuscript_helpers():
         apparatus.witness_reading(10, 51)
     with pytest.raises(ValueError, match="synthetic"):
         apparatus.witness_text(51, units=(10,))
+
+
+def test_private_passage_context_rejects_generated_units():
+    apparatus = Apparatus(translation_api())
+
+    with pytest.raises(ValueError, match="generated translation"):
+        apparatus._passage_from_context(
+            ("Demo__translation__French", "1", "1"),
+            100,
+            {},
+        )
