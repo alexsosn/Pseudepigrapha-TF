@@ -813,6 +813,16 @@ def build_tf_data(
     _mark_known_missing_unit_ids(data, books, book_shapes)
     _validate_generated_alignment(data)
 
+    if any(
+        value == "generated_translation"
+        for value in data.node_features.get("version_kind", {}).values()
+    ):
+        # Generic TF metadata is copied into every serialized feature's metadata.
+        # This corpus capability marker therefore remains discoverable through
+        # the always-loaded otype feature even when provenance features are not
+        # part of a researcher's selective load.
+        data.metadata[""]["generatedTranslationLayer"] = "1"
+
     data.metadata["otext"]["fmt:version_metadata-default"] = "{version_title}"
     data.metadata["otext"]["fmt:ellipsis-default"] = "{ellipsis_text}"
     data.metadata["otext"]["fmt:orphan_reading-default"] = "{reading_text}"

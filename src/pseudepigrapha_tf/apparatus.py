@@ -35,6 +35,47 @@ class Apparatus:
             raise ValueError(f"edge feature {name!r} must be loaded for this Apparatus operation")
         return edge
 
+    def _generated_layer_declared(self) -> bool:
+        """Detect generated-capable corpora without requiring optional features to be loaded."""
+
+        tf = getattr(self.api, "TF", None)
+        features = getattr(tf, "features", None)
+        if not isinstance(features, dict):
+            return False
+        otype_info = features.get("otype")
+        metadata = getattr(otype_info, "metaData", None) if otype_info is not None else None
+        return isinstance(metadata, dict) and str(metadata.get("generatedTranslationLayer", "")) == "1"
+
+    def _version_kind_feature(self):
+        if self._generated_layer_declared():
+            return self._require_feature("version_kind")
+        return getattr(self.api.F, "version_kind", None)
+
+    def _synthetic_witness_feature(self):
+        if self._generated_layer_declared():
+            return self._require_feature("synthetic_witness")
+        return getattr(self.api.F, "synthetic_witness", None)
+
+    def _reject_generated_unit(self, unit: int) -> None:
+        if not self._generated_layer_declared():
+            return
+        version_kind = self._require_feature("version_kind")
+        if self._required_feature_value(version_kind, "version_kind", unit) == "generated_translation":
+            raise ValueError(
+                f"unit {unit} belongs to a generated translation; use Translations for aligned text, "
+                "not historical apparatus semantics"
+            )
+
+    def _reject_synthetic_manuscript(self, manuscript: int) -> None:
+        if not self._generated_layer_declared():
+            return
+        synthetic_witness = self._require_feature("synthetic_witness")
+        if synthetic_witness.v(manuscript) == 1:
+            raise ValueError(
+                f"manuscript {manuscript} is a synthetic translation provenance witness, "
+                "not a historical manuscript"
+            )
+
     def _book_id(self, book_node: int) -> str:
         """Resolve the canonical TF book/section id for a textual version."""
 
@@ -44,7 +85,7 @@ class Apparatus:
         return str(section[0])
 
     def _is_generated_book(self, book_node: int) -> bool:
-        version_kind = getattr(self.api.F, "version_kind", None)
+        version_kind = self._version_kind_feature()
         return version_kind is not None and version_kind.v(book_node) == "generated_translation"
 
     def _witnesses(self, owner: int) -> dict[str, dict[str, object]]:
@@ -55,7 +96,7 @@ class Apparatus:
             raise ValueError("manuscript_of edge feature must be loaded for this Apparatus operation")
         ms_abbrev = self._require_feature("ms_abbrev")
         undefined_manuscript = self._require_feature("undefined_manuscript")
-        synthetic_witness = getattr(self.api.F, "synthetic_witness", None)
+        synthetic_witness = self._synthetic_witness_feature()
         nodes = tuple(
             sorted(
                 (
@@ -120,6 +161,8 @@ class Apparatus:
         return variants
 
     def witness_reading(self, unit: int, manuscript: int) -> int | None:
+        self._reject_generated_unit(unit)
+        self._reject_synthetic_manuscript(manuscript)
         witness = self._require_edge("witness")
         matches = [
             reading
@@ -161,6 +204,7 @@ class Apparatus:
         return self._state_for_reading(unit, self.witness_reading(unit, manuscript))
 
     def witness_text(self, manuscript: int, units: Iterable[int] | None = None) -> str:
+        self._reject_synthetic_manuscript(manuscript)
         if units is None:
             otype = getattr(self.api.F, "otype", None)
             node_type = getattr(otype, "v", None) if otype is not None else None
@@ -220,9 +264,10 @@ class Apparatus:
         return " ".join(chunks)
 
     def apparatus(self, unit: int) -> tuple[dict[str, object], ...]:
+        self._reject_generated_unit(unit)
         is_primary = self._require_feature("is_primary")
         witness = self._require_edge("witness")
-        synthetic_witness = getattr(self.api.F, "synthetic_witness", None)
+        synthetic_witness = self._synthetic_witness_feature()
         result = []
         for reading in self.unit_readings(unit):
             witness_nodes = tuple(
@@ -252,7 +297,7 @@ class Apparatus:
         ms_abbrev = self._require_feature("ms_abbrev")
         unit_id = self._require_feature("unit_id")
         witness = self._require_edge("witness")
-        synthetic_witness = getattr(self.api.F, "synthetic_witness", None)
+        synthetic_witness = self._synthetic_witness_feature()
         units = tuple(self.api.L.d(verse_node, otype="unit"))
         source_refs: list[str] = []
         unit_records: list[dict[str, object]] = []
@@ -365,7 +410,7 @@ class Apparatus:
         work = str(work)
         chapter = str(chapter)
         verse = str(verse)
-        version_kind = getattr(self.api.F, "version_kind", None)
+        version_kind = self._version_kind_feature()
 
         textual_versions = tuple(
             sorted(
