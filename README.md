@@ -255,3 +255,16 @@ M['3Macc']                            # works even though pinned 3Macc.xml has n
 ```
 
 Dataset-level TF metadata records `introsSource`, `introsSha256`, and the export date when supplied upstream. `conversion-report.json` independently rereads raw `intros.json` and checks document coverage, scalar values, and provenance against the graph, so corrupt or dropped metadata fails the same semantic parity gate as XML conversion.
+
+
+## Historical OCP catalogue classifications
+
+The generated corpus exposes the public OCP genre and biblical-figure catalogue assignments recovered from the historical 2017 snapshot as an explicitly historical metadata layer. No classifications are inferred for later works absent from that snapshot. See [`docs/historical-classifications.md`](docs/historical-classifications.md) for the source boundary, provenance, full controlled vocabularies, and audit details.
+
+```python
+from pseudepigrapha_tf import HistoricalClassifications
+
+C = HistoricalClassifications(api)
+C.works_by_genre("testaments")
+C.works_by_figure("Moses")
+```
