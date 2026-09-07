@@ -91,6 +91,32 @@ def test_non_pinned_source_remains_convertible_but_cannot_inherit_verified_cc_by
     assert "deadbeef" in generic["contentLicenseDiagnostic"]
 
 
+def test_clean_unknown_commit_can_be_source_verified_without_claiming_verified_license(tmp_path: Path):
+    docs = _single_source(tmp_path)
+    books, _ = load_source_directory(docs)
+    data = build_tf_data(
+        books,
+        upstream_repository=OCP_REPOSITORY,
+        upstream_commit="deadbeef",
+    )
+    attest_corpus_license_source_identity(
+        data.metadata[""], "deadbeef", source_tree_clean=True
+    )
+
+    generic = data.metadata[""]
+    assert generic["sourceIdentityStatus"] == "verified"
+    assert "sourceIdentityDiagnostic" not in generic
+    assert generic["contentLicenseStatus"] == "unverified"
+    assert "contentLicense" not in generic
+    assert "upstreamLicenseCommit" not in generic
+
+    report = build_conversion_report(docs, books, data)
+    assert report["status"] == "ok", report["failed_checks"]
+    assert report["semantic_checks"]["corpus_license_provenance"] is True
+    assert report["provenance"]["source_identity_status"] == "verified"
+    assert report["provenance"]["content_license_status"] == "unverified"
+
+
 def test_conversion_report_mirrors_verified_graph_provenance(tmp_path: Path):
     docs = _single_source(tmp_path)
     books, _ = load_source_directory(docs)
