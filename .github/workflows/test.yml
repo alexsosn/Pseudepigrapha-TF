@@ -36,8 +36,36 @@ jobs:
         with:
           python-version: '3.12'
           cache: pip
-      - name: Install
-        run: pip install -e '.[dev]'
+      - name: Build release wheel
+        run: |
+          python -m pip install build
+          python -m build --wheel
+      - name: Install release wheel in fresh environment
+        run: |
+          python -m venv /tmp/pseudepigrapha-tf-release-venv
+          /tmp/pseudepigrapha-tf-release-venv/bin/python -m pip install --upgrade pip
+          /tmp/pseudepigrapha-tf-release-venv/bin/python -m pip install dist/pseudepigrapha_tf-0.1.0-py3-none-any.whl
+          echo "/tmp/pseudepigrapha-tf-release-venv/bin" >> "$GITHUB_PATH"
+      - name: Verify installed release contract
+        run: |
+          cd /tmp
+          python - <<'PY'
+          from importlib.metadata import version
+          from pathlib import Path
+
+          import pseudepigrapha_tf
+          from pseudepigrapha_tf.classifications import load_historical_classifications
+
+          assert version('pseudepigrapha-tf') == '0.1.0'
+          assert pseudepigrapha_tf.__version__ == '0.1.0'
+          installed = Path(pseudepigrapha_tf.__file__).resolve()
+          assert '/tmp/pseudepigrapha-tf-release-venv/' in str(installed), installed
+          classifications = load_historical_classifications()
+          assert classifications.documents
+          assert classifications.source_file == 'ocp_classifications_2017.json'
+          PY
+          pseudepigrapha-tf --help >/tmp/pseudepigrapha-tf-help.txt
+          grep -q 'Convert Online Critical Pseudepigrapha XML to Text-Fabric' /tmp/pseudepigrapha-tf-help.txt
       - name: Clone pinned OCP source
         run: |
           git clone https://github.com/OnlineCriticalPseudepigrapha/Online-Critical-Pseudepigrapha.git /tmp/ocp
