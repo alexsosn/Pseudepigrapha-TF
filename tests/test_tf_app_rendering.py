@@ -6,6 +6,11 @@ pytest.importorskip("tf")
 from tf.advanced.app import findApp
 
 from pseudepigrapha_tf.conversion import build_tf_data
+from pseudepigrapha_tf.metadata import (
+    PublicMetadataCorpus,
+    PublicMetadataDocument,
+    attach_public_metadata,
+)
 from pseudepigrapha_tf.parser import parse_file
 from pseudepigrapha_tf.writer import write_tf
 
@@ -18,6 +23,29 @@ def _materialize(tmp_path, *fixture_names):
     names = fixture_names or ("sample.xml",)
     books = [parse_file(FIXTURES / name) for name in names]
     assert write_tf(build_tf_data(books), output)
+    return output
+
+
+def _materialize_with_document_metadata(tmp_path):
+    output = tmp_path / "tf"
+    data = build_tf_data([parse_file(FIXTURES / "sample.xml")])
+    document = PublicMetadataDocument(
+        filename="Sample.xml",
+        title="Sample public metadata",
+        version="test",
+        citation=None,
+        citation_present=False,
+        fields={},
+    )
+    attach_public_metadata(
+        data,
+        PublicMetadataCorpus(
+            documents={document.filename: document},
+            source_sha256="0" * 64,
+            source_meta={},
+        ),
+    )
+    assert write_tf(data, output)
     return output
 
 
@@ -68,6 +96,21 @@ def test_pretty_alternative_reading_does_not_render_primary_anchor_text(tmp_path
 
     assert "κυρίου" in html, html
     assert "θεοῦ" not in html, html
+
+
+def test_pretty_explicit_omission_remains_visibly_distinct_from_reading(tmp_path):
+    app = _load_app_for_rendering(tmp_path)
+    api = app.api
+    omission = next(
+        node
+        for node in api.F.otype.s("reading")
+        if api.F.is_primary.v(node) == 1 and api.F.is_omission.v(node) == 1
+    )
+
+    html = app.pretty(omission, _asString=True)
+
+    assert "is_omission" in html, html
+    assert "πλήρης" not in html, html
 
 
 def test_pretty_variant_word_uses_variant_surface_not_primary_anchor_text(tmp_path):
@@ -155,6 +198,19 @@ def test_pretty_metadata_only_version_uses_version_title_not_anchor_text(tmp_pat
     assert anchor and anchor != "Coptic"
     html = app.pretty(node, _asString=True)
     assert "Coptic" in html, html
+    assert anchor not in html, html
+
+
+def test_pretty_document_metadata_uses_intro_label_not_anchor_text(tmp_path):
+    app = _find_local_app(_materialize_with_document_metadata(tmp_path), version="0.1")
+    assert app is not None and app.api is not None
+    api = app.api
+    node = next(iter(api.F.otype.s("document_metadata")))
+    anchor = _anchor_text(api, node)
+
+    assert anchor and anchor != "Sample public metadata"
+    html = app.pretty(node, _asString=True)
+    assert "Sample public metadata" in html, html
     assert anchor not in html, html
 
 
