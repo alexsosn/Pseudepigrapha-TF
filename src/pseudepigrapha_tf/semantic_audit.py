@@ -11,9 +11,11 @@ for _name in dir(_core):
     if not _name.startswith("__") and _name not in {"build_conversion_report", "write_conversion_report"}:
         globals()[_name] = getattr(_core, _name)
 
+_BASE_METADATA_VERSION_INVENTORY = _core._metadata_version_inventory
+
 
 def _metadata_version_inventory_with_kind(data: TFData, node_index: dict[str, list[int]] | None = None) -> tuple[list[dict], list[dict]]:
-    versions, specs = _core._metadata_version_inventory(data, node_index)
+    versions, specs = _BASE_METADATA_VERSION_INVENTORY(data, node_index)
     nodes = audit._nodes(data, "version_metadata", node_index)
     if len(versions) != len(nodes):
         raise ValueError(

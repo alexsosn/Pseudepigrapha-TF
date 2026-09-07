@@ -60,11 +60,29 @@ jobs:
           assert report['source']['versions'] == report['graph']['versions']
           assert report['source']['readings'] == report['graph']['readings']
           assert report['source']['missing_unit_ids'] == report['graph']['missing_unit_ids'] == 1
-          assert report['source']['excluded_generated_translation_versions'] > 0
+          assert report['source']['excluded_generated_translation_versions'] == 0
+          assert report['diagnostics']['excluded_generated_translation_versions'] == []
+          assert report['source']['generated_translation_versions'] == 231
+          assert report['graph']['generated_translation_versions'] == 231
+          assert report['source']['generated_translation_units'] == 54143
+          assert report['graph']['generated_translation_units'] == 54143
+          assert report['graph']['translation_of_edges'] == 231
+          assert report['graph']['translation_unit_of_edges'] == 54143
+          assert report['graph']['synthetic_witnesses'] == 231
+          assert report['semantic_checks']['generated_translation_alignment'] is True
+          assert report['semantic_checks']['generated_translation_provenance'] is True
+          assert report['diagnostics']['generated_translation_mapping_failures'] == []
+          assert report['generated_translations']['versions'] == 231
+          assert report['generated_translations']['units'] == 54143
+          assert report['generated_translations']['aligned_units'] == 54143
+          assert report['generated_translations']['alignment_coverage'] == 1.0
+          assert report['generated_translations']['by_language'] == {
+              'English': {'versions': 115, 'units': 27040},
+              'French': {'versions': 116, 'units': 27103},
+          }
           assert report['graph']['metadata_only_versions'] >= 1
           assert report['graph']['slots'] > 0
           assert report['graph']['oslots_edges'] > 0
-          assert report['diagnostics']['excluded_generated_translation_versions']
           assert report['source']['public_metadata_documents'] == 32
           assert report['graph']['document_metadata'] == 32
           assert report['source']['public_metadata_scalars'] == report['graph']['public_metadata_scalars']
@@ -73,20 +91,23 @@ jobs:
           assert report['semantic_checks']['public_metadata_provenance'] is True
           assert report['provenance']['intros_source'] == 'intros.json'
           assert len(report['provenance']['intros_sha256']) == 64
-          print(json.dumps({'source': report['source'], 'graph': report['graph'], 'diagnostics': report['diagnostics']}, indent=2))
+          print(json.dumps({'source': report['source'], 'graph': report['graph'], 'generated_translations': report['generated_translations'], 'diagnostics': report['diagnostics']}, indent=2))
           PY
       - name: Reload generated Text-Fabric dataset and verify interface semantics
         run: |
           python - <<'PY'
+          from collections import Counter
+
           from tf.fabric import Fabric
-          from pseudepigrapha_tf import Apparatus
+          from pseudepigrapha_tf import Apparatus, Translations
 
           TF = Fabric(locations=['/tmp/pseudepigrapha-tf/0.1'], modules=[''], silent='deep')
           api = TF.load(
-              'reading_text ms_abbrev ms_language ms_name ms_show undefined_manuscript resource_name source_ref is_primary '
-              'unit_id is_missing_unit_id is_source_anomaly prefix_utf8 g_word_utf8 trailer_utf8 boundary_utf8 linebreak '
-              'version_title version_id is_metadata_only ocp_book title language author '
-              'reading_of witness manuscript_of',
+              'reading_text ms_abbrev ms_language ms_name ms_show undefined_manuscript synthetic_witness '
+              'resource_name source_ref is_primary unit_id unit_index is_missing_unit_id is_source_anomaly '
+              'prefix_utf8 g_word_utf8 trailer_utf8 boundary_utf8 linebreak version_title version_id version_kind '
+              'generated_language generation_marker generation_method generation_model is_metadata_only ocp_book '
+              'title language author reading_of witness manuscript_of translation_of translation_unit_of',
               silent='deep',
           )
           assert api is not None
@@ -94,11 +115,24 @@ jobs:
           assert api.F.otype.slotType == 'word'
           assert tuple(api.T.sectionTypes) == ('book', 'chapter', 'verse')
 
-          # Generated OCP translation witnesses are deliberately excluded by #72.
-          assert not any(
-              api.F.ms_abbrev.v(n) == 'OCP-Trans'
-              for n in api.F.otype.s('manuscript')
-          )
+          synthetic = [
+              n for n in api.F.otype.s('manuscript')
+              if api.F.synthetic_witness.v(n) == 1
+          ]
+          assert len(synthetic) == 231
+          assert all(api.F.ms_abbrev.v(n) == 'OCP-Trans' for n in synthetic)
+
+          translations = Translations(api)
+          generated = translations.versions()
+          assert len(generated) == 231
+          assert Counter(record['language'] for record in generated) == {'English': 115, 'French': 116}
+          assert all(record['generation_marker'] == 'OCP-Trans' for record in generated)
+          assert all(record['generation_method'] == 'llm' for record in generated)
+          assert all(record['generation_model'] == 'openrouter/google/gemini-3.7-flash' for record in generated)
+          assert all(api.F.version_kind.v(record['source_node']) == 'source' for record in generated)
+          sample_alignment = translations.aligned_units(generated[0]['node'])
+          assert sample_alignment
+          assert all(api.F.version_kind.v(row['source_unit']) == 'source' for row in sample_alignment)
 
           # Upstream 43444399 added linebreak="following" to all 32 non-primary
           # Aramaic variant readings in 4Q548. Preserve that exact source value.
@@ -129,7 +163,10 @@ jobs:
           )
           assert api.T.text(alternative) == api.F.reading_text.v(alternative)
 
-          manuscript = next(n for n in api.F.otype.s('manuscript') if api.F.ms_abbrev.v(n))
+          manuscript = next(
+              n for n in api.F.otype.s('manuscript')
+              if api.F.ms_abbrev.v(n) and api.F.synthetic_witness.v(n) != 1
+          )
           assert api.T.text(manuscript) == api.F.ms_abbrev.v(manuscript)
 
           deep_unit = next(n for n in api.F.otype.s('unit') if api.F.source_ref.v(n) == '1:23:153:4')
@@ -149,6 +186,7 @@ jobs:
               if api.F.ocp_book.v(n) == 'TJob' and api.F.version_title.v(n) == 'Coptic'
           )
           assert api.F.is_metadata_only.v(coptic) == 1
+          assert api.F.version_kind.v(coptic) == 'source'
           assert api.T.text(coptic) == 'Coptic'
           assert not any(
               api.F.ocp_book.v(n) == 'TJob' and api.F.version_title.v(n) == 'Coptic'
@@ -157,11 +195,13 @@ jobs:
 
           A = Apparatus(api)
 
-          # 1 Enoch has four top-level OCP source textual versions. Generated
-          # English/French versions are intentionally absent until #76.
+          # Apparatus remains source-critical by default. Generated versions are
+          # available through Translations and synthetic OCP-Trans witnesses do
+          # not leak into the historical witness view.
           enoch = A.passage('1En__Ethiopic', '1', '2')
           assert enoch['reference'] == ('1En__Ethiopic', '1', '2')
           assert enoch['source_refs'] == ('1:2',)
+          assert 'OCP-Trans' not in enoch['witnesses']
           assert {'p', 'Bertalotto'} <= set(enoch['witnesses'])
           assert enoch['witnesses']['p']['declared'] is True
           assert enoch['witnesses']['Bertalotto']['declared'] is True

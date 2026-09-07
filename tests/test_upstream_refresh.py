@@ -59,17 +59,23 @@ def test_loader_models_explicit_ocp_generated_translation(tmp_path: Path) -> Non
     assert [item.version.title for item in books[0].generated_translations] == ["English"]
     assert books[0].generated_translations[0].source_version_index == 0
 
-    # The independent raw audit is upgraded separately from parser behavior;
-    # until then it continues to expose its historical exclusion inventory.
     raw = _raw_inventory(tmp_path)
-    assert [record["version_title"] for record in raw["versions"]] == ["Greek"]
-    assert raw["excluded_generated_translation_versions"] == [
+    assert [(record["version_title"], record["version_kind"]) for record in raw["versions"]] == [
+        ("Greek", "source"),
+        ("English", "generated_translation"),
+    ]
+    assert raw["excluded_generated_translation_versions"] == []
+    assert raw["generated_translations"] == [
         {
             "ocp_book": "Demo",
             "version_title": "English",
             "language": "English",
             "source_file": "Demo.xml",
             "marker": "OCP-Trans",
+            "source_version_title": "Greek",
+            "source_version_language": "Greek",
+            "unit_count": 1,
+            "aligned_unit_count": 1,
         }
     ]
 
