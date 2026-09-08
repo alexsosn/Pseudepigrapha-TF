@@ -594,6 +594,10 @@ def _render_version_card(record: Mapping[str, object]) -> str:
     witness_choices = tuple(record.get("witness_choices", ()))
     if witness_choices:
         parts.append(
+            f'<input type="hidden" name="witness.{_h(version_id)}" value="" '
+            'form="comparison-controls">'
+        )
+        parts.append(
             '<details class="witness-selector"><summary>Choose witnesses</summary>'
         )
         for choice in witness_choices:
