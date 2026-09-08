@@ -24,7 +24,7 @@ def test_tracked_reference_does_not_publish_fixture_local_absence_as_corpus_fact
     for name in ("intro_title_json", "historical_genres_json"):
         page = pages[f"{name}.md"]
         assert "Serialized in this corpus:" not in page, name
-        assert "Supported by converter: yes" in page, name
+        assert "**Supported by converter:** yes" in page, name
 
     tracked = (ROOT / "docs" / "features" / "intro_title_json.md").read_text(encoding="utf-8")
     assert "Serialized in this corpus:" not in tracked
