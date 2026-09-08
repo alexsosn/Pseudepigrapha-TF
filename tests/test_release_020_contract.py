@@ -6,6 +6,7 @@ import tomllib
 from pathlib import Path
 
 import pseudepigrapha_tf
+from pseudepigrapha_tf import cli
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -29,11 +30,13 @@ def _app_data_version() -> str:
 def test_frozen_release_identity_is_consistent_across_owned_surfaces():
     project = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
     materializer = json.loads((ROOT / "agora.materializer.json").read_text(encoding="utf-8"))
+    cli_args = cli._parser().parse_args(["convert", "source"])
 
     assert project["project"]["version"] == EXPECTED_PACKAGE_VERSION
     assert pseudepigrapha_tf.__version__ == EXPECTED_PACKAGE_VERSION
     assert materializer["plugin"]["version"] == EXPECTED_PACKAGE_VERSION
     assert _app_data_version() == EXPECTED_DATA_VERSION
+    assert cli_args.output == Path(f"tf/{EXPECTED_DATA_VERSION}")
     assert f"v{project['project']['version']}" == EXPECTED_RELEASE_TAG
     assert f"tf-{_app_data_version()}.zip" == EXPECTED_TF_ASSET
 
