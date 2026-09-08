@@ -72,11 +72,20 @@ def test_edge_pages_are_generated_from_reusable_endpoint_contracts():
 
     resource = pages["resource_of.md"]
     assert "**Direction:** `resource` → `book`, `version_metadata`" in resource
-    assert "**Serialized in this corpus:** no" not in resource or "**Supported by converter:** yes" in resource
 
     oslots = pages["oslots.md"]
     assert "technical" in oslots.lower()
     assert "not scholarly containment" in oslots.lower()
+
+
+def test_supported_but_unserialized_feature_is_explicit_on_its_page():
+    data = _data()
+    data.edge_features.pop("resource_of", None)
+
+    resource = feature_docs.render_feature_docs(data)["resource_of.md"]
+
+    assert "**Serialized in this corpus:** no" in resource
+    assert "**Supported by converter:** yes" in resource
 
 
 def test_landing_page_has_frozen_researcher_groups_and_exact_feature_links():
