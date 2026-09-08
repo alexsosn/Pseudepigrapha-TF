@@ -83,6 +83,27 @@ def test_local_app_loads_materialized_tf_without_remote_distribution_contract(tm
     assert app.api.T.nodeFromSection(("Sample", "1", "Heading")) is not None
 
 
+def test_subset_app_does_not_report_absent_optional_types_as_config_errors(tmp_path, capsys):
+    app = _load_app_for_rendering(tmp_path, "one_division.xml")
+    captured = capsys.readouterr()
+
+    assert app.api is not None
+    assert "App config error" not in captured.err
+    assert "resource" not in app.api.F.otype.all
+    assert "resource" not in app.context.baseTypes
+    assert "resource" not in app.context.hiddenTypes
+
+
+def test_present_optional_resource_gets_dynamic_browser_policy(tmp_path):
+    app = _load_app_for_rendering(tmp_path)
+
+    assert "resource" in app.api.F.otype.all
+    assert "resource" in app.context.baseTypes
+    assert "resource" in app.context.hiddenTypes
+    assert app.context.templates["resource"][0] == "{resource_name}"
+    assert app.context.labels["resource"][0] == "{resource_name}"
+
+
 def test_pretty_alternative_reading_does_not_render_primary_anchor_text(tmp_path):
     app = _load_app_for_rendering(tmp_path)
     api = app.api
