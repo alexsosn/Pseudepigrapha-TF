@@ -6,6 +6,7 @@ from typing import Iterable
 
 from .model import Book, Div, DivisionSpec, Reading, Token, Unit, Version
 from .provenance import corpus_license_metadata
+from .release_identity import CONVERTER_VERSION, TF_DATA_VERSION
 
 INT_FEATURES = {
     "chapter_index", "div_index", "div_level", "historical_ocp_doc_id", "is_empty_div", "is_gap",
@@ -384,7 +385,7 @@ def _metadata(node_features, edge_features, repo: str, commit: str, converter_ve
         "source": "Online Critical Pseudepigrapha",
         "sourceUrl": repo,
         "upstreamRepository": repo,
-        "version": "0.2",
+        "version": TF_DATA_VERSION,
         "converterVersion": converter_version,
         "writtenBy": "Pseudepigrapha-TF converter",
     }
@@ -742,7 +743,7 @@ def _add_version(builder: _Builder, book: Book, version: Version, book_id: str,
 def build_tf_data(
     books: Iterable[Book], *,
     upstream_repository: str = "https://github.com/OnlineCriticalPseudepigrapha/Online-Critical-Pseudepigrapha",
-    upstream_commit: str = "", converter_version: str = "0.1.0",
+    upstream_commit: str = "", converter_version: str = CONVERTER_VERSION,
 ) -> TFData:
     builder = _Builder()
     for bidx, book in enumerate(books, 1):
