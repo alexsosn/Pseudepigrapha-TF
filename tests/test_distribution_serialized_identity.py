@@ -29,6 +29,7 @@ def _otype_payload(
     source_identity_status: str = "verified",
     content_license_status: str = "verified",
     content_license: str = "CC-BY-4.0",
+    extra_metadata: dict[str, str] | None = None,
 ) -> bytes:
     metadata = {
         "contentLicense": content_license,
@@ -41,6 +42,7 @@ def _otype_payload(
         "upstreamSoftwareLicense": "GPL-3.0",
         "valueType": "str",
         "version": data_version,
+        **(extra_metadata or {}),
     }
     header = ["@node", *(f"@{key}={value}" for key, value in sorted(metadata.items())), ""]
     return ("\n".join(header) + "\n1\tword\n").encode("utf-8")
@@ -72,6 +74,7 @@ def _report(
     source_identity_status: str = "verified",
     content_license_status: str = "verified",
     content_license: str = "CC-BY-4.0",
+    extra_provenance: dict[str, str] | None = None,
 ) -> dict:
     return {
         "status": "ok",
@@ -87,6 +90,7 @@ def _report(
             "content_license": content_license,
             "converter_software_license": "MIT",
             "upstream_software_license": "GPL-3.0",
+            **(extra_provenance or {}),
         },
     }
 
@@ -96,6 +100,7 @@ def _assets(
     *,
     otype: bytes | None = None,
     report_overrides: dict[str, str] | None = None,
+    report_extra_provenance: dict[str, str] | None = None,
     data_version: str = "0.1",
 ) -> tuple[Path, Path]:
     features = {
@@ -117,6 +122,7 @@ def _assets(
         source_identity_status=overrides.get("source_identity_status", "verified"),
         content_license_status=overrides.get("content_license_status", "verified"),
         content_license=overrides.get("content_license", "CC-BY-4.0"),
+        extra_provenance=report_extra_provenance,
     )
     report_path = tmp_path / "conversion-report.json"
     report_path.write_text(json.dumps(report, sort_keys=True) + "\n", encoding="utf-8")
@@ -172,7 +178,36 @@ def test_manifest_rejects_data_version_disagreeing_with_serialized_otype_metadat
         _build(archive, report, data_version="9.9")
 
 
-def test_staging_rejects_unsafe_data_version_as_a_contract_error(tmp_path):
+def test_manifest_rejects_optional_provenance_disagreement_using_canonical_mapping(tmp_path):
+    archive, report = _assets(
+        tmp_path,
+        otype=_otype_payload(
+            extra_metadata={"contentLicenseUrl": "https://example.invalid/serialized"}
+        ),
+        report_extra_provenance={
+            "content_license_url": "https://example.invalid/report"
+        },
+    )
+
+    with pytest.raises(DistributionContractError, match="license.*url|provenance|serialized"):
+        _build(archive, report)
+
+
+@pytest.mark.parametrize(
+    "otype",
+    [
+        _otype_payload().replace(b"@node\n", b"@edge\n", 1),
+        _otype_payload().replace(b"\n\n1\tword\n", b"\n1\tword\n", 1),
+    ],
+)
+def test_manifest_rejects_otype_header_shapes_text_fabric_itself_would_reject(tmp_path, otype):
+    archive, report = _assets(tmp_path, otype=otype)
+
+    with pytest.raises(DistributionContractError, match="otype|header|metadata|blank|node"):
+        _build(archive, report)
+
+
+def _stage_with_data_version(tmp_path: Path, data_version: str) -> None:
     source = tmp_path / "tf"
     source.mkdir()
     features = {
@@ -194,8 +229,16 @@ def test_staging_rejects_unsafe_data_version_as_a_contract_error(tmp_path):
             release_tag="v0.1.1-test",
             release_commit=RELEASE_COMMIT,
             converter_version="0.1.0",
-            data_version="x/../../escape",
+            data_version=data_version,
         )
 
     assert not destination.exists()
     assert not (tmp_path / "escape.zip").exists()
+
+
+def test_staging_rejects_unsafe_data_version_as_a_contract_error(tmp_path):
+    _stage_with_data_version(tmp_path, "x/../../escape")
+
+
+def test_staging_rejects_embedded_nul_data_version_as_a_contract_error(tmp_path):
+    _stage_with_data_version(tmp_path, "bad\x00version")
