@@ -229,6 +229,15 @@ def _render_feature_page(item: dict[str, Any]) -> str:
                     "This is a **technical Text-Fabric support relation**; its anchors are not scholarly containment claims.",
                 ]
             )
+    if not item.get("serialized", True):
+        lines.extend(
+            [
+                "",
+                "**Serialized in this corpus:** no",
+                "",
+                "**Supported by converter:** yes",
+            ]
+        )
     controlled = item["metadata"].get("controlledVocabularyJson")
     if controlled:
         try:
