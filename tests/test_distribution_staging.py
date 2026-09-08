@@ -29,6 +29,7 @@ def _materialized(tmp_path: Path, *, status: str = "ok") -> Path:
             {
                 "status": status,
                 "failed_checks": [] if status == "ok" else ["probe"],
+                "semantic_checks": {"probe": status == "ok"},
                 "provenance": {
                     "upstream_repository": UPSTREAM_REPOSITORY,
                     "upstream_commit": UPSTREAM_COMMIT,
