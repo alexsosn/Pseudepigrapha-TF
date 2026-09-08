@@ -11,6 +11,7 @@ from .comparison import (
     passage_neighbors,
     render_passage_comparison,
 )
+from .release_identity import TF_DATA_VERSION
 
 
 def _h(value: object) -> str:
@@ -84,9 +85,10 @@ def _witness_selection(args: Any) -> dict[str, tuple[str, ...]] | None:
         version_id = key[len("witness.") :]
         if not version_id:
             continue
-        values = tuple(value for value in args.getlist(key) if value)
-        if values:
-            result[version_id] = values
+        # A hidden empty input is rendered for every witness selector. Its
+        # presence distinguishes an explicit "show no witnesses" submission
+        # from an untouched request, where defaults should still apply.
+        result[version_id] = tuple(value for value in args.getlist(key) if value)
     return result or None
 
 
@@ -173,7 +175,7 @@ def load_local_comparison_web_app(
     data_path: Path,
     app_path: Path,
     *,
-    version: str = "0.1",
+    version: str = TF_DATA_VERSION,
     silent: str | bool = "deep",
 ) -> Any:
     """Load local TF data/app in browser mode and return the stock browser plus /compare."""
@@ -211,7 +213,7 @@ def run_local_comparison_browser(
     data_path: Path,
     app_path: Path,
     *,
-    version: str = "0.1",
+    version: str = TF_DATA_VERSION,
     port: int = 8000,
     debug: bool = False,
 ) -> int:
