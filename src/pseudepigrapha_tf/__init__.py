@@ -1,6 +1,6 @@
 """Online Critical Pseudepigrapha to Text-Fabric conversion."""
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"
 
 from .apparatus import Apparatus
 from .classifications import HistoricalClassifications
