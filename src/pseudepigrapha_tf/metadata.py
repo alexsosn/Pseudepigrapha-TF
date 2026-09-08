@@ -31,6 +31,7 @@ ALL_INTRO_FEATURES = tuple(_TOP_LEVEL_FEATURES.values()) + tuple(_FIELD_FEATURES
 _ALLOWED_ENTRY_KEYS = frozenset({"title", "version", "citation", "fields"})
 _REQUIRED_ENTRY_KEYS = frozenset({"title", "version", "fields"})
 _JSON_SCALAR_TYPES = (str, int, float, bool, type(None))
+_PUBLIC_METADATA_CATEGORY = "Public work metadata"
 
 
 def _unique_json_object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
@@ -116,12 +117,7 @@ def _validate_xml_identities(source_dir: Path) -> set[str]:
 
 
 def load_public_metadata(path: str | Path) -> PublicMetadataCorpus:
-    """Load and strictly map the committed public OCP ``intros.json`` export.
-
-    Mapping is by exact root-level XML filename. Long source strings are kept as
-    Python values here; JSON-scalar escaping happens only at the TF boundary so
-    the researcher-facing API can return the original values verbatim.
-    """
+    """Load and strictly map the committed public OCP ``intros.json`` export."""
 
     source_dir = Path(path)
     intro_path = source_dir / "intros.json"
@@ -202,7 +198,9 @@ def _encoded_features(document: PublicMetadataDocument) -> dict[str, str]:
     return features
 
 
-def _intro_feature_description(name: str) -> str:
+def intro_feature_description(name: str) -> str:
+    """Return the canonical researcher-facing description for an intro feature."""
+
     if name == "intro_title_json":
         return "JSON-scalar encoded public OCP document title from intros.json"
     if name == "intro_version_json":
@@ -211,6 +209,25 @@ def _intro_feature_description(name: str) -> str:
         return "JSON-scalar encoded per-document OCP citation from intros.json"
     field = name[len("intro_") : -len("_json")]
     return f"JSON-scalar encoded public OCP {field} field from intros.json"
+
+
+def public_metadata_feature_metadata() -> dict[str, dict[str, str]]:
+    """Return the stable supported TF metadata contract for public work metadata."""
+
+    result = {
+        feature: {
+            "valueType": "str",
+            "description": intro_feature_description(feature),
+            "documentationCategory": _PUBLIC_METADATA_CATEGORY,
+        }
+        for feature in ALL_INTRO_FEATURES
+    }
+    result["intro_label"] = {
+        "valueType": "str",
+        "description": "short display label for an OCP document_metadata node",
+        "documentationCategory": _PUBLIC_METADATA_CATEGORY,
+    }
+    return result
 
 
 def attach_public_metadata(data: TFData, metadata: PublicMetadataCorpus) -> None:
@@ -224,8 +241,6 @@ def attach_public_metadata(data: TFData, metadata: PublicMetadataCorpus) -> None
     if any(kind == "document_metadata" for kind in data.node_features.get("otype", {}).values()):
         raise ValueError("public document metadata is already attached")
 
-    # A textual work uses its own first slot as a technical anchor. JSON-only
-    # works such as 3Macc reuse corpus slot 1 without becoming TF text sections.
     work_anchors: dict[str, int] = {}
     for slot, work_id in data.node_features.get("ocp_book", {}).items():
         if slot <= max_slot:
@@ -247,18 +262,10 @@ def attach_public_metadata(data: TFData, metadata: PublicMetadataCorpus) -> None
         for feature, value in _encoded_features(document).items():
             data.node_features.setdefault(feature, {})[node] = value
 
-    # Keep the selective-load API stable even when a particular snapshot has no
-    # values for one of the public fields.
     for feature in ALL_INTRO_FEATURES:
         data.node_features.setdefault(feature, {})
-        data.metadata[feature] = {
-            "valueType": "str",
-            "description": _intro_feature_description(feature),
-        }
-    data.metadata.setdefault("intro_label", {
-        "valueType": "str",
-        "description": "short display label for an OCP document_metadata node",
-    })
+    for feature, feature_metadata in public_metadata_feature_metadata().items():
+        data.metadata[feature] = dict(feature_metadata)
     data.metadata.setdefault("source_file", {
         "valueType": "str",
         "description": "stable source path relative to the supplied OCP docs directory",
@@ -397,79 +404,7 @@ def _graph_public_metadata(
                     fields[key] = json.loads(str(raw))
             entry["fields"] = fields
         except (TypeError, ValueError, json.JSONDecodeError) as exc:
-            errors.append(f"{filename}: {exc}")
-        documents[filename] = entry
-    orphan_feature_owners.sort(
-        key=lambda record: (record["feature"], repr(record["node"]))
-    )
-    return documents, errors, duplicates, orphan_feature_owners
-
-
-def _public_scalar_count(documents: Mapping[str, Any]) -> int:
-    count = 0
-    for entry in documents.values():
-        if not isinstance(entry, dict):
+            errors.append(f"{filename}: cannot decode TF metadata: {exc}")
             continue
-        count += sum(1 for key in ("title", "version", "citation") if key in entry)
-        fields = entry.get("fields", {})
-        if isinstance(fields, dict):
-            count += len(fields)
-    return count
-
-
-def augment_conversion_report_with_public_metadata(
-    report: dict[str, Any],
-    source_dir: str | Path,
-    data: TFData,
-) -> dict[str, Any]:
-    """Audit raw ``intros.json`` independently and merge parity into a report."""
-
-    source_dir = Path(source_dir)
-    intro_path = source_dir / "intros.json"
-    if not intro_path.exists():
-        return report
-
-    raw_documents, raw_sha256, source_meta = _raw_public_metadata(source_dir)
-    (
-        graph_documents,
-        decode_errors,
-        duplicate_files,
-        orphan_feature_owners,
-    ) = _graph_public_metadata(data)
-    generic = data.metadata.get("", {})
-
-    checks = report.setdefault("semantic_checks", {})
-    checks["public_metadata_documents"] = (
-        set(raw_documents) == set(graph_documents) and not duplicate_files
-    )
-    checks["public_metadata_values"] = (
-        raw_documents == graph_documents
-        and not decode_errors
-        and not duplicate_files
-        and not orphan_feature_owners
-    )
-    checks["public_metadata_provenance"] = (
-        generic.get("introsSource") == intro_path.name
-        and generic.get("introsSha256") == raw_sha256
-    )
-
-    report.setdefault("source", {})["public_metadata_documents"] = len(raw_documents)
-    report["source"]["public_metadata_scalars"] = _public_scalar_count(raw_documents)
-    report.setdefault("graph", {})["document_metadata"] = sum(
-        1 for kind in data.node_features.get("otype", {}).values() if kind == "document_metadata"
-    )
-    report["graph"]["public_metadata_scalars"] = _public_scalar_count(graph_documents)
-    report["intros_sha256"] = raw_sha256
-    report.setdefault("provenance", {})["intros_source"] = generic.get("introsSource", "")
-    report["provenance"]["intros_sha256"] = generic.get("introsSha256", "")
-    report.setdefault("diagnostics", {})["public_metadata"] = {
-        "source_meta": source_meta,
-        "decode_errors": decode_errors,
-        "duplicate_graph_files": duplicate_files,
-        "orphan_feature_owners": orphan_feature_owners,
-    }
-
-    failed = [name for name, ok in checks.items() if not ok]
-    report["failed_checks"] = failed
-    report["status"] = "ok" if not failed else "failed"
-    return report
+        documents[filename] = entry
+    return documents, errors, duplicates, orphan_feature_owners
