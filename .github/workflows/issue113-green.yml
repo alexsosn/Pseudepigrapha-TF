@@ -1,0 +1,37 @@
+name: issue113-green
+
+on:
+  push:
+    branches:
+      - fix/113-release-provenance-authenticity
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/113-release-provenance-authenticity
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+      - name: Install test environment
+        run: pip install -e '.[dev]'
+      - name: Apply canonical provenance authenticity check
+        run: python .github/issue113_green.py
+      - name: Focused GREEN gate
+        run: pytest tests/test_distribution_provenance_profile_authenticity.py tests/test_distribution_provenance_closure.py tests/test_distribution_serialized_identity.py tests/test_distribution_tf_metadata_binding.py
+      - name: Commit clean GREEN
+        run: |
+          set -euo pipefail
+          rm .github/issue113_green.py .github/workflows/issue113-green.yml
+          git config user.name 'Oleksandr (Alex) Sosnovshchenko'
+          git config user.email 'alex.sosn88@gmail.com'
+          git add src/pseudepigrapha_tf/distribution.py .github/issue113_green.py .github/workflows/issue113-green.yml
+          git commit -m 'fix: enforce canonical release provenance profile'
+          git push origin HEAD:fix/113-release-provenance-authenticity
