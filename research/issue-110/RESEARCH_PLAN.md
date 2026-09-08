@@ -29,7 +29,7 @@ The existing report and writer paths use the same canonical generic↔report key
 
 ### RED
 
-Extend `tests/test_distribution_serialized_identity.py` before production code:
+Add a focused serialized-provenance regression file before production code:
 
 1. serialized `sourceIdentityDiagnostic` absent from report provenance must fail;
 2. serialized optional positive field (`contentLicenseUrl`) absent from report provenance must fail;
@@ -73,3 +73,9 @@ Any blocking finding restarts RED → GREEN → full gates before merge.
 ## Dependency on #104
 
 #104 may continue research/version preparation in parallel, but no tag/release/publication action should finalize until #110 is merged and the #104 branch incorporates the resulting `main`.
+
+## TDD evidence
+
+- RED head `7d5cde85f6a3091a37644584a13095b90aaab73e`, Actions run `34282750663`: exactly the two new asymmetric canonical-provenance regressions failed while 452 existing tests passed; the non-canonical `writtenBy` control passed.
+- GREEN implementation commit `cc78bd1206521b1c22441cf9564ba3bbf73165bd`: the branch-local focused gate passed `tests/test_distribution_provenance_closure.py`, `tests/test_distribution_serialized_identity.py`, and `tests/test_distribution_tf_metadata_binding.py`, then removed all temporary helper files before committing.
+- The implementation remains a single validation rule: after preserving existing missing/mismatch diagnostics, reject any canonical serialized provenance keys that are absent from the report-derived canonical projection. No Text-Fabric header parser behavior changed.
