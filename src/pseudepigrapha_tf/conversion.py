@@ -23,6 +23,8 @@ PINNED_GENERATION_PROVENANCE = {
 }
 
 
+from .release_identity import CONVERTER_VERSION
+
 from .model import (
     Book,
     Div,
@@ -700,7 +702,7 @@ def build_tf_data(
     *,
     upstream_repository: str = "https://github.com/OnlineCriticalPseudepigrapha/Online-Critical-Pseudepigrapha",
     upstream_commit: str = "",
-    converter_version: str = "0.1.0",
+    converter_version: str = CONVERTER_VERSION,
 ) -> TFData:
     """Build TF with source versions and an explicitly provenance-marked translation layer."""
 
