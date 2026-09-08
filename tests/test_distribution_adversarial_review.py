@@ -124,3 +124,19 @@ def test_staging_rejects_symlinked_feature_files(tmp_path):
         _stage(source, destination)
 
     assert not destination.exists()
+
+
+@pytest.mark.skipif(os.name == "nt", reason="symlink creation is not reliably available on Windows CI")
+def test_staging_rejects_symlinked_directories_that_hide_nested_feature_files(tmp_path):
+    source = _materialized(tmp_path)
+    external = tmp_path / "external-generation"
+    external.mkdir()
+    (external / "ghost.tf").write_bytes(b"@node\n1\tghost\n")
+    link = source / "linked-generation"
+    link.symlink_to(external, target_is_directory=True)
+    destination = tmp_path / "release-assets"
+
+    with pytest.raises(DistributionContractError, match="symlink|nested.*feature|feature.*nested"):
+        _stage(source, destination)
+
+    assert not destination.exists()
