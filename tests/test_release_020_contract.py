@@ -61,6 +61,34 @@ def test_release_publisher_is_explicit_delegated_and_no_clobber():
     assert "git tag -f" not in text
 
 
+def test_release_publisher_binds_workflow_revision_to_requested_release_commit():
+    text = PUBLISH_WORKFLOW.read_text(encoding="utf-8")
+
+    assert "preflight:" in text
+    assert 'GITHUB_SHA: ${{ github.sha }}' in text
+    assert 'RELEASE_COMMIT: ${{ inputs.release_commit }}' in text
+    assert 'test "$GITHUB_SHA" = "$RELEASE_COMMIT"' in text
+
+    build = text.index("  build:")
+    publish = text.index("  publish:")
+    build_block = text[build:publish]
+    assert "needs: preflight" in build_block
+
+
+def test_release_stays_draft_until_canonical_asset_set_is_verified():
+    text = PUBLISH_WORKFLOW.read_text(encoding="utf-8")
+
+    create = text.index('gh release create "$RELEASE_TAG"')
+    verify = text.index("Verify published asset-name set")
+    promote = text.index('gh release edit "$RELEASE_TAG"')
+
+    assert create < verify < promote
+    assert "--draft" in text[create:verify]
+    assert "isDraft" in text[verify:promote]
+    assert "release['isDraft']" in text[verify:promote]
+    assert "--draft=false" in text[promote:]
+
+
 def test_release_publisher_exports_exact_canonical_asset_generation():
     text = PUBLISH_WORKFLOW.read_text(encoding="utf-8")
 
