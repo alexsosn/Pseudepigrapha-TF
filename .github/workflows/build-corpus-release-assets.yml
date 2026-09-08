@@ -1,0 +1,187 @@
+name: build-corpus-release-assets
+
+on:
+  workflow_call:
+    inputs:
+      release_tag:
+        description: Immutable GitHub release tag to bind into the candidate manifest
+        required: true
+        type: string
+      release_commit:
+        description: Exact Pseudepigrapha-TF commit to build and bind
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  build-corpus-release-assets:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.release_commit }}
+          fetch-depth: 1
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+
+      - name: Verify immutable release identity
+        env:
+          RELEASE_TAG: ${{ inputs.release_tag }}
+          RELEASE_COMMIT: ${{ inputs.release_commit }}
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$RELEASE_COMMIT"
+          python - <<'PY'
+          import os
+          import tomllib
+          from pathlib import Path
+
+          def app_data_version(path: Path) -> str:
+              """Read the owned provenanceSpec.version scalar without third-party YAML."""
+
+              in_provenance = False
+              for line in path.read_text(encoding='utf-8').splitlines():
+                  if line == 'provenanceSpec:':
+                      in_provenance = True
+                      continue
+                  if not in_provenance:
+                      continue
+                  if line and not line.startswith(' '):
+                      break
+                  stripped = line.strip()
+                  if not stripped.startswith('version:'):
+                      continue
+                  value = stripped.split(':', 1)[1].strip()
+                  if len(value) >= 2 and value[0] == value[-1] and value[0] in {'"', "'"}:
+                      value = value[1:-1]
+                  if not value:
+                      break
+                  return value
+              raise SystemExit('app/config.yaml is missing non-empty provenanceSpec.version')
+
+          project = tomllib.loads(Path('pyproject.toml').read_text(encoding='utf-8'))
+          converter_version = project['project']['version']
+          data_version = app_data_version(Path('app/config.yaml'))
+          expected_tag = f"v{converter_version}"
+          if os.environ['RELEASE_TAG'] != expected_tag:
+              raise SystemExit(
+                  f"release tag/package mismatch: {os.environ['RELEASE_TAG']!r} != {expected_tag!r}"
+              )
+          with open(os.environ['GITHUB_ENV'], 'a', encoding='utf-8') as fh:
+              fh.write(f"CONVERTER_VERSION={converter_version}\n")
+              fh.write(f"DATA_VERSION={data_version}\n")
+          PY
+          git fetch --force --no-tags origin \
+            "refs/tags/$RELEASE_TAG:refs/tags/$RELEASE_TAG"
+          TAG_COMMIT="$(git rev-parse "refs/tags/$RELEASE_TAG^{commit}")"
+          test "$TAG_COMMIT" = "$RELEASE_COMMIT"
+
+      - name: Build release wheel
+        run: |
+          python -m pip install build
+          python -m build --wheel
+
+      - name: Install release wheel in fresh environment
+        run: |
+          python -m venv /tmp/pseudepigrapha-tf-release-venv
+          /tmp/pseudepigrapha-tf-release-venv/bin/python -m pip install --upgrade pip
+          /tmp/pseudepigrapha-tf-release-venv/bin/python -m pip install dist/*.whl
+          echo "/tmp/pseudepigrapha-tf-release-venv/bin" >> "$GITHUB_PATH"
+
+      - name: Verify installed package identity
+        run: |
+          cd /tmp
+          python - <<'PY'
+          import os
+          from importlib.metadata import version
+          import pseudepigrapha_tf
+
+          assert version('pseudepigrapha-tf') == os.environ['CONVERTER_VERSION']
+          assert pseudepigrapha_tf.__version__ == os.environ['CONVERTER_VERSION']
+          PY
+
+      - name: Clone exact supported OCP snapshot
+        run: |
+          git clone https://github.com/OnlineCriticalPseudepigrapha/Online-Critical-Pseudepigrapha.git /tmp/ocp
+          git -C /tmp/ocp checkout c939dcbacad78c5d18d2c4282cad23c47e19ac07
+          test "$(git -C /tmp/ocp rev-parse HEAD)" = "c939dcbacad78c5d18d2c4282cad23c47e19ac07"
+
+      - name: Materialize and audit exact corpus
+        run: |
+          pseudepigrapha-tf convert /tmp/ocp/static/docs \
+            --output "/tmp/pseudepigrapha-tf/${DATA_VERSION}" \
+            --upstream-commit c939dcbacad78c5d18d2c4282cad23c47e19ac07
+
+      - name: Stage and validate canonical asset set
+        env:
+          RELEASE_TAG: ${{ inputs.release_tag }}
+          RELEASE_COMMIT: ${{ inputs.release_commit }}
+        run: |
+          cd /tmp
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          from pseudepigrapha_tf.distribution import (
+              stage_distribution_assets,
+              validate_distribution,
+          )
+
+          assets = stage_distribution_assets(
+              Path('/tmp/pseudepigrapha-tf') / os.environ['DATA_VERSION'],
+              Path('/tmp/release-assets'),
+              release_tag=os.environ['RELEASE_TAG'],
+              release_commit=os.environ['RELEASE_COMMIT'],
+              converter_version=os.environ['CONVERTER_VERSION'],
+              data_version=os.environ['DATA_VERSION'],
+          )
+          manifest = json.loads(assets['manifest'].read_text(encoding='utf-8'))
+          validate_distribution(
+              manifest,
+              assets['tf'],
+              assets['report'],
+              expected_release_tag=os.environ['RELEASE_TAG'],
+              expected_release_commit=os.environ['RELEASE_COMMIT'],
+              expected_converter_version=os.environ['CONVERTER_VERSION'],
+              expected_data_version=os.environ['DATA_VERSION'],
+          )
+          PY
+
+      - name: Load release-candidate archive with stock Text-Fabric
+        run: |
+          mkdir /tmp/release-candidate-tf
+          unzip -q "/tmp/release-assets/tf-${DATA_VERSION}.zip" -d /tmp/release-candidate-tf
+          cd /tmp
+          python - <<'PY'
+          import os
+          from tf.fabric import Fabric
+
+          TF = Fabric(locations=['/tmp/release-candidate-tf'], modules=[''], silent='deep')
+          api = TF.load('ocp_book source_ref version_kind', silent='deep')
+          assert api is not None
+          assert api.F.otype.maxSlot > 0
+          generic = api.TF.features['otype'].metaData
+          assert generic['converterVersion'] == os.environ['CONVERTER_VERSION']
+          assert generic['upstreamCommit'] == 'c939dcbacad78c5d18d2c4282cad23c47e19ac07'
+          assert generic['sourceIdentityStatus'] == 'verified'
+          assert generic['contentLicenseStatus'] == 'verified'
+          assert generic['contentLicense'] == 'CC-BY-4.0'
+          PY
+
+      - name: Export validated candidate assets
+        uses: actions/upload-artifact@v4
+        with:
+          name: pseudepigrapha-tf-corpus-release-candidate
+          path: |
+            /tmp/release-assets/tf-*.zip
+            /tmp/release-assets/conversion-report.json
+            /tmp/release-assets/dataset-manifest.json
+          if-no-files-found: error
+          retention-days: 7

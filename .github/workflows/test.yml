@@ -149,6 +149,67 @@ jobs:
           assert len(report['provenance']['intros_sha256']) == 64
           print(json.dumps({'source': report['source'], 'graph': report['graph'], 'generated_translations': report['generated_translations'], 'provenance': report['provenance'], 'diagnostics': report['diagnostics']}, indent=2))
           PY
+      - name: Stage, verify, extract, and reload canonical release candidate
+        env:
+          CANDIDATE_RELEASE_TAG: v0.1.0-ci
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          import shutil
+          from pathlib import Path
+          from zipfile import ZipFile
+
+          from pseudepigrapha_tf.distribution import (
+              stage_distribution_assets,
+              validate_distribution,
+              validate_feature_directory,
+          )
+          from tf.fabric import Fabric
+
+          source = Path('/tmp/pseudepigrapha-tf/0.1')
+          destination = Path('/tmp/release-assets')
+          extracted = Path('/tmp/release-candidate-tf')
+          shutil.rmtree(destination, ignore_errors=True)
+          shutil.rmtree(extracted, ignore_errors=True)
+
+          assets = stage_distribution_assets(
+              source,
+              destination,
+              release_tag=os.environ['CANDIDATE_RELEASE_TAG'],
+              release_commit=os.environ['GITHUB_SHA'],
+              converter_version='0.1.0',
+              data_version='0.1',
+          )
+          manifest = json.loads(assets['manifest'].read_text(encoding='utf-8'))
+          validate_distribution(
+              manifest,
+              assets['tf'],
+              assets['report'],
+              expected_release_tag=os.environ['CANDIDATE_RELEASE_TAG'],
+              expected_release_commit=os.environ['GITHUB_SHA'],
+              expected_converter_version='0.1.0',
+              expected_data_version='0.1',
+          )
+          assert manifest['text_fabric']['feature_count'] == 96
+          assert len(manifest['text_fabric']['feature_set_sha256']) == 64
+
+          extracted.mkdir()
+          with ZipFile(assets['tf']) as archive:
+              archive.extractall(extracted)
+          validate_feature_directory(manifest, extracted)
+
+          TF = Fabric(locations=[str(extracted)], modules=[''], silent='deep')
+          api = TF.load('ocp_book source_ref version_kind', silent='deep')
+          assert api is not None
+          assert api.F.otype.maxSlot == 922922
+          generic = api.TF.features['otype'].metaData
+          assert generic['converterVersion'] == '0.1.0'
+          assert generic['upstreamCommit'] == 'c939dcbacad78c5d18d2c4282cad23c47e19ac07'
+          assert generic['sourceIdentityStatus'] == 'verified'
+          assert generic['contentLicenseStatus'] == 'verified'
+          assert generic['contentLicense'] == 'CC-BY-4.0'
+          PY
       - name: Reload generated Text-Fabric dataset and verify interface semantics
         run: |
           python - <<'PY'

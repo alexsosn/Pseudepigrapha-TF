@@ -4,6 +4,7 @@ from pathlib import Path
 import pytest
 
 from pseudepigrapha_tf import cli
+from pseudepigrapha_tf.distribution import feature_directory_identity
 from pseudepigrapha_tf.graph import TFData
 
 FIXTURES = Path(__file__).parent / "fixtures"
@@ -37,6 +38,14 @@ def _copy_source_fixture(tmp_path):
     return source_dir
 
 
+def _write_stub_tf(data, output_dir):
+    output_dir = Path(output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+    (output_dir / "otype.tf").write_bytes(b"@node\n@valueType=str\n1\tword\n")
+    (output_dir / "oslots.tf").write_bytes(b"@edge\n1\t1\n")
+    return True
+
+
 def test_cli_validates_generated_graph_once(monkeypatch, tmp_path):
     source_dir = _copy_source_fixture(tmp_path)
 
@@ -62,6 +71,15 @@ def test_cli_validates_generated_graph_once(monkeypatch, tmp_path):
     import tf.fabric
 
     monkeypatch.setattr(tf.fabric, "Fabric", FakeFabric)
+    monkeypatch.setattr(
+        cli,
+        "feature_directory_identity",
+        lambda output: {
+            "feature_count": 1,
+            "features": [{"name": "otype.tf", "bytes": 1, "sha256": "0" * 64}],
+            "feature_set_sha256": "1" * 64,
+        },
+    )
     result = cli.main(
         [
             "convert",
@@ -75,6 +93,26 @@ def test_cli_validates_generated_graph_once(monkeypatch, tmp_path):
 
     assert result == 0
     assert validate_calls == 1
+
+
+def test_cli_success_report_binds_exact_serialized_tf_feature_set(monkeypatch, tmp_path):
+    source_dir = _copy_source_fixture(tmp_path)
+    output = tmp_path / "tf"
+    monkeypatch.setattr(cli, "_write_prevalidated_tf", _write_stub_tf)
+
+    assert cli.main(
+        [
+            "convert",
+            str(source_dir),
+            "--output",
+            str(output),
+            "--upstream-commit",
+            "test-commit",
+        ]
+    ) == 0
+
+    report = json.loads((output / "conversion-report.json").read_text(encoding="utf-8"))
+    assert report["text_fabric"] == feature_directory_identity(output)
 
 
 def test_cli_does_not_replace_existing_report_when_tf_serialization_fails(monkeypatch, tmp_path):
@@ -204,7 +242,7 @@ def test_cli_successful_explicit_report_preserves_symlink_target(monkeypatch, tm
     report_path = tmp_path / "report.json"
     report_path.symlink_to(target)
 
-    monkeypatch.setattr(cli, "_write_prevalidated_tf", lambda data, output_dir: True)
+    monkeypatch.setattr(cli, "_write_prevalidated_tf", _write_stub_tf)
 
     assert cli.main(
         [
@@ -220,4 +258,6 @@ def test_cli_successful_explicit_report_preserves_symlink_target(monkeypatch, tm
     ) == 0
 
     assert report_path.is_symlink()
-    assert json.loads(target.read_text(encoding="utf-8"))["status"] == "ok"
+    published = json.loads(target.read_text(encoding="utf-8"))
+    assert published["status"] == "ok"
+    assert published["text_fabric"] == feature_directory_identity(output)

@@ -18,6 +18,12 @@ def test_cli_override_cannot_verify_license_for_non_git_source(monkeypatch, tmp_
 
     def capture_writer(data, output_dir):
         captured.update(data.metadata[""])
+        output = Path(output_dir)
+        output.mkdir(parents=True, exist_ok=True)
+        (output / "otype.tf").write_text(
+            "@node\n@valueType=str\n\n1\tword\n",
+            encoding="utf-8",
+        )
         return True
 
     monkeypatch.setattr(cli, "_write_prevalidated_tf", capture_writer)

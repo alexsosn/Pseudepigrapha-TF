@@ -40,6 +40,12 @@ def test_dirty_pinned_checkout_cannot_retain_verified_license(monkeypatch, tmp_p
     def capture_writer(data, output_dir):
         captured.clear()
         captured.update(data.metadata[""])
+        output = Path(output_dir)
+        output.mkdir(parents=True, exist_ok=True)
+        (output / "otype.tf").write_text(
+            "@node\n@valueType=str\n\n1\tword\n",
+            encoding="utf-8",
+        )
         return True
 
     monkeypatch.setattr(cli, "_write_prevalidated_tf", capture_writer)

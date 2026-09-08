@@ -20,8 +20,18 @@ def _workflow_texts() -> dict[str, str]:
     }
 
 
+def _pull_request_workflows() -> dict[str, str]:
+    """Return only workflows that GitHub actually triggers for pull requests."""
+
+    return {
+        name: text
+        for name, text in _workflow_texts().items()
+        if "pull_request:" in text
+    }
+
+
 def test_pr_ci_materializes_the_exact_full_ocp_corpus_only_once():
-    workflows = _workflow_texts()
+    workflows = _pull_request_workflows()
     occurrences = {
         name: text.count(FULL_CONVERT)
         for name, text in workflows.items()
@@ -35,6 +45,14 @@ def test_pr_ci_materializes_the_exact_full_ocp_corpus_only_once():
     assert test_workflow.count(f"git -C /tmp/ocp checkout {PIN}") == 1
     assert f"--upstream-commit {PIN}" in test_workflow
     assert LOCAL_TF in test_workflow
+
+
+def test_release_asset_builder_is_reusable_not_a_second_pr_full_conversion():
+    workflow = _workflow_texts()["build-corpus-release-assets.yml"]
+
+    assert "workflow_call:" in workflow
+    assert "pull_request:" not in workflow
+    assert workflow.count(FULL_CONVERT) == 1
 
 
 def test_surviving_full_corpus_job_keeps_tracked_advanced_app_startup_coverage():
