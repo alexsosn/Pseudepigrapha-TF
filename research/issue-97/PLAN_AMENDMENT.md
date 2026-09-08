@@ -26,6 +26,10 @@ Before #97 can merge, it must prove locally and in CI:
 
 The **live** GitHub Release creation, fresh remote cache download, explicit immutable release checkout, subsequent `checkout="local"` proof, and Agora registry update are post-merge release-operation gates in #104. A failure there is a release blocker and must feed back into the contract rather than being bypassed manually.
 
+## CI materialization boundary
+
+The repository-level full-corpus performance invariant applies to pull-request CI: PR-triggered workflows must materialize the exact pinned OCP corpus only once, in the existing `test.yml` pinned integration job. The reusable release-asset builder is a separate `workflow_call`-only publication primitive and must never become a second PR-triggered full conversion. Its own invocation is nevertheless required to materialize exactly one corpus generation from the immutable OCP pin before staging release assets. Tests must enforce both halves explicitly rather than counting unrelated workflow classes together.
+
 ## Manifest enhancement for rebuild equivalence
 
 The manifest v1 must bind both:
