@@ -7,3 +7,7 @@
 **Category:** Historical classifications
 
 published OCP docs.id from the historical 2017 classification snapshot
+
+**Serialized in this corpus:** no
+
+**Supported by converter:** yes

@@ -8,6 +8,10 @@
 
 JSON array of exact public OCP biblical-figure labels from the historical 2017 catalogue
 
+**Serialized in this corpus:** no
+
+**Supported by converter:** yes
+
 ## Controlled vocabulary
 
 - `Adam`

@@ -7,3 +7,7 @@
 **Category:** Source/version identity and provenance
 
 literal upstream XML element name
+
+**Serialized in this corpus:** no
+
+**Supported by converter:** yes

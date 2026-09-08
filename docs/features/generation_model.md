@@ -7,3 +7,7 @@
 **Category:** Generated-translation features/relations
 
 upstream model recorded for the pinned generated translation layer
+
+**Serialized in this corpus:** no
+
+**Supported by converter:** yes

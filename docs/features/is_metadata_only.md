@@ -7,3 +7,7 @@
 **Category:** Preserved anomalies / technical anchors
 
 1 for metadata attached to an upstream version with no textual units
+
+**Serialized in this corpus:** no
+
+**Supported by converter:** yes

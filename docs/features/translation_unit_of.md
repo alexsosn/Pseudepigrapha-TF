@@ -13,3 +13,7 @@ generated translation unit to its occurrence-aligned source unit
 **Cardinality:** exactly 1
 
 **Source qualifier:** `version_kind=generated_translation`
+
+**Serialized in this corpus:** no
+
+**Supported by converter:** yes

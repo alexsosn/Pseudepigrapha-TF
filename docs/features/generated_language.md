@@ -7,3 +7,7 @@
 **Category:** Generated-translation features/relations
 
 target language of an upstream generated translation
+
+**Serialized in this corpus:** no
+
+**Supported by converter:** yes

@@ -13,3 +13,7 @@ generated translation TF book to its exact source-version TF book
 **Cardinality:** exactly 1
 
 **Source qualifier:** `version_kind=generated_translation`
+
+**Serialized in this corpus:** no
+
+**Supported by converter:** yes
