@@ -24,7 +24,24 @@ def _distribution():
     return importlib.import_module("pseudepigrapha_tf.distribution")
 
 
+def _expected_feature_records():
+    return [
+        {
+            "name": name,
+            "bytes": len(payload),
+            "sha256": hashlib.sha256(payload).hexdigest(),
+        }
+        for name, payload in sorted(FEATURES.items())
+    ]
+
+
+def _feature_set_digest(records):
+    canonical = json.dumps(records, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    return hashlib.sha256(canonical).hexdigest()
+
+
 def _report_path(tmp_path: Path) -> Path:
+    records = _expected_feature_records()
     report_path = tmp_path / "conversion-report.json"
     report_path.write_text(
         json.dumps(
@@ -32,6 +49,11 @@ def _report_path(tmp_path: Path) -> Path:
                 "status": "ok",
                 "failed_checks": [],
                 "semantic_checks": {"probe": True},
+                "text_fabric": {
+                    "feature_count": len(records),
+                    "features": records,
+                    "feature_set_sha256": _feature_set_digest(records),
+                },
                 "provenance": {
                     "upstream_repository": UPSTREAM_REPOSITORY,
                     "upstream_commit": UPSTREAM_COMMIT,
@@ -75,22 +97,6 @@ def _manifest(tmp_path: Path):
         data_version="0.1",
     )
     return distribution, archive, report_path, manifest
-
-
-def _expected_feature_records():
-    return [
-        {
-            "name": name,
-            "bytes": len(payload),
-            "sha256": hashlib.sha256(payload).hexdigest(),
-        }
-        for name, payload in sorted(FEATURES.items())
-    ]
-
-
-def _feature_set_digest(records):
-    canonical = json.dumps(records, sort_keys=True, separators=(",", ":")).encode("utf-8")
-    return hashlib.sha256(canonical).hexdigest()
 
 
 def test_manifest_binds_extracted_tf_feature_bytes_independently_of_zip_container(tmp_path):
