@@ -118,10 +118,15 @@ def register_comparison_route(flask_app: Any, tf_app: Any) -> Any:
 
 
 def create_comparison_web_app(tf_app: Any, *, app_name: str | None = None) -> Any:
-    """Wrap one loaded TfApp with the stock TF Flask browser plus /compare."""
+    """Wrap one browser-mode TfApp with the stock TF Flask browser plus /compare."""
 
     if tf_app is None or getattr(tf_app, "api", None) is None:
         raise ValueError("a loaded Text-Fabric app with api is required")
+    if getattr(tf_app, "_browse", False) is not True:
+        raise ValueError(
+            "Text-Fabric app must be loaded in browser mode; use "
+            "load_local_comparison_web_app() or findApp(..., browse=True, ...)"
+        )
     try:
         from tf.browser.kernel import makeTfKernel
         from tf.browser.web import Web, factory
@@ -144,7 +149,7 @@ def load_local_comparison_web_app(
     version: str = "0.1",
     silent: str | bool = "deep",
 ) -> Any:
-    """Load local TF data/app and return the stock browser with /compare."""
+    """Load local TF data/app in browser mode and return the stock browser plus /compare."""
 
     data_path = Path(data_path)
     app_path = Path(app_path)
@@ -155,12 +160,14 @@ def load_local_comparison_web_app(
 
     from tf.advanced.app import findApp
 
+    # Match tf.browser.web.setup(): browser mode is required because advanced
+    # links/header methods return browser HTML only when _browse is true.
     tf_app = findApp(
         f"app:{app_path}",
         "",
         None,
         "github",
-        False,
+        True,
         version=version,
         locations=[str(data_path)],
         modules=[""],
