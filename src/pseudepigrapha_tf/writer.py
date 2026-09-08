@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import re
+import shutil
+import warnings
 from pathlib import Path
-from tempfile import TemporaryDirectory
+from tempfile import mkdtemp
 from typing import Callable, Protocol
 
 from .graph import EDGE_DESCRIPTIONS, INT_FEATURES, TFData
@@ -12,9 +14,53 @@ class _FabricLike(Protocol):
     def save(self, **kwargs) -> bool: ...
 
 
+class _TFInstallRollbackError(RuntimeError):
+    """Installation failed and the previous TF set could not be fully restored."""
+
+    def __init__(
+        self,
+        install_error: BaseException,
+        rollback_error: BaseException,
+        backup: Path,
+    ) -> None:
+        super().__init__(
+            "Text-Fabric installation failed "
+            f"({install_error}); rollback also failed ({rollback_error}); "
+            f"recoverable backup retained at {backup}"
+        )
+        self.install_error = install_error
+        self.rollback_error = rollback_error
+        self.backup = backup
+
+
 _FORMAT_FEATURE = re.compile(r"\{([^}:]+)(?::[^}]*)?\}")
 _ALWAYS_SERIALIZED_NODE_FEATURES = frozenset({"undefined_manuscript"})
 _ALWAYS_SERIALIZED_EDGE_FEATURES = frozenset({"witness", "manuscript_of"})
+
+
+def _warn_nonfatal(message: str, *, stacklevel: int = 2) -> None:
+    """Emit a best-effort cleanup diagnostic without changing transaction state."""
+
+    try:
+        warnings.warn(message, RuntimeWarning, stacklevel=stacklevel)
+    except BaseException:
+        # Warning filters or custom hooks may raise ordinary exceptions or
+        # process-control BaseExceptions. A diagnostic must never replace the
+        # transaction result established before cleanup began.
+        pass
+
+
+def _cleanup_stage_nonfatal(stage: Path) -> None:
+    """Remove serializer staging without changing the save/install result."""
+
+    try:
+        shutil.rmtree(stage)
+    except BaseException as cleanup_error:
+        _warn_nonfatal(
+            "Text-Fabric staging directory cleanup failed and remains at "
+            f"{stage}: {cleanup_error}",
+            stacklevel=3,
+        )
 
 
 def _node_features_with_format_dependencies(
@@ -98,15 +144,73 @@ def _metadata_with_serialized_features(
     return metadata
 
 
-def _install_staged_tf_features(stage: Path, output: Path) -> None:
-    """Install exactly the TF files produced by one successful staged save."""
+def _rollback_tf_features(output: Path, backup: Path, original_names: frozenset[str]) -> None:
+    """Restore the pre-install TF set while leaving non-TF sidecars untouched."""
 
-    staged = {path.name: path for path in stage.glob("*.tf")}
-    for name, path in staged.items():
-        path.replace(output / name)
-    for path in output.glob("*.tf"):
-        if path.name not in staged:
+    # New-only files have no counterpart in the previous generation. Common
+    # names are overwritten below from backup, and untouched old files remain
+    # in place when failure happened part-way through the backup phase.
+    for path in sorted(output.glob("*.tf"), key=lambda item: item.name):
+        if path.name not in original_names:
             path.unlink()
+    for path in sorted(backup.glob("*.tf"), key=lambda item: item.name):
+        path.replace(output / path.name)
+
+
+def _install_staged_tf_features(stage: Path, output: Path) -> None:
+    """Install one staged TF generation and restore the previous set on failure.
+
+    The stage and backup are siblings of ``output``, so normal ``Path.replace``
+    operations stay on one filesystem. This guarantees recovery after a failed
+    transaction; it does not claim lock-free atomic visibility to concurrent
+    readers during the finite sequence of renames.
+    """
+
+    staged = tuple(sorted(stage.glob("*.tf"), key=lambda item: item.name))
+    existing = tuple(sorted(output.glob("*.tf"), key=lambda item: item.name))
+    original_names = frozenset(path.name for path in existing)
+    backup = Path(mkdtemp(prefix=".pseudepigrapha-tf-backup-", dir=output.parent))
+
+    try:
+        for path in existing:
+            path.replace(backup / path.name)
+        for path in staged:
+            path.replace(output / path.name)
+    except BaseException as install_error:
+        try:
+            _rollback_tf_features(output, backup, original_names)
+        except BaseException as rollback_error:
+            raise _TFInstallRollbackError(
+                install_error,
+                rollback_error,
+                backup,
+            ) from rollback_error
+        else:
+            # A successful rollback moves every backed-up TF file back out, so
+            # only the empty directory remains. Preserve the original install
+            # exception even if housekeeping of that empty directory fails.
+            try:
+                backup.rmdir()
+            except BaseException as cleanup_error:
+                _warn_nonfatal(
+                    "previous TF set was restored, but empty backup cleanup "
+                    f"failed at {backup}: {cleanup_error}",
+                    stacklevel=3,
+                )
+            raise
+    else:
+        # At this point the complete new TF generation is already committed.
+        # Backup removal is housekeeping only: turning its failure into a write
+        # failure would prevent the CLI from publishing the matching staged
+        # conversion report and create an avoidable cross-artifact mismatch.
+        try:
+            shutil.rmtree(backup)
+        except BaseException as cleanup_error:
+            _warn_nonfatal(
+                "Text-Fabric features were installed successfully, but the old "
+                f"backup could not be removed and remains at {backup}: {cleanup_error}",
+                stacklevel=3,
+            )
 
 
 def _serialize_tf(
@@ -155,13 +259,16 @@ def _serialize_tf(
     # Text-Fabric writes support files in addition to the supplied feature maps
     # (for example ``__characters__.tf``). Let it produce the complete current
     # artifact set in isolation, then reconcile only ``*.tf`` into the output.
-    # A false/raising save leaves the previously generated corpus untouched.
-    with TemporaryDirectory(prefix=".pseudepigrapha-tf-", dir=output.parent) as stage_dir:
-        stage = Path(stage_dir)
+    # Stage cleanup is best-effort so it cannot replace a serializer/install
+    # failure or turn an already committed TF generation back into a failure.
+    stage = Path(mkdtemp(prefix=".pseudepigrapha-tf-", dir=output.parent))
+    try:
         if not save(stage):
             return False
         _install_staged_tf_features(stage, output)
-    return True
+        return True
+    finally:
+        _cleanup_stage_nonfatal(stage)
 
 
 def _write_prevalidated_tf(data: TFData, output_dir: str | Path) -> bool:
