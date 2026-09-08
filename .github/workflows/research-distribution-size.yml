@@ -1,0 +1,60 @@
+name: research-distribution-size
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+env:
+  PYTHONUNBUFFERED: '1'
+
+jobs:
+  measure-pinned-corpus:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+      - name: Install research environment
+        run: pip install -e '.[dev]'
+      - name: Clone exact OCP source
+        run: |
+          git clone --quiet https://github.com/OnlineCriticalPseudepigrapha/Online-Critical-Pseudepigrapha.git /tmp/ocp
+          git -C /tmp/ocp checkout --quiet c939dcbacad78c5d18d2c4282cad23c47e19ac07
+      - name: Materialize into Text-Fabric repository layout
+        run: |
+          mkdir -p "$HOME/github/alexsosn/Pseudepigrapha-TF/tf"
+          pseudepigrapha-tf convert /tmp/ocp/static/docs \
+            --output "$HOME/github/alexsosn/Pseudepigrapha-TF/tf/0.1" \
+            --upstream-commit c939dcbacad78c5d18d2c4282cad23c47e19ac07
+      - name: Measure uncompressed corpus
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import json
+
+          root = Path.home() / 'github/alexsosn/Pseudepigrapha-TF/tf/0.1'
+          tf_files = sorted(root.glob('*.tf'))
+          report = root / 'conversion-report.json'
+          sizes = [(path.name, path.stat().st_size) for path in tf_files]
+          payload = {
+              'tf_file_count': len(tf_files),
+              'tf_bytes': sum(size for _, size in sizes),
+              'report_bytes': report.stat().st_size,
+              'total_bytes': sum(size for _, size in sizes) + report.stat().st_size,
+              'largest_tf_files': sorted(sizes, key=lambda item: item[1], reverse=True)[:10],
+          }
+          print('RESEARCH_RAW=' + json.dumps(payload, sort_keys=True))
+          PY
+      - name: Build exact Text-Fabric express archive
+        run: |
+          tf-zip alexsosn/Pseudepigrapha-TF/tf
+          archive="$(find "$HOME/Downloads" -type f -name 'tf-0.1.zip' -print -quit)"
+          test -n "$archive"
+          echo "RESEARCH_ARCHIVE_PATH=$archive"
+          echo "RESEARCH_ARCHIVE_BYTES=$(stat -c '%s' "$archive")"
+          echo "RESEARCH_ARCHIVE_SHA256=$(sha256sum "$archive" | cut -d' ' -f1)"
+          echo "RESEARCH_ARCHIVE_FILES=$(unzip -Z1 "$archive" | wc -l)"
+          unzip -Z1 "$archive" | sed -n '1,20p'
