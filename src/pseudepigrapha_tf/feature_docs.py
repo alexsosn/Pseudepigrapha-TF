@@ -4,113 +4,96 @@ import json
 from pathlib import Path
 from typing import Any
 
-from .classifications import load_historical_classifications
+from .classifications import (
+    HistoricalClassifications,
+    attach_historical_classifications,
+    load_historical_classifications,
+)
+from .feature_contract import DOCUMENTATION_CATEGORIES, with_documentation_category
 from .graph import EDGE_DESCRIPTIONS, EDGE_FEATURE_CONTRACTS, FEATURE_DESCRIPTIONS, INT_FEATURES, TFData
-from .metadata import ALL_INTRO_FEATURES, _intro_feature_description
+from .metadata import (
+    ALL_INTRO_FEATURES,
+    PublicMetadataCorpus,
+    PublicMetadataDocument,
+    attach_public_metadata,
+)
 from .writer import (
     _edge_features_with_api_dependencies,
     _metadata_with_serialized_features,
     _node_features_with_format_dependencies,
 )
 
-DOCUMENTATION_CATEGORIES = (
-    "Text-Fabric warp and section/text features",
-    "Source/version identity and provenance",
-    "Apparatus and witness features/relations",
-    "Generated-translation features/relations",
-    "Public work metadata",
-    "Historical classifications",
-    "Preserved anomalies / technical anchors",
-    "Remaining source-preserved XML attributes/content",
-)
 
-_SECTION_FEATURES = {
-    "otype", "book", "chapter", "verse", "g_word_utf8", "prefix_utf8", "trailer_utf8", "boundary_utf8",
-    "chapter_index", "verse_index", "section_occurrence",
-}
-_IDENTITY_FEATURES = {
-    "source_file", "source_sha256", "source_ref", "source_ref_parts", "source_tag", "source_child_index",
-    "ocp_book", "version_id", "version_title", "version_kind", "version_fragment", "language", "title", "author",
-    "text_structure", "division_labels", "division_delimiters", "division_texts",
-}
-_APPARATUS_FEATURES = {
-    "reading_text", "reading_xml", "reading_index", "reading_option", "reading_option_source", "is_primary",
-    "is_omission", "mss", "ms_abbrev", "ms_name", "ms_name_xml", "ms_language", "ms_show", "manuscript_index",
-    "undefined_manuscript", "variant_position", "unit_id", "unit_index", "unit_linebreak", "token_count",
-    "bibliography", "bibliography_xml",
-}
-_GENERATED_FEATURES = {
-    "generated_language", "generation_marker", "generation_method", "generation_model", "synthetic_witness",
-}
-_ANOMALY_FEATURES = {
-    "is_empty_div", "is_gap", "is_metadata_only", "is_missing_unit_id", "is_source_anomaly", "ellipsis_text",
-}
+def _public_metadata_from_emitter() -> dict[str, dict[str, str]]:
+    """Obtain supported public-metadata descriptors from the real emitter."""
+
+    data = TFData(
+        node_features={"otype": {1: "word"}},
+        edge_features={"oslots": {}},
+        metadata={},
+    )
+    metadata = PublicMetadataCorpus(
+        documents={
+            "__feature_docs__.xml": PublicMetadataDocument(
+                filename="__feature_docs__.xml",
+                title="feature documentation probe",
+                version="probe",
+                citation=None,
+                citation_present=False,
+                fields={},
+            )
+        },
+        source_sha256="0" * 64,
+        source_meta={},
+    )
+    attach_public_metadata(data, metadata)
+    names = (*ALL_INTRO_FEATURES, "intro_label")
+    return {
+        name: with_documentation_category(
+            name,
+            kind="node",
+            metadata=data.metadata[name],
+        )
+        for name in names
+    }
 
 
-def _documentation_category(name: str, *, kind: str) -> str:
-    if name.startswith("intro_"):
-        return "Public work metadata"
-    if name.startswith("historical_"):
-        return "Historical classifications"
-    if kind == "edge":
-        if name == "oslots":
-            return "Text-Fabric warp and section/text features"
-        if name in {"translation_of", "translation_unit_of"}:
-            return "Generated-translation features/relations"
-        if name in {"reading_of", "variant_word_of", "witness", "manuscript_of", "resource_of", "parent"}:
-            return "Apparatus and witness features/relations"
-    if name in _SECTION_FEATURES:
-        return "Text-Fabric warp and section/text features"
-    if name in _IDENTITY_FEATURES:
-        return "Source/version identity and provenance"
-    if name in _APPARATUS_FEATURES:
-        return "Apparatus and witness features/relations"
-    if name in _GENERATED_FEATURES:
-        return "Generated-translation features/relations"
-    if name in _ANOMALY_FEATURES:
-        return "Preserved anomalies / technical anchors"
-    return "Remaining source-preserved XML attributes/content"
+def _historical_metadata_from_emitter() -> dict[str, dict[str, str]]:
+    """Obtain supported historical-classification descriptors from the real emitter."""
+
+    classifications = load_historical_classifications()
+    works = sorted(classifications.documents)
+    otype: dict[int, str | int] = {1: "word"}
+    ocp_book: dict[int, str | int] = {}
+    oslots: dict[int, set[int]] = {}
+    for node, work_id in enumerate(works, start=2):
+        otype[node] = "document_metadata"
+        ocp_book[node] = work_id
+        oslots[node] = {1}
+    data = TFData(
+        node_features={"otype": otype, "ocp_book": ocp_book},
+        edge_features={"oslots": oslots},
+        metadata={},
+    )
+    attach_historical_classifications(data, classifications)
+    names = tuple(
+        name for name in HistoricalClassifications.REQUIRED_FEATURES if name != "ocp_book"
+    )
+    return {
+        name: with_documentation_category(
+            name,
+            kind="node",
+            metadata=data.metadata[name],
+        )
+        for name in names
+    }
 
 
 def _supported_node_metadata() -> dict[str, dict[str, str]]:
-    """Return stable metadata for supported features not guaranteed in a small build."""
+    """Return canonical emitter metadata for supported optional metadata layers."""
 
-    result = {
-        name: {
-            "valueType": "str",
-            "description": _intro_feature_description(name),
-            "documentationCategory": "Public work metadata",
-        }
-        for name in ALL_INTRO_FEATURES
-    }
-    result["intro_label"] = {
-        "valueType": "str",
-        "description": "short display label for an OCP document_metadata node",
-        "documentationCategory": "Public work metadata",
-    }
-
-    classifications = load_historical_classifications()
-    result["historical_ocp_doc_id"] = {
-        "valueType": "int",
-        "description": "published OCP docs.id from the historical 2017 classification snapshot",
-        "documentationCategory": "Historical classifications",
-    }
-    result["historical_genres_json"] = {
-        "valueType": "str",
-        "description": "JSON array of exact public OCP genre labels from the historical 2017 catalogue",
-        "documentationCategory": "Historical classifications",
-        "controlledVocabularyJson": json.dumps(
-            list(classifications.genres.values()), ensure_ascii=False, separators=(",", ":")
-        ),
-    }
-    result["historical_biblical_figures_json"] = {
-        "valueType": "str",
-        "description": "JSON array of exact public OCP biblical-figure labels from the historical 2017 catalogue",
-        "documentationCategory": "Historical classifications",
-        "controlledVocabularyJson": json.dumps(
-            list(classifications.biblical_figures.values()), ensure_ascii=False, separators=(",", ":")
-        ),
-    }
+    result = _public_metadata_from_emitter()
+    result.update(_historical_metadata_from_emitter())
     return result
 
 
@@ -175,7 +158,7 @@ def serialized_feature_contract(
         meta.update(metadata.get(name, {}))
         meta.setdefault("valueType", "int" if name in INT_FEATURES else "str")
         meta.setdefault("description", FEATURE_DESCRIPTIONS.get(name, f"OCP/TF feature {name}"))
-        meta.setdefault("documentationCategory", _documentation_category(name, kind="node"))
+        meta = with_documentation_category(name, kind="node", metadata=meta)
         values = node_features.get(name, {})
         node_contract[name] = {
             "name": name,
@@ -193,7 +176,7 @@ def serialized_feature_contract(
         meta = dict(metadata.get(name, {}))
         meta.setdefault("valueType", "str")
         meta.setdefault("description", EDGE_DESCRIPTIONS.get(name, name))
-        meta.setdefault("documentationCategory", _documentation_category(name, kind="edge"))
+        meta = with_documentation_category(name, kind="edge", metadata=meta)
         item: dict[str, Any] = {
             "name": name,
             "kind": "edge",
@@ -229,11 +212,23 @@ def _render_feature_page(item: dict[str, Any]) -> str:
         item["description"],
     ]
     if item["kind"] == "edge":
-        lines.extend(["", f"**Direction:** {_direction(item)}", "", f"**Cardinality:** {item.get('cardinality', 'unspecified')}"])
+        lines.extend(
+            [
+                "",
+                f"**Direction:** {_direction(item)}",
+                "",
+                f"**Cardinality:** {item.get('cardinality', 'unspecified')}",
+            ]
+        )
         if item.get("sourceQualifier"):
             lines.extend(["", f"**Source qualifier:** `{item['sourceQualifier']}`"])
         if item.get("technicalSupport"):
-            lines.extend(["", "This is a **technical Text-Fabric support relation**; its anchors are not scholarly containment claims."])
+            lines.extend(
+                [
+                    "",
+                    "This is a **technical Text-Fabric support relation**; its anchors are not scholarly containment claims.",
+                ]
+            )
     controlled = item["metadata"].get("controlledVocabularyJson")
     if controlled:
         try:
