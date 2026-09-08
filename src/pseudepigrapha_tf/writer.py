@@ -7,6 +7,7 @@ from pathlib import Path
 from tempfile import mkdtemp
 from typing import Callable, Protocol
 
+from .feature_contract import with_documentation_category
 from .graph import EDGE_DESCRIPTIONS, FEATURE_DESCRIPTIONS, INT_FEATURES, TFData
 
 
@@ -126,20 +127,30 @@ def _metadata_with_serialized_features(
 
     metadata = {name: dict(values) for name, values in data.metadata.items()}
     for feature in node_features:
-        metadata.setdefault(
+        base = metadata.get(
             feature,
             {
                 "valueType": "int" if feature in INT_FEATURES else "str",
                 "description": FEATURE_DESCRIPTIONS.get(feature, f"OCP/TF feature {feature}"),
             },
         )
+        metadata[feature] = with_documentation_category(
+            feature,
+            kind="node",
+            metadata=base,
+        )
     for feature in edge_features:
-        metadata.setdefault(
+        base = metadata.get(
             feature,
             {
                 "valueType": "str",
                 "description": EDGE_DESCRIPTIONS.get(feature, feature),
             },
+        )
+        metadata[feature] = with_documentation_category(
+            feature,
+            kind="edge",
+            metadata=base,
         )
     return metadata
 
