@@ -220,3 +220,35 @@ def test_successful_rollback_cleanup_failure_warns_and_reraises_original(monkeyp
     assert caught.value is install_error
     assert staged_installs == 2
     _assert_exact_output(output, before)
+
+
+def test_committed_install_cleanup_failure_warns_without_turning_success_into_failure(monkeypatch, tmp_path):
+    import pseudepigrapha_tf.writer as writer
+
+    output, before = _seed_output(tmp_path)
+    original_rmtree = writer.shutil.rmtree
+    cleanup_error = OSError("committed backup cleanup boom")
+
+    def fail_committed_backup_cleanup(path, *args, **kwargs):
+        candidate = Path(path)
+        if candidate.parent == tmp_path and candidate.name.startswith(".pseudepigrapha-tf-backup-"):
+            raise cleanup_error
+        return original_rmtree(path, *args, **kwargs)
+
+    monkeypatch.setattr(writer.shutil, "rmtree", fail_committed_backup_cleanup)
+
+    with pytest.warns(RuntimeWarning, match="committed backup cleanup boom"):
+        assert _standard_write(monkeypatch, output) is True
+
+    assert (output / "otype.tf").read_bytes() == b"new otype\n"
+    assert (output / "oslots.tf").read_bytes() == b"new oslots\n"
+    assert (output / "new_feature.tf").read_bytes() == b"new-only feature\n"
+    assert not (output / "obsolete.tf").exists()
+    assert (output / "conversion-report.json").read_bytes() == before["conversion-report.json"]
+    retained = [
+        path
+        for directory in tmp_path.iterdir()
+        if directory.is_dir() and directory != output
+        for path in directory.glob("*.tf")
+    ]
+    assert retained, "post-commit cleanup failure must retain the old backup for manual cleanup"
