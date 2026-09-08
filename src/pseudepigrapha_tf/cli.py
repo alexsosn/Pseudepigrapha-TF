@@ -66,7 +66,11 @@ def _parser() -> argparse.ArgumentParser:
         default=Path("app"),
         help="Text-Fabric app directory (default: ./app)",
     )
-    browse.add_argument("--version", default="0.1", help="Text-Fabric data version (default: 0.1)")
+    browse.add_argument(
+        "--version",
+        default=TF_DATA_VERSION,
+        help=f"Text-Fabric data version (default: {TF_DATA_VERSION})",
+    )
     browse.add_argument("--port", type=int, default=8000, help="browser port (default: 8000)")
     browse.add_argument("--debug", action="store_true", help="enable Text-Fabric/Flask debug mode")
     return parser
