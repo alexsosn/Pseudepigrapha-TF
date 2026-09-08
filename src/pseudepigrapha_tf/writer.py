@@ -38,6 +38,18 @@ _ALWAYS_SERIALIZED_NODE_FEATURES = frozenset({"undefined_manuscript"})
 _ALWAYS_SERIALIZED_EDGE_FEATURES = frozenset({"witness", "manuscript_of"})
 
 
+def _warn_nonfatal(message: str, *, stacklevel: int = 2) -> None:
+    """Emit a best-effort cleanup diagnostic without changing transaction state."""
+
+    try:
+        warnings.warn(message, RuntimeWarning, stacklevel=stacklevel)
+    except Exception:
+        # Warning filters may promote RuntimeWarning to an exception, and custom
+        # warning hooks may raise too. Cleanup diagnostics must never replace an
+        # install failure or turn an already committed install into a failure.
+        pass
+
+
 def _node_features_with_format_dependencies(
     data: TFData,
     *,
@@ -167,11 +179,10 @@ def _install_staged_tf_features(stage: Path, output: Path) -> None:
             try:
                 backup.rmdir()
             except OSError as cleanup_error:
-                warnings.warn(
+                _warn_nonfatal(
                     "previous TF set was restored, but empty backup cleanup "
                     f"failed at {backup}: {cleanup_error}",
-                    RuntimeWarning,
-                    stacklevel=2,
+                    stacklevel=3,
                 )
             raise
     else:
@@ -182,11 +193,10 @@ def _install_staged_tf_features(stage: Path, output: Path) -> None:
         try:
             shutil.rmtree(backup)
         except Exception as cleanup_error:
-            warnings.warn(
+            _warn_nonfatal(
                 "Text-Fabric features were installed successfully, but the old "
                 f"backup could not be removed and remains at {backup}: {cleanup_error}",
-                RuntimeWarning,
-                stacklevel=2,
+                stacklevel=3,
             )
 
 
