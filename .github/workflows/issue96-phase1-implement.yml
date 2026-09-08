@@ -1,0 +1,368 @@
+name: issue96-phase1-implement
+
+on:
+  push:
+    branches:
+      - research/96-feature-docs
+
+permissions:
+  contents: write
+
+jobs:
+  implement:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: research/96-feature-docs
+      - name: Implement canonical feature contract
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          graph = Path('src/pseudepigrapha_tf/graph.py')
+          text = graph.read_text(encoding='utf-8')
+
+          start = text.index('INT_FEATURES = {')
+          end = text.index('\n\n\n@dataclass\nclass TFData:', start)
+          replacement = '''INT_FEATURES = {
+              "chapter_index", "div_index", "div_level", "historical_ocp_doc_id", "is_empty_div", "is_gap",
+              "is_metadata_only", "is_missing_unit_id", "is_omission", "is_primary", "is_source_anomaly",
+              "manuscript_index", "reading_index", "reading_option", "resource_index", "section_occurrence",
+              "source_child_index", "synthetic_witness", "token_count", "undefined_manuscript", "unit_index",
+              "variant_position", "verse_index", "w_annotated",
+          }
+
+          FEATURE_DESCRIPTIONS = {
+              "author": "upstream author or editor attribution for the OCP version",
+              "bibliography": "JSON array of plain-text bibliography entries declared for an OCP manuscript",
+              "bibliography_xml": "JSON array preserving the mixed-XML bibliography entries declared for an OCP manuscript",
+              "book": "BHSA-compatible book section identifier; one OCP version is one TF book",
+              "boundary_utf8": "deterministic separator inserted between OCP units",
+              "chapter": "BHSA-compatible chapter label; compound parent path for deep OCP references",
+              "chapter_index": "1-based chapter occurrence index within one OCP version",
+              "div_fragment": "literal upstream div/@fragment value",
+              "div_index": "1-based source-order index of a div among sibling divs",
+              "div_label": "upstream division-level label declared by the OCP version",
+              "div_level": "1-based nesting depth of the preserved upstream div",
+              "div_number": "literal upstream div/@number identifier",
+              "div_path": "slash-joined sequence of upstream div numbers for the preserved div",
+              "division_delimiters": "JSON array of upstream reference delimiters declared by the OCP version",
+              "division_labels": "JSON array of upstream division labels declared by the OCP version",
+              "division_texts": "JSON array of upstream division display texts declared by the OCP version",
+              "ellipsis_text": "text content of an upstream <elipsis> structural omission marker",
+              "g_word_utf8": "Unicode surface form, following the BHSA feature name",
+              "generated_language": "target language of an upstream generated translation",
+              "generation_marker": "explicit upstream generated-translation provenance marker",
+              "generation_method": "upstream generation method recorded for this translation",
+              "generation_model": "upstream model recorded for the pinned generated translation layer",
+              "group": "literal upstream unit/@group value",
+              "indent": "literal upstream reading indentation attribute",
+              "is_empty_div": "1 for an empty source div preserved inside a textual OCP version; oslots is a technical anchor only",
+              "is_gap": "1 for an anchor slot created for an empty primary reading",
+              "is_metadata_only": "1 for metadata attached to an upstream version with no textual units",
+              "is_missing_unit_id": "1 when the upstream unit explicitly has an empty id and no id is inferred",
+              "is_omission": "1 when an OCP reading has no textual content",
+              "is_primary": "1 for the reading selected as the primary text of its OCP unit",
+              "is_source_anomaly": "1 for a preserved upstream structure or identity anomaly",
+              "language": "effective language of the OCP version or token",
+              "lex": "literal upstream lexical annotation on an OCP word when present",
+              "linebreak": "literal upstream reading linebreak attribute",
+              "manuscript_index": "1-based source-order index of a declared manuscript within an OCP version",
+              "morph": "literal upstream morphological annotation on an OCP word when present",
+              "ms_abbrev": "literal upstream manuscript abbreviation or preserved undeclared witness token",
+              "ms_language": "literal upstream manuscript language value",
+              "ms_name": "plain-text manuscript name derived from the upstream manuscript element",
+              "ms_name_xml": "mixed XML content preserving the upstream manuscript name",
+              "ms_show": "literal upstream manuscript show/display attribute",
+              "mss": "literal upstream reading witness-list string",
+              "ocp_book": "stable OCP work identifier derived from the source filename",
+              "otype": "Text-Fabric node type (word slots and non-slot structural/metadata node types)",
+              "parallel": "literal upstream unit/@parallel value",
+              "prefix_utf8": "Unicode material preceding a word inside its OCP reading",
+              "reading_index": "1-based source-order index of a reading within an OCP unit",
+              "reading_option": "numeric reading option used by the converter for ordering and query ergonomics",
+              "reading_option_source": "literal OCP reading/@option before numeric normalization",
+              "reading_text": "plain-text content of the preserved OCP reading",
+              "reading_xml": "mixed XML content inside the OCP reading",
+              "resource_index": "1-based source-order index of a resource within an OCP version",
+              "resource_info": "JSON array preserving upstream resource information strings",
+              "resource_name": "literal upstream resource name",
+              "resource_url": "literal upstream resource URL",
+              "section_occurrence": "1-based occurrence of the exact upstream section address within an OCP version",
+              "source_child_index": "1-based position of a preserved source child element within its parent",
+              "source_file": "stable source path relative to the supplied OCP docs directory",
+              "source_ref": "full OCP reference using every division and declared delimiter",
+              "source_ref_parts": "JSON array of source division identifiers",
+              "source_sha256": "SHA-256 digest of source XML bytes",
+              "source_tag": "literal upstream XML element name",
+              "style": "literal upstream style annotation on an OCP word when present",
+              "synthetic_witness": "1 for a source-declared synthetic provenance witness rather than a historical manuscript",
+              "text_structure": "literal upstream work text-structure declaration",
+              "title": "upstream OCP work title",
+              "token_count": "number of parsed word tokens in the preserved reading",
+              "trailer_utf8": "Unicode material following a word inside its OCP reading",
+              "undefined_manuscript": "1 for a citation-only manuscript node synthesized from an undeclared upstream witness abbreviation",
+              "unit_id": "literal upstream unit/@id identifier; may be empty only for explicitly validated source anomalies",
+              "unit_index": "1-based source-order index of a unit within an OCP version",
+              "unit_linebreak": "literal upstream unit linebreak attribute",
+              "variant_position": "1-based token position inside a non-primary reading",
+              "verse": "BHSA-compatible verse label; later duplicate upstream addresses receive a technical ~N suffix",
+              "verse_index": "1-based verse occurrence index within one OCP version",
+              "version_fragment": "literal upstream version/@fragment value",
+              "version_id": "stable converter identifier for the exact upstream version owning this node",
+              "version_kind": "source for critical/source versions; generated_translation for OCP machine translations",
+              "version_title": "literal upstream OCP version title",
+              "w_annotated": "1 when the upstream OCP word explicitly carries annotation markup",
+              "w_lang": "literal OCP <w>/@lang when present",
+          }
+
+          EDGE_DESCRIPTIONS = {
+              "oslots": "Text-Fabric support edge from each non-slot node to occupied or technical-anchor word slots; technical anchors are not scholarly containment claims",
+              "parent": "OCP structural parent relation from div/unit/ellipsis/orphan_reading nodes to div",
+              "reading_of": "reading node to its OCP unit",
+              "variant_word_of": "variant_word node to its reading",
+              "witness": "reading/orphan_reading node to cited manuscript nodes",
+              "manuscript_of": "manuscript node to its TF book/version",
+              "resource_of": "resource node to its TF book/version",
+              "translation_of": "generated translation TF book to its exact source-version TF book",
+              "translation_unit_of": "generated translation unit to its occurrence-aligned source unit",
+          }
+
+          EDGE_FEATURE_CONTRACTS = {
+              "oslots": {
+                  "sourceTypes": frozenset(),
+                  "targetTypes": frozenset({"word"}),
+                  "cardinality": "one or more",
+                  "technicalSupport": True,
+                  "cardinalityRules": (),
+              },
+              "parent": {
+                  "sourceTypes": frozenset({"div", "unit", "ellipsis", "orphan_reading"}),
+                  "targetTypes": frozenset({"div"}),
+                  "cardinality": "type-dependent",
+                  "technicalSupport": False,
+                  "cardinalityRules": (
+                      (frozenset({"unit", "ellipsis", "orphan_reading"}), 1, 1, "exactly 1"),
+                      (frozenset({"div"}), 0, 1, "at most 1"),
+                  ),
+              },
+              "reading_of": {
+                  "sourceTypes": frozenset({"reading"}), "targetTypes": frozenset({"unit"}),
+                  "cardinality": "exactly 1", "technicalSupport": False,
+                  "cardinalityRules": ((frozenset({"reading"}), 1, 1, "exactly 1"),),
+              },
+              "variant_word_of": {
+                  "sourceTypes": frozenset({"variant_word"}), "targetTypes": frozenset({"reading"}),
+                  "cardinality": "exactly 1", "technicalSupport": False,
+                  "cardinalityRules": ((frozenset({"variant_word"}), 1, 1, "exactly 1"),),
+              },
+              "witness": {
+                  "sourceTypes": frozenset({"reading", "orphan_reading"}), "targetTypes": frozenset({"manuscript"}),
+                  "cardinality": "zero or more", "technicalSupport": False, "cardinalityRules": (),
+              },
+              "manuscript_of": {
+                  "sourceTypes": frozenset({"manuscript"}), "targetTypes": frozenset({"book", "version_metadata"}),
+                  "cardinality": "exactly 1", "technicalSupport": False,
+                  "cardinalityRules": ((frozenset({"manuscript"}), 1, 1, "exactly 1"),),
+              },
+              "resource_of": {
+                  "sourceTypes": frozenset({"resource"}), "targetTypes": frozenset({"book", "version_metadata"}),
+                  "cardinality": "exactly 1", "technicalSupport": False,
+                  "cardinalityRules": ((frozenset({"resource"}), 1, 1, "exactly 1"),),
+              },
+              "translation_of": {
+                  "sourceTypes": frozenset({"book"}), "targetTypes": frozenset({"book"}),
+                  "cardinality": "exactly 1", "technicalSupport": False,
+                  "sourceQualifier": "version_kind=generated_translation", "minTargets": 1, "maxTargets": 1,
+                  "cardinalityRules": (),
+              },
+              "translation_unit_of": {
+                  "sourceTypes": frozenset({"unit"}), "targetTypes": frozenset({"unit"}),
+                  "cardinality": "exactly 1", "technicalSupport": False,
+                  "sourceQualifier": "version_kind=generated_translation", "minTargets": 1, "maxTargets": 1,
+                  "cardinalityRules": (),
+              },
+          }
+
+          _EDGE_TYPE_CONTRACTS = {
+              name: (contract["sourceTypes"], contract["targetTypes"])
+              for name, contract in EDGE_FEATURE_CONTRACTS.items()
+              if name != "oslots"
+          }
+          _EDGE_CARDINALITY_CONTRACTS = tuple(
+              (name, source_types, minimum, maximum, expected)
+              for name, contract in EDGE_FEATURE_CONTRACTS.items()
+              for source_types, minimum, maximum, expected in contract["cardinalityRules"]
+          )'''
+          text = text[:start] + replacement + text[end:]
+          graph.write_text(text, encoding='utf-8')
+
+          writer = Path('src/pseudepigrapha_tf/writer.py')
+          text = writer.read_text(encoding='utf-8')
+          old = 'from .graph import EDGE_DESCRIPTIONS, INT_FEATURES, TFData'
+          new = 'from .graph import EDGE_DESCRIPTIONS, FEATURE_DESCRIPTIONS, INT_FEATURES, TFData'
+          assert text.count(old) == 1
+          text = text.replace(old, new)
+          old = '"description": f"OCP/TF feature {feature}",'
+          new = '"description": FEATURE_DESCRIPTIONS.get(feature, f"OCP/TF feature {feature}"),'
+          assert text.count(old) == 1
+          text = text.replace(old, new)
+          writer.write_text(text, encoding='utf-8')
+
+          conversion = Path('src/pseudepigrapha_tf/conversion.py')
+          text = conversion.read_text(encoding='utf-8')
+          anchor = 'from .graph import (\n    TFData,'
+          assert text.count(anchor) == 1
+          text = text.replace(anchor, 'from .graph import (\n    EDGE_FEATURE_CONTRACTS,\n    TFData,')
+          anchor = '    errors: list[str] = []\n    for node, node_kind in kind.items():'
+          assert text.count(anchor) == 1
+          text = text.replace(
+              anchor,
+              '    errors: list[str] = []\n'
+              '    book_contract = EDGE_FEATURE_CONTRACTS["translation_of"]\n'
+              '    unit_contract = EDGE_FEATURE_CONTRACTS["translation_unit_of"]\n'
+              '    for node, node_kind in kind.items():',
+          )
+          text = text.replace(
+              '            if len(targets) != 1:\n                errors.append(f"generated book {node} has {len(targets)} translation_of targets; expected exactly 1")',
+              '            if not book_contract["minTargets"] <= len(targets) <= book_contract["maxTargets"]:\n                errors.append(f"generated book {node} has {len(targets)} translation_of targets; expected exactly 1")',
+              1,
+          )
+          text = text.replace(
+              '            if len(targets) != 1:\n                errors.append(\n                    f"generated unit {node} has {len(targets)} translation_unit_of targets; expected exactly 1"\n                )',
+              '            if not unit_contract["minTargets"] <= len(targets) <= unit_contract["maxTargets"]:\n                errors.append(\n                    f"generated unit {node} has {len(targets)} translation_unit_of targets; expected exactly 1"\n                )',
+              1,
+          )
+          conversion.write_text(text, encoding='utf-8')
+
+          init = Path('src/pseudepigrapha_tf/__init__.py')
+          text = init.read_text(encoding='utf-8')
+          anchor = 'from .conversion import build_tf_data\n'
+          assert text.count(anchor) == 1
+          text = text.replace(anchor, anchor + 'from .feature_docs import edge_feature_contracts, serialized_feature_contract\n')
+          anchor = '    "WorkMetadata",\n'
+          assert text.count(anchor) == 1
+          text = text.replace(anchor, anchor + '    "edge_feature_contracts",\n    "serialized_feature_contract",\n')
+          init.write_text(text, encoding='utf-8')
+          PY
+
+          cat > src/pseudepigrapha_tf/feature_docs.py <<'PY'
+          from __future__ import annotations
+
+          from typing import Any
+
+          from .graph import EDGE_DESCRIPTIONS, EDGE_FEATURE_CONTRACTS, FEATURE_DESCRIPTIONS, INT_FEATURES, TFData
+          from .writer import (
+              _edge_features_with_api_dependencies,
+              _metadata_with_serialized_features,
+              _node_features_with_format_dependencies,
+          )
+
+
+          def edge_feature_contracts() -> dict[str, dict[str, Any]]:
+              """Return a deterministic read-only copy of supported edge semantics."""
+
+              result: dict[str, dict[str, Any]] = {}
+              for name in sorted(EDGE_FEATURE_CONTRACTS):
+                  source = EDGE_FEATURE_CONTRACTS[name]
+                  item: dict[str, Any] = {
+                      "sourceTypes": tuple(sorted(source["sourceTypes"])),
+                      "targetTypes": tuple(sorted(source["targetTypes"])),
+                      "cardinality": str(source["cardinality"]),
+                      "technicalSupport": bool(source.get("technicalSupport", False)),
+                      "description": EDGE_DESCRIPTIONS[name],
+                  }
+                  if source.get("sourceQualifier"):
+                      item["sourceQualifier"] = str(source["sourceQualifier"])
+                  rules = source.get("cardinalityRules", ())
+                  if rules:
+                      item["cardinalityRules"] = tuple(
+                          {
+                              "sourceTypes": tuple(sorted(source_types)),
+                              "minimum": minimum,
+                              "maximum": maximum,
+                              "description": description,
+                          }
+                          for source_types, minimum, maximum, description in rules
+                      )
+                  result[name] = item
+              return result
+
+
+          def _observed_node_types(data: TFData, values: dict[int, Any]) -> tuple[str, ...]:
+              otype = data.node_features.get("otype", {})
+              return tuple(sorted({str(otype[node]) for node in values if node in otype}))
+
+
+          def serialized_feature_contract(
+              data: TFData,
+              *,
+              include_supported: bool = False,
+          ) -> dict[str, dict[str, dict[str, Any]]]:
+              """Describe the serialization-normalized TF feature contract without mutating data.
+
+              ``serialized`` distinguishes features that would receive a ``.tf``
+              file for this graph from supported optional relations/features that
+              are documented through the converter's canonical contracts.
+              """
+
+              node_features = _node_features_with_format_dependencies(data, isolate=True)
+              edge_features = _edge_features_with_api_dependencies(data, isolate=True)
+              metadata = _metadata_with_serialized_features(data, node_features, edge_features)
+              edges = edge_feature_contracts()
+
+              node_names = set(node_features)
+              edge_names = set(edge_features)
+              if include_supported:
+                  node_names.update(FEATURE_DESCRIPTIONS)
+                  edge_names.update(edges)
+
+              node_contract: dict[str, dict[str, Any]] = {}
+              for name in sorted(node_names):
+                  meta = dict(metadata.get(name, {}))
+                  meta.setdefault("valueType", "int" if name in INT_FEATURES else "str")
+                  meta.setdefault("description", FEATURE_DESCRIPTIONS.get(name, f"OCP/TF feature {name}"))
+                  values = node_features.get(name, {})
+                  node_contract[name] = {
+                      "name": name,
+                      "kind": "node",
+                      "valueType": meta["valueType"],
+                      "description": meta["description"],
+                      "metadata": meta,
+                      "observedNodeTypes": _observed_node_types(data, values),
+                      "serialized": name in node_features,
+                      "supported": True,
+                  }
+
+              edge_contract: dict[str, dict[str, Any]] = {}
+              for name in sorted(edge_names):
+                  meta = dict(metadata.get(name, {}))
+                  meta.setdefault("valueType", "str")
+                  meta.setdefault("description", EDGE_DESCRIPTIONS.get(name, name))
+                  item: dict[str, Any] = {
+                      "name": name,
+                      "kind": "edge",
+                      "valueType": meta["valueType"],
+                      "description": meta["description"],
+                      "metadata": meta,
+                      "serialized": name in edge_features,
+                      "supported": True,
+                  }
+                  if name in edges:
+                      item.update(edges[name])
+                  edge_contract[name] = item
+
+              return {"node": node_contract, "edge": edge_contract}
+          PY
+
+          python -m compileall -q src/pseudepigrapha_tf
+          git diff --check
+      - name: Commit implementation
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add src/pseudepigrapha_tf
+          git commit -m 'feat: expose canonical serialized feature contract'
+          git push origin HEAD:research/96-feature-docs
