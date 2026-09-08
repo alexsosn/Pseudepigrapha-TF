@@ -4,7 +4,7 @@ import re
 import shutil
 import warnings
 from pathlib import Path
-from tempfile import TemporaryDirectory, mkdtemp
+from tempfile import mkdtemp
 from typing import Callable, Protocol
 
 from .graph import EDGE_DESCRIPTIONS, INT_FEATURES, TFData
@@ -48,6 +48,19 @@ def _warn_nonfatal(message: str, *, stacklevel: int = 2) -> None:
         # process-control BaseExceptions. A diagnostic must never replace the
         # transaction result established before cleanup began.
         pass
+
+
+def _cleanup_stage_nonfatal(stage: Path) -> None:
+    """Remove serializer staging without changing the save/install result."""
+
+    try:
+        shutil.rmtree(stage)
+    except BaseException as cleanup_error:
+        _warn_nonfatal(
+            "Text-Fabric staging directory cleanup failed and remains at "
+            f"{stage}: {cleanup_error}",
+            stacklevel=3,
+        )
 
 
 def _node_features_with_format_dependencies(
@@ -246,13 +259,16 @@ def _serialize_tf(
     # Text-Fabric writes support files in addition to the supplied feature maps
     # (for example ``__characters__.tf``). Let it produce the complete current
     # artifact set in isolation, then reconcile only ``*.tf`` into the output.
-    # A false/raising save leaves the previously generated corpus untouched.
-    with TemporaryDirectory(prefix=".pseudepigrapha-tf-", dir=output.parent) as stage_dir:
-        stage = Path(stage_dir)
+    # Stage cleanup is best-effort so it cannot replace a serializer/install
+    # failure or turn an already committed TF generation back into a failure.
+    stage = Path(mkdtemp(prefix=".pseudepigrapha-tf-", dir=output.parent))
+    try:
         if not save(stage):
             return False
         _install_staged_tf_features(stage, output)
-    return True
+        return True
+    finally:
+        _cleanup_stage_nonfatal(stage)
 
 
 def _write_prevalidated_tf(data: TFData, output_dir: str | Path) -> bool:
