@@ -7,7 +7,8 @@ from pathlib import Path
 
 import pseudepigrapha_tf
 from pseudepigrapha_tf import cli
-from pseudepigrapha_tf.graph import build_tf_data
+from pseudepigrapha_tf.conversion import build_tf_data as build_conversion_tf_data
+from pseudepigrapha_tf.graph import build_tf_data as build_graph_tf_data
 from pseudepigrapha_tf.parser import parse_file
 
 
@@ -45,7 +46,14 @@ def test_frozen_release_identity_is_consistent_across_owned_surfaces():
 
 
 def test_serialized_tf_data_version_matches_frozen_release_identity_by_default():
-    data = build_tf_data([parse_file(FIXTURES / "sample.xml")])
+    data = build_graph_tf_data([parse_file(FIXTURES / "sample.xml")])
+
+    assert data.metadata[""]["version"] == EXPECTED_DATA_VERSION
+    assert data.metadata[""]["converterVersion"] == EXPECTED_PACKAGE_VERSION
+
+
+def test_public_conversion_builder_defaults_match_frozen_release_identity():
+    data = build_conversion_tf_data([parse_file(FIXTURES / "sample.xml")])
 
     assert data.metadata[""]["version"] == EXPECTED_DATA_VERSION
     assert data.metadata[""]["converterVersion"] == EXPECTED_PACKAGE_VERSION
