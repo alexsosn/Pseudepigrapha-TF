@@ -89,18 +89,22 @@ class TfApp(App):
                 if value is not None:
                     destination[node_type] = _template_spec(value)
 
+            # Match Text-Fabric's native getTypeDefaults() invariant: every
+            # configured type gets both feature-display pairs, even when one is
+            # empty. Its renderer concatenates the two bare-feature lists and a
+            # missing entry falls back to a tuple, which is incompatible with the
+            # list returned by parseFeatures() for the populated side.
             for key, destination in (
                 ("features", context.features),
                 ("featuresBare", context.featuresBare),
             ):
-                value = policy.get(key)
-                if value:
-                    present_value = " ".join(
-                        feature
-                        for feature in value.split()
-                        if feature in available_features
-                    )
-                    destination[node_type] = parseFeatures(present_value)
+                value = policy.get(key, "")
+                present_value = " ".join(
+                    feature
+                    for feature in value.split()
+                    if feature in available_features
+                )
+                destination[node_type] = parseFeatures(present_value)
 
         # Restore only active policies in diagnostic/showContext state. The
         # mutable context sets/dicts are the same objects captured by TF display
