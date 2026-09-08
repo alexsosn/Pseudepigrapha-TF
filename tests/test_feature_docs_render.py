@@ -2,10 +2,12 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
 import yaml
 
 import pseudepigrapha_tf.feature_docs as feature_docs
 from pseudepigrapha_tf import build_tf_data
+from pseudepigrapha_tf.graph import TFData
 from pseudepigrapha_tf.parser import parse_file
 
 
@@ -68,6 +70,19 @@ def test_optional_metadata_page_exposes_canonical_supported_node_applicability()
     page = feature_docs.render_feature_docs(data)["intro_title_json.md"]
     assert "**Observed node types in render graph:** none in this render graph" in page
     assert "**Supported node types:** `document_metadata`" in page
+
+
+def test_supported_probe_fails_closed_without_feature_applicability_evidence():
+    data = TFData(
+        node_features={
+            "otype": {1: "word", 2: "document_metadata", 3: "division"},
+        },
+        edge_features={"oslots": {2: {1}, 3: {1}}},
+        metadata={"probe": {"valueType": "str", "description": "probe feature"}},
+    )
+
+    with pytest.raises(ValueError, match="probe.*node type|applicability.*probe"):
+        feature_docs._supported_node_descriptors_from_probe(data, ("probe",))
 
 
 def test_renderer_preserves_controlled_vocabulary_from_canonical_metadata():
