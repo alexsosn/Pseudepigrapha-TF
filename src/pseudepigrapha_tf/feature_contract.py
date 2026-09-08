@@ -140,8 +140,8 @@ def with_documentation_category(
     kind: str,
     metadata: Mapping[str, str] | None = None,
 ) -> dict[str, str]:
-    """Copy feature metadata and attach the canonical documentation category."""
+    """Copy feature metadata and enforce the canonical documentation category."""
 
     result = dict(metadata or {})
-    result.setdefault(DOCUMENTATION_CATEGORY_KEY, documentation_category(name, kind=kind))
+    result[DOCUMENTATION_CATEGORY_KEY] = documentation_category(name, kind=kind)
     return result
