@@ -33,6 +33,23 @@ jobs:
           pseudepigrapha-tf convert /tmp/ocp/static/docs \
             --output /tmp/pseudepigrapha-tf/0.1 \
             --upstream-commit c939dcbacad78c5d18d2c4282cad23c47e19ac07
+      - name: Verify full-corpus feature-help coverage
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          tf_dir = Path('/tmp/pseudepigrapha-tf/0.1')
+          docs_dir = Path('docs/features')
+          serialized = {
+              path.stem
+              for path in tf_dir.glob('*.tf')
+              if not path.stem.startswith('__') and path.stem != 'otext'
+          }
+          documented = {path.stem for path in docs_dir.glob('*.md') if path.stem != '0_home'}
+          missing = sorted(serialized - documented)
+          assert not missing, f'serialized TF features lack tracked documentation: {missing}'
+          assert (docs_dir / '0_home.md').is_file()
+          PY
       - name: Load tracked advanced app against full local corpus
         run: |
           python - <<'PY'
