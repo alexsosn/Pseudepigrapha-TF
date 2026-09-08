@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import re
 import shutil
+import warnings
 from pathlib import Path
 from tempfile import TemporaryDirectory, mkdtemp
 from typing import Callable, Protocol
@@ -18,8 +19,8 @@ class _TFInstallRollbackError(RuntimeError):
 
     def __init__(
         self,
-        install_error: Exception,
-        rollback_error: Exception,
+        install_error: BaseException,
+        rollback_error: BaseException,
         backup: Path,
     ) -> None:
         super().__init__(
@@ -150,10 +151,10 @@ def _install_staged_tf_features(stage: Path, output: Path) -> None:
             path.replace(backup / path.name)
         for path in staged:
             path.replace(output / path.name)
-    except Exception as install_error:
+    except BaseException as install_error:
         try:
             _rollback_tf_features(output, backup, original_names)
-        except Exception as rollback_error:
+        except BaseException as rollback_error:
             raise _TFInstallRollbackError(
                 install_error,
                 rollback_error,
@@ -166,8 +167,11 @@ def _install_staged_tf_features(stage: Path, output: Path) -> None:
             try:
                 backup.rmdir()
             except OSError as cleanup_error:
-                install_error.add_note(
-                    f"previous TF set was restored, but empty backup cleanup failed at {backup}: {cleanup_error}"
+                warnings.warn(
+                    "previous TF set was restored, but empty backup cleanup "
+                    f"failed at {backup}: {cleanup_error}",
+                    RuntimeWarning,
+                    stacklevel=2,
                 )
             raise
     else:
