@@ -1,0 +1,55 @@
+name: issue104-data-version-fix
+
+on:
+  push:
+    branches:
+      - release/104-canonical-v0.2.0
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: release/104-canonical-v0.2.0
+      - name: Centralize serialized TF and converter identity
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('src/pseudepigrapha_tf/graph.py')
+          text = path.read_text(encoding='utf-8')
+
+          replacements = (
+              (
+                  'from .provenance import corpus_license_metadata\n',
+                  'from .provenance import corpus_license_metadata\nfrom .release_identity import CONVERTER_VERSION, TF_DATA_VERSION\n',
+              ),
+              ('        "version": "0.2",\n', '        "version": TF_DATA_VERSION,\n'),
+              (
+                  '    upstream_commit: str = "", converter_version: str = "0.1.0",\n',
+                  '    upstream_commit: str = "", converter_version: str = CONVERTER_VERSION,\n',
+              ),
+          )
+          for old, new in replacements:
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f'expected one graph identity seam for {old!r}, found {count}')
+              text = text.replace(old, new)
+
+          path.write_text(text, encoding='utf-8')
+          PY
+          git diff --check
+          git diff -- src/pseudepigrapha_tf/graph.py
+      - name: Commit fix
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add src/pseudepigrapha_tf/graph.py
+          git commit -m 'fix: centralize serialized TF release identity'
+          git push origin HEAD:release/104-canonical-v0.2.0
