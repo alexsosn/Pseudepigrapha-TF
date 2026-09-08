@@ -280,6 +280,15 @@ def _validate_serialized_identity(
                 f"serialized Text-Fabric {label} mismatch: {actual!r} != {expected_value!r}"
             )
 
+    unexpected_provenance = sorted(
+        set(serialized_provenance) - set(expected_provenance)
+    )
+    if unexpected_provenance:
+        raise DistributionContractError(
+            "serialized Text-Fabric identity contains provenance absent from the "
+            "conversion report: " + ", ".join(unexpected_provenance)
+        )
+
     actual_data_version = metadata.get("version")
     if actual_data_version is None:
         raise DistributionContractError(
