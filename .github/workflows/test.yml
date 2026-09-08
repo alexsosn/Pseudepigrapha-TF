@@ -137,6 +137,7 @@ jobs:
           python - <<'PY'
           from collections import Counter
 
+          from tf.core.files import readYaml
           from tf.fabric import Fabric
           from pseudepigrapha_tf import Apparatus, Translations
 
@@ -153,6 +154,16 @@ jobs:
           assert api.F.otype.maxSlot > 0
           assert api.F.otype.slotType == 'word'
           assert tuple(api.T.sectionTypes) == ('book', 'chapter', 'verse')
+
+          # Fail closed if the exact pinned corpus introduces a runtime node type
+          # without an intentional app display policy. Policies for supported
+          # optional types may legitimately be absent from this pinned snapshot.
+          app_config = readYaml(asFile='app/config.yaml', plain=True)
+          runtime_types = set(api.F.otype.all)
+          configured_types = set(app_config['typeDisplay'])
+          ordinary_unconfigured = {'word', 'chapter', 'verse'}
+          unconfigured = runtime_types - ordinary_unconfigured - configured_types
+          assert not unconfigured, sorted(unconfigured)
 
           generic = api.TF.features['otype'].metaData
           assert generic['sourceIdentityStatus'] == 'verified'
