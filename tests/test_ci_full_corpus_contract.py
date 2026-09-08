@@ -21,6 +21,8 @@ def _workflow_texts() -> dict[str, str]:
 
 
 def _pull_request_workflows() -> dict[str, str]:
+    """Return only workflows that GitHub actually triggers for pull requests."""
+
     return {
         name: text
         for name, text in _workflow_texts().items()
