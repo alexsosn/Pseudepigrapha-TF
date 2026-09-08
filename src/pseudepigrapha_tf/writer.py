@@ -175,13 +175,19 @@ def _install_staged_tf_features(stage: Path, output: Path) -> None:
                 )
             raise
     else:
+        # At this point the complete new TF generation is already committed.
+        # Backup removal is housekeeping only: turning its failure into a write
+        # failure would prevent the CLI from publishing the matching staged
+        # conversion report and create an avoidable cross-artifact mismatch.
         try:
             shutil.rmtree(backup)
         except Exception as cleanup_error:
-            raise RuntimeError(
+            warnings.warn(
                 "Text-Fabric features were installed successfully, but the old "
-                f"backup could not be removed and remains at {backup}: {cleanup_error}"
-            ) from cleanup_error
+                f"backup could not be removed and remains at {backup}: {cleanup_error}",
+                RuntimeWarning,
+                stacklevel=2,
+            )
 
 
 def _serialize_tf(
