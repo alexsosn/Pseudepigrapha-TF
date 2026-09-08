@@ -7,7 +7,3 @@
 **Category:** Preserved anomalies / technical anchors
 
 1 for a preserved upstream structure or identity anomaly
-
-**Supported by converter:** yes
-
-Availability is corpus-dependent; this reference does not infer absence from the documentation fixture.

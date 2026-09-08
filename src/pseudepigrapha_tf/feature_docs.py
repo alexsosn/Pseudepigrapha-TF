@@ -108,6 +108,7 @@ def edge_feature_contracts() -> dict[str, dict[str, Any]]:
             "targetTypes": tuple(sorted(source["targetTypes"])),
             "cardinality": str(source["cardinality"]),
             "technicalSupport": bool(source.get("technicalSupport", False)),
+            "corpusDependent": bool(source.get("corpusDependent", False)),
             "edgeValues": False,
             "description": EDGE_DESCRIPTIONS[name],
         }
@@ -238,7 +239,7 @@ def _render_feature_page(item: dict[str, Any]) -> str:
                     "This is a **technical Text-Fabric support relation**; its anchors are not scholarly containment claims.",
                 ]
             )
-    if item.get("corpusDependent") or not item.get("serialized", True):
+    if item.get("corpusDependent"):
         lines.extend(
             [
                 "",

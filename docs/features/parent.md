@@ -11,3 +11,7 @@ OCP structural parent relation from div/unit/ellipsis/orphan_reading nodes to di
 **Direction:** `div`, `ellipsis`, `orphan_reading`, `unit` → `div`
 
 **Cardinality:** type-dependent
+
+**Supported by converter:** yes
+
+Availability is corpus-dependent; this reference does not infer absence from the documentation fixture.

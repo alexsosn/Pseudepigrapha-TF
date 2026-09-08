@@ -159,6 +159,11 @@ def test_edge_contracts_are_reusable_and_cover_translation_and_tf_support_semant
     assert oslots["targetTypes"] == ("word",)
     assert oslots["technicalSupport"] is True
     assert "technical" in oslots["description"].lower()
+    assert oslots["corpusDependent"] is False
+    assert contracts["witness"]["corpusDependent"] is False
+    assert contracts["manuscript_of"]["corpusDependent"] is False
+    assert contracts["resource_of"]["corpusDependent"] is True
+    assert contracts["translation_of"]["corpusDependent"] is True
 
 
 def test_supported_optional_relation_is_documentable_even_when_not_serialized_here():

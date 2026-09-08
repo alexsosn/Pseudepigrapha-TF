@@ -117,6 +117,8 @@ EDGE_FEATURE_CONTRACTS = {
         "targetTypes": frozenset({"word"}),
         "cardinality": "one or more",
         "technicalSupport": True,
+        "corpusDependent": False,
+
         "cardinalityRules": (),
     },
     "parent": {
@@ -124,6 +126,8 @@ EDGE_FEATURE_CONTRACTS = {
         "targetTypes": frozenset({"div"}),
         "cardinality": "type-dependent",
         "technicalSupport": False,
+        "corpusDependent": True,
+
         "cardinalityRules": (
             (frozenset({"unit", "ellipsis", "orphan_reading"}), 1, 1, "exactly 1"),
             (frozenset({"div"}), 0, 1, "at most 1"),
@@ -132,36 +136,50 @@ EDGE_FEATURE_CONTRACTS = {
     "reading_of": {
         "sourceTypes": frozenset({"reading"}), "targetTypes": frozenset({"unit"}),
         "cardinality": "exactly 1", "technicalSupport": False,
+        "corpusDependent": True,
+
         "cardinalityRules": ((frozenset({"reading"}), 1, 1, "exactly 1"),),
     },
     "variant_word_of": {
         "sourceTypes": frozenset({"variant_word"}), "targetTypes": frozenset({"reading"}),
         "cardinality": "exactly 1", "technicalSupport": False,
+        "corpusDependent": True,
+
         "cardinalityRules": ((frozenset({"variant_word"}), 1, 1, "exactly 1"),),
     },
     "witness": {
         "sourceTypes": frozenset({"reading", "orphan_reading"}), "targetTypes": frozenset({"manuscript"}),
-        "cardinality": "zero or more", "technicalSupport": False, "cardinalityRules": (),
+        "cardinality": "zero or more", "technicalSupport": False,
+        "corpusDependent": False,
+ "cardinalityRules": (),
     },
     "manuscript_of": {
         "sourceTypes": frozenset({"manuscript"}), "targetTypes": frozenset({"book", "version_metadata"}),
         "cardinality": "exactly 1", "technicalSupport": False,
+        "corpusDependent": False,
+
         "cardinalityRules": ((frozenset({"manuscript"}), 1, 1, "exactly 1"),),
     },
     "resource_of": {
         "sourceTypes": frozenset({"resource"}), "targetTypes": frozenset({"book", "version_metadata"}),
         "cardinality": "exactly 1", "technicalSupport": False,
+        "corpusDependent": True,
+
         "cardinalityRules": ((frozenset({"resource"}), 1, 1, "exactly 1"),),
     },
     "translation_of": {
         "sourceTypes": frozenset({"book"}), "targetTypes": frozenset({"book"}),
         "cardinality": "exactly 1", "technicalSupport": False,
+        "corpusDependent": True,
+
         "sourceQualifier": "version_kind=generated_translation", "minTargets": 1, "maxTargets": 1,
         "cardinalityRules": (),
     },
     "translation_unit_of": {
         "sourceTypes": frozenset({"unit"}), "targetTypes": frozenset({"unit"}),
         "cardinality": "exactly 1", "technicalSupport": False,
+        "corpusDependent": True,
+
         "sourceQualifier": "version_kind=generated_translation", "minTargets": 1, "maxTargets": 1,
         "cardinalityRules": (),
     },

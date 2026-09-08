@@ -11,3 +11,7 @@ variant_word node to its reading
 **Direction:** `variant_word` → `reading`
 
 **Cardinality:** exactly 1
+
+**Supported by converter:** yes
+
+Availability is corpus-dependent; this reference does not infer absence from the documentation fixture.

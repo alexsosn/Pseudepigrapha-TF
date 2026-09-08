@@ -7,7 +7,3 @@
 **Category:** Remaining source-preserved XML attributes/content
 
 literal upstream reading indentation attribute
-
-**Supported by converter:** yes
-
-Availability is corpus-dependent; this reference does not infer absence from the documentation fixture.
