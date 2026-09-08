@@ -7,3 +7,5 @@
 **Category:** Apparatus and witness features/relations
 
 mixed XML content preserving the upstream manuscript name
+
+**Observed node types in render graph:** `manuscript`

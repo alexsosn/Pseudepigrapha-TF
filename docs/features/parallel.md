@@ -7,3 +7,5 @@
 **Category:** Remaining source-preserved XML attributes/content
 
 literal upstream unit/@parallel value
+
+**Observed node types in render graph:** `unit`

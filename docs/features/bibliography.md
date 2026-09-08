@@ -7,3 +7,5 @@
 **Category:** Apparatus and witness features/relations
 
 JSON array of plain-text bibliography entries declared for an OCP manuscript
+
+**Observed node types in render graph:** `manuscript`

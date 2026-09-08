@@ -7,3 +7,5 @@
 **Category:** Preserved anomalies / technical anchors
 
 1 for a preserved upstream structure or identity anomaly
+
+**Observed node types in render graph:** none in this render graph
