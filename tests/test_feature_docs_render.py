@@ -45,6 +45,31 @@ def test_renderer_covers_supported_contract_deterministically():
     assert contract["node"]["source_ref"]["description"] in first["source_ref.md"]
 
 
+def test_node_page_exposes_observed_node_applicability():
+    data = _data()
+    contract = feature_docs.serialized_feature_contract(data, include_supported=True)["node"]["source_ref"]
+    observed = contract["observedNodeTypes"]
+    assert observed
+
+    page = feature_docs.render_feature_docs(data)["source_ref.md"]
+    expected = ", ".join(f"`{node_type}`" for node_type in observed)
+    assert f"**Observed node types:** {expected}" in page
+
+
+def test_optional_metadata_page_exposes_canonical_supported_node_applicability():
+    data = _data()
+    contract = feature_docs.serialized_feature_contract(data, include_supported=True)["node"]["intro_title_json"]
+
+    # The small XML fixture does not attach the public metadata layer, but the
+    # real emitter establishes document_metadata as its canonical node type.
+    assert contract["observedNodeTypes"] == ()
+    assert contract["supportedNodeTypes"] == ("document_metadata",)
+
+    page = feature_docs.render_feature_docs(data)["intro_title_json.md"]
+    assert "**Observed node types:** none in this graph" in page
+    assert "**Supported node types:** `document_metadata`" in page
+
+
 def test_renderer_preserves_controlled_vocabulary_from_canonical_metadata():
     data = _data()
     data.node_features["controlled_probe"] = {1: "alpha"}
