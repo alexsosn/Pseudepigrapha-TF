@@ -8,6 +8,6 @@
 
 published OCP docs.id from the historical 2017 classification snapshot
 
-**Serialized in this corpus:** no
-
 **Supported by converter:** yes
+
+Availability is corpus-dependent; this reference does not infer absence from the documentation fixture.

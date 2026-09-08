@@ -8,6 +8,6 @@
 
 JSON-scalar encoded public OCP copyright field from intros.json
 
-**Serialized in this corpus:** no
-
 **Supported by converter:** yes
+
+Availability is corpus-dependent; this reference does not infer absence from the documentation fixture.

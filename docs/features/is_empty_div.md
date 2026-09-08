@@ -8,6 +8,6 @@
 
 1 for an empty source div preserved inside a textual OCP version; oslots is a technical anchor only
 
-**Serialized in this corpus:** no
-
 **Supported by converter:** yes
+
+Availability is corpus-dependent; this reference does not infer absence from the documentation fixture.

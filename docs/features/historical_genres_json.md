@@ -8,9 +8,9 @@
 
 JSON array of exact public OCP genre labels from the historical 2017 catalogue
 
-**Serialized in this corpus:** no
-
 **Supported by converter:** yes
+
+Availability is corpus-dependent; this reference does not infer absence from the documentation fixture.
 
 ## Controlled vocabulary
 

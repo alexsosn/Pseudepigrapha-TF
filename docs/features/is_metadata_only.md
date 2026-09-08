@@ -8,6 +8,6 @@
 
 1 for metadata attached to an upstream version with no textual units
 
-**Serialized in this corpus:** no
-
 **Supported by converter:** yes
+
+Availability is corpus-dependent; this reference does not infer absence from the documentation fixture.

@@ -8,6 +8,6 @@
 
 short display label for an OCP document_metadata node
 
-**Serialized in this corpus:** no
-
 **Supported by converter:** yes
+
+Availability is corpus-dependent; this reference does not infer absence from the documentation fixture.

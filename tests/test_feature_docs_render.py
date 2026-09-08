@@ -84,8 +84,9 @@ def test_supported_but_unserialized_feature_is_explicit_on_its_page():
 
     resource = feature_docs.render_feature_docs(data)["resource_of.md"]
 
-    assert "**Serialized in this corpus:** no" in resource
+    assert "Serialized in this corpus:" not in resource
     assert "**Supported by converter:** yes" in resource
+    assert "Availability is corpus-dependent" in resource
 
 
 def test_landing_page_has_frozen_researcher_groups_and_exact_feature_links():

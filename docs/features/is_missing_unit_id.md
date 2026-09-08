@@ -8,6 +8,6 @@
 
 1 when the upstream unit explicitly has an empty id and no id is inferred
 
-**Serialized in this corpus:** no
-
 **Supported by converter:** yes
+
+Availability is corpus-dependent; this reference does not infer absence from the documentation fixture.

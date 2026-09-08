@@ -2,7 +2,7 @@
 
 **Kind:** edge
 
-**Value type:** `str`
+**Value type:** `none`
 
 **Category:** Apparatus and witness features/relations
 

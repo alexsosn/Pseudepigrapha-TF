@@ -108,6 +108,7 @@ def edge_feature_contracts() -> dict[str, dict[str, Any]]:
             "targetTypes": tuple(sorted(source["targetTypes"])),
             "cardinality": str(source["cardinality"]),
             "technicalSupport": bool(source.get("technicalSupport", False)),
+            "edgeValues": False,
             "description": EDGE_DESCRIPTIONS[name],
         }
         if source.get("sourceQualifier"):
@@ -180,7 +181,8 @@ def serialized_feature_contract(
         item: dict[str, Any] = {
             "name": name,
             "kind": "edge",
-            "valueType": meta["valueType"],
+            "valueType": "none",
+            "edgeValues": False,
             "description": meta["description"],
             "metadata": meta,
             "serialized": name in edge_features,
@@ -233,9 +235,9 @@ def _render_feature_page(item: dict[str, Any]) -> str:
         lines.extend(
             [
                 "",
-                "**Serialized in this corpus:** no",
-                "",
                 "**Supported by converter:** yes",
+                "",
+                "Availability is corpus-dependent; this reference does not infer absence from the documentation fixture.",
             ]
         )
     controlled = item["metadata"].get("controlledVocabularyJson")
