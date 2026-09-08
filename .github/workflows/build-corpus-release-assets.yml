@@ -56,6 +56,10 @@ jobs:
               fh.write(f"CONVERTER_VERSION={converter_version}\n")
               fh.write(f"DATA_VERSION={data_version}\n")
           PY
+          git fetch --force --no-tags origin \
+            "refs/tags/$RELEASE_TAG:refs/tags/$RELEASE_TAG"
+          TAG_COMMIT="$(git rev-parse "refs/tags/$RELEASE_TAG^{commit}")"
+          test "$TAG_COMMIT" = "$RELEASE_COMMIT"
 
       - name: Build release wheel
         run: |
