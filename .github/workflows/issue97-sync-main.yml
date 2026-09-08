@@ -1,0 +1,47 @@
+name: issue97-sync-main
+
+on:
+  push:
+    branches:
+      - research/97-distribution-contract
+
+permissions:
+  contents: write
+
+jobs:
+  sync:
+    if: ${{ !contains(github.event.head_commit.message, '[issue97-sync-done]') }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: research/97-distribution-contract
+          fetch-depth: 0
+      - name: Merge current main and resolve scoped add/add conflict
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git fetch origin main
+          set +e
+          git merge --no-ff --no-commit origin/main
+          rc=$?
+          set -e
+          if [ "$rc" -ne 0 ]; then
+            mapfile -t unmerged < <(git diff --name-only --diff-filter=U)
+            printf 'unmerged: %s\n' "${unmerged[*]:-}"
+            if [ "${#unmerged[@]}" -ne 1 ] || [ "${unmerged[0]}" != "tests/test_ci_full_corpus_contract.py" ]; then
+              git merge --abort || true
+              echo "unexpected merge conflicts" >&2
+              exit 1
+            fi
+            git checkout --ours tests/test_ci_full_corpus_contract.py
+            git add tests/test_ci_full_corpus_contract.py
+          fi
+          git rm .github/workflows/issue97-sync-main.yml
+          if git diff --name-only --diff-filter=U | grep -q .; then
+            echo "unresolved conflicts remain" >&2
+            exit 1
+          fi
+          git commit -m "merge current main into issue 97 [issue97-sync-done]"
+          git push origin HEAD:research/97-distribution-contract
