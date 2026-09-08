@@ -33,11 +33,20 @@ Repository/commit select the profile; `converterVersion` is publication identity
 
 `corpus_license_provenance_is_consistent()` already fails closed when expected profile values are missing/wrong, when verified-only values are overclaimed for an unverified/unknown profile, or when verified states carry diagnostics. An unknown repository/commit with source identity marked verified obtains canonical `contentLicenseStatus=unverified`, so it cannot legitimately claim a verified corpus license.
 
-### Production path
+### Production path and empirical inventory
 
 The CLI builds graph metadata, independently detects the source checkout, then calls `attest_corpus_license_source_identity()` before `build_conversion_report()` and before Text-Fabric serialization. The report is projected from the same generic metadata via `report_provenance()`. The Text-Fabric writer serializes that generic metadata into feature headers, including `otype.tf`.
 
-Exact pinned full-corpus integration run `34284414744` on #111 already passed conversion, canonical staging/manifest validation, stock TF extraction/reload, public metadata, and advanced app startup. A dedicated isolated corroboration run `34289983075` was launched from immutable research commit `0d3cf423e9835bbed3e941409e5871fb6e93db2c`; it directly compares the generated report projection, serialized `otype.tf` projection, and `corpus_license_metadata()` expected projection and asserts profile consistency. **Do not enter TDD until that run succeeds.**
+Exact pinned full-corpus integration run `34284414744` on #111 already passed conversion, canonical staging/manifest validation, stock TF extraction/reload, public metadata, and advanced app startup.
+
+Dedicated isolated research run `34289983075` from immutable commit `0d3cf423e9835bbed3e941409e5871fb6e93db2c` completed the exact `c939...` conversion and printed the real provenance projections. It ended red only because the first research assertion incorrectly required the *entire* conversion-report provenance object to equal the canonical Text-Fabric source/license projection. The evidence before that assertion establishes:
+
+- serialized `otype.tf` canonical provenance exactly equals the expected `corpus_license_metadata()` projection;
+- `corpus_license_provenance_is_consistent(serialized_generic) == True`;
+- all 14 non-diagnostic canonical fields are present; the two diagnostic fields from the 16-field mapping are correctly absent;
+- the full report additionally carries four legitimate report-only provenance fields from later audit augmenters: `historical_classifications_commit`, `historical_classifications_fixture_sha256`, `intros_sha256`, and `intros_source`.
+
+Therefore #113 must validate the canonical `REPORT_PROVENANCE_FIELDS` projection, not all keys in `report["provenance"]`. Corrected corroboration run `34290384000` uses that projection boundary; its result is useful confirmation but is not a prerequisite for the RED gate because the first run already produced the required exact corpus evidence and identified the assertion-boundary correction.
 
 ### Existing gap
 
