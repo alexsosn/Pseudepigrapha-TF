@@ -8,6 +8,7 @@ import pytest
 
 from pseudepigrapha_tf.distribution import (
     DistributionContractError,
+    feature_directory_identity,
     stage_distribution_assets,
     validate_distribution,
 )
@@ -30,6 +31,7 @@ def _materialized(tmp_path: Path, *, status: str = "ok") -> Path:
                 "status": status,
                 "failed_checks": [] if status == "ok" else ["probe"],
                 "semantic_checks": {"probe": status == "ok"},
+                "text_fabric": feature_directory_identity(source),
                 "provenance": {
                     "upstream_repository": UPSTREAM_REPOSITORY,
                     "upstream_commit": UPSTREAM_COMMIT,
