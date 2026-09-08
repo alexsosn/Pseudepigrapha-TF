@@ -1,0 +1,41 @@
+name: issue104-data-version-fix
+
+on:
+  push:
+    branches:
+      - release/104-canonical-v0.2.0
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: release/104-canonical-v0.2.0
+      - name: Advance authoritative serialized TF data version
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+          path = Path('src/pseudepigrapha_tf/graph.py')
+          text = path.read_text(encoding='utf-8')
+          old = '        "version": "0.1",\n        "converterVersion": converter_version,'
+          new = '        "version": "0.2",\n        "converterVersion": converter_version,'
+          count = text.count(old)
+          if count != 1:
+              raise SystemExit(f'expected one authoritative data-version field, found {count}')
+          path.write_text(text.replace(old, new), encoding='utf-8')
+          PY
+          git diff --check
+          git diff -- src/pseudepigrapha_tf/graph.py
+      - name: Commit fix
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add src/pseudepigrapha_tf/graph.py
+          git commit -m 'fix: serialize TF data version 0.2'
+          git push origin HEAD:release/104-canonical-v0.2.0
