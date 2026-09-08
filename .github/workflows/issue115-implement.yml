@@ -1,0 +1,68 @@
+name: issue115-implement
+
+on:
+  push:
+    branches:
+      - fix/115-reproducible-release-zip
+
+permissions:
+  contents: write
+
+jobs:
+  implement:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/115-reproducible-release-zip
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+
+      - name: Implement deterministic ZIP member metadata
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('src/pseudepigrapha_tf/distribution.py')
+          text = path.read_text(encoding='utf-8')
+
+          old_import = 'from zipfile import BadZipFile, ZIP_DEFLATED, ZipFile\n'
+          new_import = 'from zipfile import BadZipFile, ZIP_DEFLATED, ZipFile, ZipInfo\n'
+          if text.count(old_import) != 1:
+              raise SystemExit(f'expected one zipfile import seam, found {text.count(old_import)}')
+          text = text.replace(old_import, new_import)
+
+          constants_anchor = 'MANIFEST_NAME = "dataset-manifest.json"\n\n\n'
+          constants = '''MANIFEST_NAME = "dataset-manifest.json"\n\n_CANONICAL_ZIP_DATETIME = (1980, 1, 1, 0, 0, 0)\n_CANONICAL_ZIP_CREATE_SYSTEM = 3  # Unix, fixed rather than host-derived.\n_CANONICAL_ZIP_EXTERNAL_ATTR = 0o100644 << 16\n\n\ndef _canonical_zip_info(name: str) -> ZipInfo:\n    """Return host-independent metadata for one top-level TF archive member."""\n\n    info = ZipInfo(name, date_time=_CANONICAL_ZIP_DATETIME)\n    info.compress_type = ZIP_DEFLATED\n    info.create_system = _CANONICAL_ZIP_CREATE_SYSTEM\n    info.external_attr = _CANONICAL_ZIP_EXTERNAL_ATTR\n    info.extra = b""\n    info.comment = b""\n    return info\n\n\n'''
+          if text.count(constants_anchor) != 1:
+              raise SystemExit(f'expected one manifest constant anchor, found {text.count(constants_anchor)}')
+          text = text.replace(constants_anchor, constants)
+
+          old_writer = '''        with ZipFile(archive, "w", compression=ZIP_DEFLATED) as zf:\n            for feature in features:\n                zf.write(feature, arcname=feature.name)\n'''
+          new_writer = '''        with ZipFile(archive, "w", compression=ZIP_DEFLATED) as zf:\n            for feature in features:\n                zf.writestr(_canonical_zip_info(feature.name), feature.read_bytes())\n'''
+          if text.count(old_writer) != 1:
+              raise SystemExit(f'expected one staging ZIP writer seam, found {text.count(old_writer)}')
+          text = text.replace(old_writer, new_writer)
+
+          path.write_text(text, encoding='utf-8')
+          PY
+          git diff --check
+          git diff -- src/pseudepigrapha_tf/distribution.py
+
+      - name: Focused GREEN gate
+        run: |
+          python -m pip install -e '.[dev]'
+          pytest -q tests/test_distribution_reproducibility.py tests/test_distribution_staging.py
+
+      - name: Commit implementation
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add src/pseudepigrapha_tf/distribution.py
+          git commit -m 'fix: normalize canonical ZIP member metadata'
+          git push origin HEAD:fix/115-reproducible-release-zip
