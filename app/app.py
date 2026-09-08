@@ -67,7 +67,7 @@ class TfApp(App):
             return {}
 
         present_types = set(self.api.F.otype.all)
-        available_features = set(self.api.Fall(warp=False))
+        available_features = set(self.api.Fall())
         context = self.context
         applied = {}
 
