@@ -44,6 +44,29 @@ _PROFILE_KEYS = frozenset(
     }
 )
 
+# One canonical projection between Text-Fabric generic metadata and conversion-
+# report provenance. Distribution validation consumes the same mapping so a new
+# provenance field cannot silently be checked in one representation but not the
+# other.
+REPORT_PROVENANCE_FIELDS = (
+    ("upstreamRepository", "upstream_repository"),
+    ("upstreamCommit", "upstream_commit"),
+    ("converterVersion", "converter_version"),
+    ("sourceIdentityStatus", "source_identity_status"),
+    ("sourceIdentityDiagnostic", "source_identity_diagnostic"),
+    ("contentLicenseStatus", "content_license_status"),
+    ("contentLicense", "content_license"),
+    ("contentLicenseUrl", "content_license_url"),
+    ("contentLicenseSource", "content_license_source"),
+    ("contentLicenseScope", "content_license_scope"),
+    ("converterSoftwareLicense", "converter_software_license"),
+    ("upstreamSoftwareLicense", "upstream_software_license"),
+    ("upstreamLicenseCommit", "upstream_license_commit"),
+    ("contentAttribution", "content_attribution"),
+    ("contentCitation", "content_citation"),
+    ("contentLicenseDiagnostic", "content_license_diagnostic"),
+)
+
 
 def corpus_license_metadata(
     repository: str,
@@ -179,26 +202,8 @@ def corpus_license_provenance_is_consistent(generic: Mapping[str, object]) -> bo
 def report_provenance(generic: Mapping[str, object]) -> dict[str, str]:
     """Project the graph's canonical generic provenance into report field names."""
 
-    mapping = (
-        ("upstreamRepository", "upstream_repository"),
-        ("upstreamCommit", "upstream_commit"),
-        ("converterVersion", "converter_version"),
-        ("sourceIdentityStatus", "source_identity_status"),
-        ("sourceIdentityDiagnostic", "source_identity_diagnostic"),
-        ("contentLicenseStatus", "content_license_status"),
-        ("contentLicense", "content_license"),
-        ("contentLicenseUrl", "content_license_url"),
-        ("contentLicenseSource", "content_license_source"),
-        ("contentLicenseScope", "content_license_scope"),
-        ("converterSoftwareLicense", "converter_software_license"),
-        ("upstreamSoftwareLicense", "upstream_software_license"),
-        ("upstreamLicenseCommit", "upstream_license_commit"),
-        ("contentAttribution", "content_attribution"),
-        ("contentCitation", "content_citation"),
-        ("contentLicenseDiagnostic", "content_license_diagnostic"),
-    )
     return {
         target: str(generic[source])
-        for source, target in mapping
+        for source, target in REPORT_PROVENANCE_FIELDS
         if source in generic
     }
