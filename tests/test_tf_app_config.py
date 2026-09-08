@@ -1,3 +1,4 @@
+from importlib.util import module_from_spec, spec_from_file_location
 from pathlib import Path
 
 import pytest
@@ -35,6 +36,14 @@ OWN_CONTENT_TEMPLATES = {
 
 def _config():
     return readYaml(asFile=str(CONFIG), plain=True)
+
+
+def _app_module():
+    spec = spec_from_file_location("pseudepigrapha_tf_browser_app", ROOT / "app" / "app.py")
+    assert spec is not None and spec.loader is not None
+    module = module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
 
 
 def test_app_declares_researcher_facing_text_defaults():
@@ -77,6 +86,13 @@ def test_app_has_explicit_policies_for_all_technical_anchor_types():
     assert type_display["resource"]["label"] == "{resource_name}"
     assert type_display["version_metadata"]["label"] == "{version_title}"
     assert type_display["document_metadata"]["label"] == "{intro_label}"
+
+
+def test_plain_custom_hook_matches_own_content_templates():
+    module = _app_module()
+
+    assert set(module.OWN_CONTENT_TYPES) == set(OWN_CONTENT_TEMPLATES)
+    assert not ({"div", "unit"} & set(module.OWN_CONTENT_TYPES))
 
 
 def test_app_surfaces_version_identity_on_book_nodes():
