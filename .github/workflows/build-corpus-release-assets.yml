@@ -41,12 +41,33 @@ jobs:
           import os
           import tomllib
           from pathlib import Path
-          import yaml
+
+          def app_data_version(path: Path) -> str:
+              """Read the owned provenanceSpec.version scalar without third-party YAML."""
+
+              in_provenance = False
+              for line in path.read_text(encoding='utf-8').splitlines():
+                  if line == 'provenanceSpec:':
+                      in_provenance = True
+                      continue
+                  if not in_provenance:
+                      continue
+                  if line and not line.startswith(' '):
+                      break
+                  stripped = line.strip()
+                  if not stripped.startswith('version:'):
+                      continue
+                  value = stripped.split(':', 1)[1].strip()
+                  if len(value) >= 2 and value[0] == value[-1] and value[0] in {'"', "'"}:
+                      value = value[1:-1]
+                  if not value:
+                      break
+                  return value
+              raise SystemExit('app/config.yaml is missing non-empty provenanceSpec.version')
 
           project = tomllib.loads(Path('pyproject.toml').read_text(encoding='utf-8'))
           converter_version = project['project']['version']
-          app = yaml.safe_load(Path('app/config.yaml').read_text(encoding='utf-8'))
-          data_version = str(app['provenanceSpec']['version'])
+          data_version = app_data_version(Path('app/config.yaml'))
           expected_tag = f"v{converter_version}"
           if os.environ['RELEASE_TAG'] != expected_tag:
               raise SystemExit(
