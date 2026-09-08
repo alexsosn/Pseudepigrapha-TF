@@ -31,7 +31,7 @@ git clone https://github.com/OnlineCriticalPseudepigrapha/Online-Critical-Pseude
 git -C Online-Critical-Pseudepigrapha checkout c939dcbacad78c5d18d2c4282cad23c47e19ac07
 pseudepigrapha-tf convert \
   Online-Critical-Pseudepigrapha/static/docs \
-  --output tf/0.1
+  --output tf/0.2
 ```
 
 The converter auto-detects the source Git commit and records it in TF metadata. `--upstream-commit` can override this for a nonstandard checkout. Zero-byte XML files are reported and skipped; malformed non-empty XML fails loudly. Well-formed XML also fails with `InvalidSourceError` when it contains unsupported structural children or attributes, when a modern OCP element omits an attribute declared `#REQUIRED` by the pinned Grammateus DTD, or when two manuscript declarations inside the same OCP version use the same non-empty `ms/@abbrev`. Reading witness citations identify manuscripts only by non-empty abbreviation, so duplicate identifiers inside one version are semantically ambiguous and are rejected rather than assigned to the first or last declaration. The same abbreviation may be reused independently in different OCP versions. Abbreviation-less legacy/direct-model manuscript metadata remains preservable but is not entered into witness lookup; a missing modern `ms/@abbrev` still fails the modern required-attribute rule. The pinned corpus contains five record-specific violations of the DTD's required `ms/@language` rule: two manuscripts in `ClMal.xml`, one in `Eup.xml`, and two in `Ps-Eup.xml`. Those exact records are preserved with unknown manuscript language rather than rejected or inferred from `version/@language`; neighboring records in the same files remain subject to the normal required-attribute rule.
@@ -48,7 +48,7 @@ Use `Translations` for parallel generated text and `Apparatus` for source/critic
 from tf.fabric import Fabric
 from pseudepigrapha_tf import Apparatus, Translations
 
-TF = Fabric(locations=["tf/0.1"], modules=[""], silent="deep")
+TF = Fabric(locations=["tf/0.2"], modules=[""], silent="deep")
 api = TF.load(
     "book ocp_book version_title version_kind language generated_language "
     "generation_marker generation_method generation_model unit_id source_ref "
@@ -281,7 +281,7 @@ Researchers normally should not decode those features manually. Load the metadat
 from tf.fabric import Fabric
 from pseudepigrapha_tf import WorkMetadata
 
-TF = Fabric(locations=['tf/0.1'], modules=[''], silent='deep')
+TF = Fabric(locations=['tf/0.2'], modules=[''], silent='deep')
 api = TF.load(' '.join(WorkMetadata.REQUIRED_FEATURES), silent='deep')
 M = WorkMetadata(api)
 

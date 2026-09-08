@@ -44,7 +44,7 @@ jobs:
         run: |
           python -m venv /tmp/pseudepigrapha-tf-release-venv
           /tmp/pseudepigrapha-tf-release-venv/bin/python -m pip install --upgrade pip
-          /tmp/pseudepigrapha-tf-release-venv/bin/python -m pip install dist/pseudepigrapha_tf-0.1.0-py3-none-any.whl
+          /tmp/pseudepigrapha-tf-release-venv/bin/python -m pip install dist/pseudepigrapha_tf-0.2.0-py3-none-any.whl
           echo "/tmp/pseudepigrapha-tf-release-venv/bin" >> "$GITHUB_PATH"
       - name: Verify installed release contract
         run: |
@@ -56,8 +56,8 @@ jobs:
           import pseudepigrapha_tf
           from pseudepigrapha_tf.classifications import load_historical_classifications
 
-          assert version('pseudepigrapha-tf') == '0.1.0'
-          assert pseudepigrapha_tf.__version__ == '0.1.0'
+          assert version('pseudepigrapha-tf') == '0.2.0'
+          assert pseudepigrapha_tf.__version__ == '0.2.0'
           installed = Path(pseudepigrapha_tf.__file__).resolve()
           assert '/tmp/pseudepigrapha-tf-release-venv/' in str(installed), installed
           classifications = load_historical_classifications()
@@ -73,14 +73,14 @@ jobs:
       - name: Convert and audit complete OCP XML set
         run: |
           time pseudepigrapha-tf convert /tmp/ocp/static/docs \
-            --output /tmp/pseudepigrapha-tf/0.1 \
+            --output /tmp/pseudepigrapha-tf/0.2 \
             --upstream-commit c939dcbacad78c5d18d2c4282cad23c47e19ac07
       - name: Verify full-corpus feature-help coverage
         run: |
           python - <<'PYDOC'
           from pathlib import Path
 
-          tf_dir = Path('/tmp/pseudepigrapha-tf/0.1')
+          tf_dir = Path('/tmp/pseudepigrapha-tf/0.2')
           docs_dir = Path('docs/features')
           serialized = {
               path.stem
@@ -98,7 +98,7 @@ jobs:
           import json
           from pathlib import Path
 
-          report = json.loads(Path('/tmp/pseudepigrapha-tf/0.1/conversion-report.json').read_text())
+          report = json.loads(Path('/tmp/pseudepigrapha-tf/0.2/conversion-report.json').read_text())
           assert report['status'] == 'ok', report['failed_checks']
           assert all(report['semantic_checks'].values())
           assert report['provenance']['upstream_repository'] == 'https://github.com/OnlineCriticalPseudepigrapha/Online-Critical-Pseudepigrapha'
@@ -151,7 +151,7 @@ jobs:
           PY
       - name: Stage, verify, extract, and reload canonical release candidate
         env:
-          CANDIDATE_RELEASE_TAG: v0.1.0-ci
+          CANDIDATE_RELEASE_TAG: v0.2.0-ci
         run: |
           python - <<'PY'
           import json
@@ -167,7 +167,7 @@ jobs:
           )
           from tf.fabric import Fabric
 
-          source = Path('/tmp/pseudepigrapha-tf/0.1')
+          source = Path('/tmp/pseudepigrapha-tf/0.2')
           destination = Path('/tmp/release-assets')
           extracted = Path('/tmp/release-candidate-tf')
           shutil.rmtree(destination, ignore_errors=True)
@@ -178,8 +178,8 @@ jobs:
               destination,
               release_tag=os.environ['CANDIDATE_RELEASE_TAG'],
               release_commit=os.environ['GITHUB_SHA'],
-              converter_version='0.1.0',
-              data_version='0.1',
+              converter_version='0.2.0',
+              data_version='0.2',
           )
           manifest = json.loads(assets['manifest'].read_text(encoding='utf-8'))
           validate_distribution(
@@ -188,8 +188,8 @@ jobs:
               assets['report'],
               expected_release_tag=os.environ['CANDIDATE_RELEASE_TAG'],
               expected_release_commit=os.environ['GITHUB_SHA'],
-              expected_converter_version='0.1.0',
-              expected_data_version='0.1',
+              expected_converter_version='0.2.0',
+              expected_data_version='0.2',
           )
           assert manifest['text_fabric']['feature_count'] == 96
           assert len(manifest['text_fabric']['feature_set_sha256']) == 64
@@ -204,7 +204,7 @@ jobs:
           assert api is not None
           assert api.F.otype.maxSlot == 922922
           generic = api.TF.features['otype'].metaData
-          assert generic['converterVersion'] == '0.1.0'
+          assert generic['converterVersion'] == '0.2.0'
           assert generic['upstreamCommit'] == 'c939dcbacad78c5d18d2c4282cad23c47e19ac07'
           assert generic['sourceIdentityStatus'] == 'verified'
           assert generic['contentLicenseStatus'] == 'verified'
@@ -219,7 +219,7 @@ jobs:
           from tf.fabric import Fabric
           from pseudepigrapha_tf import Apparatus, Translations
 
-          TF = Fabric(locations=['/tmp/pseudepigrapha-tf/0.1'], modules=[''], silent='deep')
+          TF = Fabric(locations=['/tmp/pseudepigrapha-tf/0.2'], modules=[''], silent='deep')
           api = TF.load(
               'reading_text ms_abbrev ms_language ms_name ms_show undefined_manuscript synthetic_witness '
               'resource_name source_ref is_primary unit_id unit_index is_missing_unit_id is_source_anomaly '
@@ -397,7 +397,7 @@ jobs:
           source = json.loads(Path('/tmp/ocp/static/docs/intros.json').read_text(encoding='utf-8'))['documents']
           assert len(source) == 32
 
-          TF = Fabric(locations=['/tmp/pseudepigrapha-tf/0.1'], modules=[''], silent='deep')
+          TF = Fabric(locations=['/tmp/pseudepigrapha-tf/0.2'], modules=[''], silent='deep')
           api = TF.load(' '.join(WorkMetadata.REQUIRED_FEATURES), silent='deep')
           assert api is not False and not isinstance(api, bool)
           assert len(api.F.otype.s('document_metadata')) == 32
@@ -436,8 +436,8 @@ jobs:
               None,
               "github",
               False,
-              version="0.1",
-              locations=["/tmp/pseudepigrapha-tf/0.1"],
+              version="0.2",
+              locations=["/tmp/pseudepigrapha-tf/0.2"],
               modules=[""],
               silent="deep",
           )
