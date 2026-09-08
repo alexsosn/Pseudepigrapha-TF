@@ -4,72 +4,19 @@ from tf.advanced.app import App
 from tf.advanced.helpers import parseFeatures
 
 
-TYPE_POLICIES = {
-    "div": {
-        "hidden": True,
-        "label": "{div_label} {div_number}",
-        "featuresBare": "source_ref",
-    },
-    "unit": {
-        "hidden": True,
-        "label": "unit {unit_id}",
-        "featuresBare": "source_ref",
-    },
-    "reading": {
-        "hidden": True,
-        "base": True,
-        "template": "{reading_text}",
-        "label": "reading {reading_option_source}",
-        "features": "is_primary is_omission",
-        "featuresBare": "mss",
-    },
-    "variant_word": {
-        "hidden": True,
-        "base": True,
-        "template": "{prefix_utf8}{g_word_utf8}{trailer_utf8}",
-    },
-    "manuscript": {
-        "hidden": True,
-        "base": True,
-        "template": "{ms_abbrev}",
-        "label": "{ms_abbrev}",
-    },
-    "resource": {
-        "hidden": True,
-        "base": True,
-        "template": "{resource_name}",
-        "label": "{resource_name}",
-    },
-    "version_metadata": {
-        "hidden": True,
-        "base": True,
-        "template": "{version_title}",
-        "label": "{version_title}",
-    },
-    "ellipsis": {
-        "hidden": True,
-        "base": True,
-        "template": "{ellipsis_text}",
-        "label": "{ellipsis_text}",
-        "featuresBare": "source_ref",
-    },
-    "orphan_reading": {
-        "hidden": True,
-        "base": True,
-        "template": "{reading_text}",
-        "label": "orphan reading {reading_option_source}",
-        "featuresBare": "source_ref",
-    },
-    "document_metadata": {
-        "hidden": True,
-        "base": True,
-        "template": "{intro_label}",
-        "label": "{intro_label}",
-    },
-}
-
-OWN_CONTENT_TYPES = frozenset(
-    node_type for node_type, policy in TYPE_POLICIES.items() if policy.get("base")
+TECHNICAL_TYPES = frozenset(
+    {
+        "div",
+        "unit",
+        "reading",
+        "variant_word",
+        "manuscript",
+        "resource",
+        "version_metadata",
+        "ellipsis",
+        "orphan_reading",
+        "document_metadata",
+    }
 )
 
 
@@ -88,31 +35,43 @@ class TfApp(App):
     def __init__(self, cfg, *args, **kwargs):
         # Text-Fabric reports every typeDisplay key absent from the currently
         # loaded materialization as a configuration error. Pseudepigrapha-TF can
-        # materialize subsets in which legitimate node types such as resource,
-        # ellipsis, or document_metadata are absent. Keep those policies out of
-        # static config validation and install them only when the type exists.
+        # materialize subsets in which legitimate technical node types are absent.
+        # Preserve YAML as the single policy source, but postpone those entries
+        # until the data has loaded and we know which node types actually exist.
         cfg = dict(cfg)
-        static_type_display = dict(cfg.get("typeDisplay", {}))
-        for node_type in TYPE_POLICIES:
-            static_type_display.pop(node_type, None)
-        cfg["typeDisplay"] = static_type_display
+        requested_type_display = dict(cfg.get("typeDisplay", {}))
+        dynamic_policies = {
+            node_type: dict(requested_type_display[node_type])
+            for node_type in TECHNICAL_TYPES
+            if node_type in requested_type_display
+        }
+        cfg["typeDisplay"] = {
+            node_type: policy
+            for node_type, policy in requested_type_display.items()
+            if node_type not in TECHNICAL_TYPES
+        }
 
         super().__init__(cfg, *args, **kwargs)
-        self._install_present_type_policies()
+        applied_policies = self._install_present_type_policies(dynamic_policies)
+        own_content_types = {
+            node_type
+            for node_type, policy in applied_policies.items()
+            if policy.get("base")
+        }
         self.customMethods.plainCustom.update(
-            {node_type: self._plain_own_content for node_type in OWN_CONTENT_TYPES}
+            {node_type: self._plain_own_content for node_type in own_content_types}
         )
 
-    def _install_present_type_policies(self):
+    def _install_present_type_policies(self, policies):
         if self.api is None:
-            return
+            return {}
 
         present_types = set(self.api.F.otype.all)
         available_features = set(self.api.Fall(warp=False))
         context = self.context
         applied = {}
 
-        for node_type, policy in TYPE_POLICIES.items():
+        for node_type, policy in policies.items():
             if node_type not in present_types:
                 continue
 
@@ -143,11 +102,11 @@ class TfApp(App):
                     )
                     destination[node_type] = parseFeatures(present_value)
 
-        # Keep diagnostic/showContext state aligned with the policies actually
-        # active for this materialization. The mutable context sets/dicts are the
-        # same objects captured by TF display defaults, so updates apply to
-        # subsequent plain/pretty rendering without rebuilding the app.
+        # Restore only active policies in diagnostic/showContext state. The
+        # mutable context sets/dicts are the same objects captured by TF display
+        # defaults, so these updates affect subsequent rendering immediately.
         self.cfgSpecs.setdefault("typeDisplay", {}).update(applied)
+        return applied
 
     def _plain_own_content(self, options, chunk, node_type, outer):
         """Render only a technical node's own configured content.
