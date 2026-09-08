@@ -193,6 +193,7 @@ def serialized_feature_contract(
             "metadata": meta,
             "serialized": name in edge_features,
             "supported": True,
+            "corpusDependent": name in edges,
         }
         if name in edges:
             item.update(edges[name])
