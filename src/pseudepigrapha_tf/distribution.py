@@ -53,6 +53,15 @@ def _require_git_sha(value: object, label: str) -> str:
     return value
 
 
+def _require_data_version(value: object) -> str:
+    value = _require_nonempty_string(value, "Text-Fabric data version")
+    if value in {".", ".."} or "/" in value or "\\" in value:
+        raise DistributionContractError(
+            "Text-Fabric data version must be one safe path component"
+        )
+    return value
+
+
 def _load_report(path: Path) -> dict[str, Any]:
     if path.name != REPORT_NAME:
         raise DistributionContractError(
@@ -184,6 +193,76 @@ def _feature_records(archive: Path) -> list[dict[str, Any]]:
     return sorted(records, key=lambda item: item["name"])
 
 
+def _serialized_otype_metadata(archive: Path) -> dict[str, str]:
+    """Read the generic TF identity serialized into the canonical otype header."""
+
+    try:
+        with ZipFile(archive) as zf:
+            payload = zf.read("otype.tf")
+    except KeyError as exc:
+        raise DistributionContractError("TF archive is missing required otype.tf") from exc
+    except (OSError, BadZipFile, RuntimeError) as exc:
+        raise DistributionContractError(f"could not read serialized otype metadata: {exc}") from exc
+    try:
+        text = payload.decode("utf-8")
+    except UnicodeDecodeError as exc:
+        raise DistributionContractError("serialized otype.tf is not valid UTF-8") from exc
+
+    metadata: dict[str, str] = {}
+    for line in text.splitlines():
+        if not line:
+            break
+        if not line.startswith("@") or "=" not in line:
+            continue
+        key, value = line[1:].split("=", 1)
+        if key in metadata:
+            raise DistributionContractError(
+                f"serialized otype.tf contains duplicate metadata key {key!r}"
+            )
+        metadata[key] = value
+    return metadata
+
+
+def _validate_serialized_identity(
+    archive: Path,
+    *,
+    identity: Mapping[str, Any],
+    converter_version: str,
+    data_version: str,
+) -> None:
+    metadata = _serialized_otype_metadata(archive)
+    provenance = _require_mapping(identity.get("provenance"), "report-derived provenance")
+    expected = {
+        "version": (data_version, "data version"),
+        "converterVersion": (converter_version, "converter version"),
+        "upstreamRepository": (identity["upstream_repository"], "upstream repository"),
+        "upstreamCommit": (identity["upstream_commit"], "upstream commit"),
+        "sourceIdentityStatus": (provenance["source_identity_status"], "source identity status"),
+        "contentLicenseStatus": (provenance["content_license_status"], "content license status"),
+        "contentLicense": (provenance["content_license"], "content license"),
+        "converterSoftwareLicense": (provenance["converter_software_license"], "converter software license"),
+        "upstreamSoftwareLicense": (provenance["upstream_software_license"], "upstream software license"),
+    }
+    optional = {
+        "upstreamLicenseCommit": ("upstream_license_commit", "upstream license commit"),
+        "contentLicenseSource": ("content_license_source", "content license source"),
+    }
+    for serialized_key, (report_key, label) in optional.items():
+        if report_key in provenance:
+            expected[serialized_key] = (provenance[report_key], label)
+
+    for key, (expected_value, label) in expected.items():
+        actual = metadata.get(key)
+        if actual is None:
+            raise DistributionContractError(
+                f"serialized Text-Fabric identity is missing {label} metadata ({key})"
+            )
+        if actual != expected_value:
+            raise DistributionContractError(
+                f"serialized Text-Fabric {label} mismatch: {actual!r} != {expected_value!r}"
+            )
+
+
 def _directory_feature_records(directory: Path) -> list[dict[str, Any]]:
     if not directory.is_dir():
         raise DistributionContractError(f"missing extracted TF directory: {directory}")
@@ -301,7 +380,7 @@ def build_distribution_manifest(
     release_tag = _require_nonempty_string(release_tag, "release tag")
     release_commit = _require_git_sha(release_commit, "release commit")
     converter_version = _require_nonempty_string(converter_version, "converter version")
-    data_version = _require_nonempty_string(data_version, "Text-Fabric data version")
+    data_version = _require_data_version(data_version)
 
     expected_archive_name = f"tf-{data_version}.zip"
     if archive.name != expected_archive_name:
@@ -322,6 +401,12 @@ def build_distribution_manifest(
         raise DistributionContractError(
             "report Text-Fabric feature identity does not match serialized feature bytes"
         )
+    _validate_serialized_identity(
+        archive,
+        identity=identity,
+        converter_version=converter_version,
+        data_version=data_version,
+    )
 
     return {
         "schema_version": SCHEMA_VERSION,
@@ -510,6 +595,7 @@ def stage_distribution_assets(
 
     source = Path(tf_directory)
     destination = Path(destination)
+    data_version = _require_data_version(data_version)
     if not source.is_dir():
         raise DistributionContractError(f"missing materialized TF directory: {source}")
     if destination.exists():
