@@ -92,13 +92,13 @@ def test_app_surfaces_version_identity_on_book_nodes():
     assert {"version_title", "version_kind", "language"} <= book_features
 
 
-def test_app_does_not_claim_unpublished_remote_tf_data_or_single_writing_system():
+def test_app_does_not_claim_remote_paths_or_single_writing_system():
     cfg = _config()
     provenance = cfg["provenanceSpec"]
 
     # Text-Fabric composes provenance paths from strings; an unquoted YAML
-    # 0.1 becomes a float and crashes advanced-app startup in TF 13.1.0.
-    assert provenance["version"] == "0.1"
+    # 0.2 becomes a float and crashes advanced-app startup in TF 13.1.0.
+    assert provenance["version"] == "0.2"
     assert not ({"org", "repo", "relative"} & set(provenance))
     assert not ({"webBase", "webUrl", "webUrlLex"} & set(provenance))
     assert "writing" not in cfg

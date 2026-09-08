@@ -7,7 +7,7 @@ ROOT = Path(__file__).parents[1]
 WORKFLOWS = ROOT / ".github" / "workflows"
 FULL_CONVERT = "pseudepigrapha-tf convert /tmp/ocp/static/docs"
 PIN = "c939dcbacad78c5d18d2c4282cad23c47e19ac07"
-LOCAL_TF = "/tmp/pseudepigrapha-tf/0.1"
+LOCAL_TF = "/tmp/pseudepigrapha-tf/0.2"
 
 
 def _workflow_texts() -> dict[str, str]:
@@ -65,7 +65,7 @@ def test_surviving_full_corpus_job_keeps_tracked_advanced_app_startup_coverage()
     assert "app = findApp(" in test_workflow
     assert "f\"app:{Path('app').resolve()}\"" in test_workflow
     assert f'locations=["{LOCAL_TF}"]' in test_workflow
-    assert 'version="0.1"' in test_workflow
+    assert 'version="0.2"' in test_workflow
     assert 'assert app.__class__.__name__ == "TfApp"' in test_workflow
     assert "assert app.api.F.otype.maxSlot == 922922" in test_workflow
     assert 'app.api.T.nodeFromSection(("1En__Ethiopic", "1", "1"))' in test_workflow
