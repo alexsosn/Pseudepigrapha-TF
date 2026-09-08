@@ -1,0 +1,75 @@
+name: issue96-canonical-optional-docs
+
+on:
+  push:
+    branches:
+      - research/96-feature-docs
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: research/96-feature-docs
+      - name: Preserve canonical optional-feature docs independent of fixture occurrence
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('src/pseudepigrapha_tf/feature_docs.py')
+          text = path.read_text(encoding='utf-8')
+
+          old = '''    for name in sorted(node_names):
+              meta = dict(supported_node_metadata.get(name, {}))
+              meta.update(metadata.get(name, {}))
+              meta.setdefault("valueType", "int" if name in INT_FEATURES else "str")
+          '''
+          new = '''    for name in sorted(node_names):
+              meta = dict(metadata.get(name, {}))
+              if name in supported_node_metadata:
+                  # The optional metadata emitter is canonical for its own feature
+                  # semantics. A synthetic fixture that happens to contain the
+                  # feature must not replace those semantics with generic metadata.
+                  meta.update(supported_node_metadata[name])
+              meta.setdefault("valueType", "int" if name in INT_FEATURES else "str")
+          '''
+          assert text.count(old) == 1, text.count(old)
+          text = text.replace(old, new)
+
+          old = '''            "serialized": name in node_features,
+                  "supported": True,
+              }
+          '''
+          new = '''            "serialized": name in node_features,
+                  "supported": True,
+                  "snapshotIndependent": name in supported_node_metadata,
+              }
+          '''
+          assert text.count(old) == 1, text.count(old)
+          text = text.replace(old, new)
+
+          old = '''    if not item.get("serialized", True):
+              lines.extend(
+          '''
+          new = '''    if item.get("snapshotIndependent") or not item.get("serialized", True):
+              lines.extend(
+          '''
+          assert text.count(old) == 1, text.count(old)
+          text = text.replace(old, new)
+
+          path.write_text(text, encoding='utf-8')
+          PY
+          git diff --check
+          git diff -- src/pseudepigrapha_tf/feature_docs.py
+      - name: Commit correction
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add src/pseudepigrapha_tf/feature_docs.py
+          git commit -m 'fix: keep optional feature docs snapshot independent'
+          git push origin HEAD:research/96-feature-docs
