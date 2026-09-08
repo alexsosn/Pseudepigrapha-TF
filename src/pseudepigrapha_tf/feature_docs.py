@@ -155,8 +155,13 @@ def serialized_feature_contract(
 
     node_contract: dict[str, dict[str, Any]] = {}
     for name in sorted(node_names):
-        meta = dict(supported_node_metadata.get(name, {}))
-        meta.update(metadata.get(name, {}))
+        meta = dict(metadata.get(name, {}))
+        supported_meta = supported_node_metadata.get(name)
+        if supported_meta:
+            # Global browser help describes the converter-supported semantic
+            # contract, not whichever optional features happen to occur in the
+            # small fixture used to render/validate the tracked documentation.
+            meta.update(supported_meta)
         meta.setdefault("valueType", "int" if name in INT_FEATURES else "str")
         meta.setdefault("description", FEATURE_DESCRIPTIONS.get(name, f"OCP/TF feature {name}"))
         meta = with_documentation_category(name, kind="node", metadata=meta)
@@ -170,6 +175,7 @@ def serialized_feature_contract(
             "observedNodeTypes": _observed_node_types(data, values),
             "serialized": name in node_features,
             "supported": True,
+            "corpusDependent": name in supported_node_metadata,
         }
 
     edge_contract: dict[str, dict[str, Any]] = {}
@@ -231,7 +237,7 @@ def _render_feature_page(item: dict[str, Any]) -> str:
                     "This is a **technical Text-Fabric support relation**; its anchors are not scholarly containment claims.",
                 ]
             )
-    if not item.get("serialized", True):
+    if item.get("corpusDependent") or not item.get("serialized", True):
         lines.extend(
             [
                 "",
