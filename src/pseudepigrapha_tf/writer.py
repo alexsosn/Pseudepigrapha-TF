@@ -7,7 +7,7 @@ from pathlib import Path
 from tempfile import mkdtemp
 from typing import Callable, Protocol
 
-from .graph import EDGE_DESCRIPTIONS, INT_FEATURES, TFData
+from .graph import EDGE_DESCRIPTIONS, FEATURE_DESCRIPTIONS, INT_FEATURES, TFData
 
 
 class _FabricLike(Protocol):
@@ -130,7 +130,7 @@ def _metadata_with_serialized_features(
             feature,
             {
                 "valueType": "int" if feature in INT_FEATURES else "str",
-                "description": f"OCP/TF feature {feature}",
+                "description": FEATURE_DESCRIPTIONS.get(feature, f"OCP/TF feature {feature}"),
             },
         )
     for feature in edge_features:

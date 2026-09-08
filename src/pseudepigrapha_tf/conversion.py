@@ -6,6 +6,7 @@ from dataclasses import dataclass, replace
 from typing import Iterable
 
 from .graph import (
+    EDGE_FEATURE_CONTRACTS,
     TFData,
     _Builder,
     _add_version,
@@ -201,19 +202,21 @@ def _validate_generated_alignment(data: TFData) -> None:
     translation_unit_of = data.edge_features.get("translation_unit_of", {})
 
     errors: list[str] = []
+    book_contract = EDGE_FEATURE_CONTRACTS["translation_of"]
+    unit_contract = EDGE_FEATURE_CONTRACTS["translation_unit_of"]
     for node, node_kind in kind.items():
         node_type = otype.get(node)
         if node_kind != "generated_translation":
             continue
         if node_type == "book":
             targets = translation_of.get(node, set())
-            if len(targets) != 1:
+            if not book_contract["minTargets"] <= len(targets) <= book_contract["maxTargets"]:
                 errors.append(f"generated book {node} has {len(targets)} translation_of targets; expected exactly 1")
             elif kind.get(next(iter(targets))) != "source":
                 errors.append(f"generated book {node} translation_of target is not a source version")
         elif node_type == "unit":
             targets = translation_unit_of.get(node, set())
-            if len(targets) != 1:
+            if not unit_contract["minTargets"] <= len(targets) <= unit_contract["maxTargets"]:
                 errors.append(
                     f"generated unit {node} has {len(targets)} translation_unit_of targets; expected exactly 1"
                 )
