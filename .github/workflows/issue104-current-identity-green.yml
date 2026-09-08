@@ -37,7 +37,6 @@ jobs:
           replace_required(workflow, 'v0.1.0-ci', 'v0.2.0-ci')
           replace_required(workflow, '/tmp/pseudepigrapha-tf/0.1', '/tmp/pseudepigrapha-tf/0.2')
           replace_required(workflow, "data_version='0.1'", "data_version='0.2'")
-          replace_required(workflow, "expected_data_version='0.1'", "expected_data_version='0.2'")
           replace_required(workflow, 'version="0.1"', 'version="0.2"')
 
           replace_required('README.md', 'tf/0.1', 'tf/0.2')
