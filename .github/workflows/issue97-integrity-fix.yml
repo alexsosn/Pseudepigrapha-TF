@@ -1,0 +1,36 @@
+name: issue97-integrity-fix
+
+on:
+  push:
+    branches:
+      - research/97-distribution-contract
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    if: ${{ !contains(github.event.head_commit.message, '[issue97-integrity-done]') }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: research/97-distribution-contract
+          fetch-depth: 1
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Apply reviewed implementation
+        run: python scripts/issue97_integrity_fix.py
+      - name: Remove one-shot harness
+        run: |
+          rm scripts/issue97_integrity_fix.py
+          rm .github/workflows/issue97-integrity-fix.yml
+      - name: Commit implementation
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/pseudepigrapha_tf/distribution.py src/pseudepigrapha_tf/cli.py scripts/issue97_integrity_fix.py .github/workflows/issue97-integrity-fix.yml
+          git commit -m "fix: bind release reports to exact TF generation [issue97-integrity-done]"
+          git push origin HEAD:research/97-distribution-contract
