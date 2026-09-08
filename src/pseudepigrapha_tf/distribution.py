@@ -9,7 +9,11 @@ from tempfile import mkdtemp
 from typing import Any, Mapping
 from zipfile import BadZipFile, ZIP_DEFLATED, ZipFile
 
-from .provenance import REPORT_PROVENANCE_FIELDS, report_provenance
+from .provenance import (
+    REPORT_PROVENANCE_FIELDS,
+    corpus_license_provenance_is_consistent,
+    report_provenance,
+)
 
 
 SCHEMA_VERSION = 1
@@ -170,6 +174,16 @@ def _report_identity(report: Mapping[str, Any], *, converter_version: str) -> di
             serialized_provenance[report_key] = _require_nonempty_string(
                 value, f"report provenance {report_key}"
             )
+
+    generic_provenance = {
+        serialized_key: serialized_provenance[report_key]
+        for serialized_key, report_key in REPORT_PROVENANCE_FIELDS
+        if report_key in serialized_provenance
+    }
+    if not corpus_license_provenance_is_consistent(generic_provenance):
+        raise DistributionContractError(
+            "report provenance does not match a canonical verified source/license profile"
+        )
 
     return {
         "upstream_repository": upstream_repository,
