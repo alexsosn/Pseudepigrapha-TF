@@ -25,6 +25,8 @@ For canonical provenance only, the projection from serialized `otype.tf` must eq
 
 The existing report and writer paths use the same canonical generic↔report key mapping, so a valid generated corpus is expected to satisfy this equality. The pinned full-corpus gate will prove that expectation before merge.
 
+A successful publication already requires both `source_identity_status` and `content_license_status` to be `verified`. Therefore either corresponding diagnostic key (`source_identity_diagnostic` or `content_license_diagnostic`) is internally contradictory and must fail before archive/report equality can bless the contradiction.
+
 ## TDD sequence
 
 ### RED
@@ -46,6 +48,8 @@ In `_validate_serialized_identity()`:
 2. preserve the current specific missing/mismatch diagnostics;
 3. after those checks, detect `serialized_provenance.keys() - expected_provenance.keys()` and reject with a specific unexpected-serialized-provenance diagnostic;
 4. do not compare arbitrary non-canonical TF metadata and do not change header parsing.
+
+At the report publication boundary, reject source/license diagnostic keys once the corresponding required status has been proven `verified`.
 
 ## Test gates
 
@@ -78,4 +82,7 @@ Any blocking finding restarts RED → GREEN → full gates before merge.
 
 - RED head `7d5cde85f6a3091a37644584a13095b90aaab73e`, Actions run `34282750663`: exactly the two new asymmetric canonical-provenance regressions failed while 452 existing tests passed; the non-canonical `writtenBy` control passed.
 - GREEN implementation commit `cc78bd1206521b1c22441cf9564ba3bbf73165bd`: the branch-local focused gate passed `tests/test_distribution_provenance_closure.py`, `tests/test_distribution_serialized_identity.py`, and `tests/test_distribution_tf_metadata_binding.py`, then removed all temporary helper files before committing.
-- The implementation remains a single validation rule: after preserving existing missing/mismatch diagnostics, reject any canonical serialized provenance keys that are absent from the report-derived canonical projection. No Text-Fabric header parser behavior changed.
+- First human-authored candidate `5a7cefd4d9f5420a44d3bf61e407ae2b534aee52`, Actions run `34283501641`: unit/Text-Fabric and exact pinned OCP integration both passed, including canonical staging/manifest validation, stock TF reload, public metadata, and advanced app startup.
+- The logically separate adversarial pass then found that matching report/archive diagnostics could still accompany required `verified` statuses. RED head `e074097bcded9363e74ea919726a50a9ce3f2411`, Actions run `34284028287`: exactly the two new contradiction cases failed while 454 tests passed.
+- Review GREEN implementation commit `df59cc2ee96ce8a6f64ed318e43d7e7d087dc11b`: focused provenance/serialized-identity gates passed in run `34284190790`, and the temporary patch workflow/script removed themselves before commit.
+- The final behavioral changes remain limited to two fail-closed publication invariants: canonical serialized provenance cannot exceed report-bound canonical provenance, and a required verified source/license state cannot carry its corresponding failure diagnostic. Text-Fabric header parsing and non-canonical generic metadata behavior are unchanged.
