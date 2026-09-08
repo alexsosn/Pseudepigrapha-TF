@@ -9,6 +9,8 @@ docs:
   docBase: https://github.com/alexsosn/Pseudepigrapha-TF/blob/main/docs
   docExt: .md
   docPage: tf-app
+  featureBase: '{docBase}/features/<feature>{docExt}'
+  featurePage: 0_home
 
 provenanceSpec:
   corpus: Online Critical Pseudepigrapha (Text-Fabric conversion)
