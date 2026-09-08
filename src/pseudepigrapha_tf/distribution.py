@@ -9,6 +9,8 @@ from tempfile import mkdtemp
 from typing import Any, Mapping
 from zipfile import BadZipFile, ZIP_DEFLATED, ZipFile
 
+from .provenance import REPORT_PROVENANCE_FIELDS, report_provenance
+
 
 SCHEMA_VERSION = 1
 REPORT_NAME = "conversion-report.json"
@@ -55,7 +57,7 @@ def _require_git_sha(value: object, label: str) -> str:
 
 def _require_data_version(value: object) -> str:
     value = _require_nonempty_string(value, "Text-Fabric data version")
-    if value in {".", ".."} or "/" in value or "\\" in value:
+    if value in {".", ".."} or "/" in value or "\\" in value or "\x00" in value:
         raise DistributionContractError(
             "Text-Fabric data version must be one safe path component"
         )
@@ -153,10 +155,19 @@ def _report_identity(report: Mapping[str, Any], *, converter_version: str) -> di
                 value, f"report provenance {key}"
             )
 
+    serialized_provenance: dict[str, str] = {}
+    for _serialized_key, report_key in REPORT_PROVENANCE_FIELDS:
+        value = provenance.get(report_key)
+        if value is not None:
+            serialized_provenance[report_key] = _require_nonempty_string(
+                value, f"report provenance {report_key}"
+            )
+
     return {
         "upstream_repository": upstream_repository,
         "upstream_commit": upstream_commit,
         "provenance": manifest_provenance,
+        "serialized_provenance": serialized_provenance,
     }
 
 
@@ -193,8 +204,14 @@ def _feature_records(archive: Path) -> list[dict[str, Any]]:
     return sorted(records, key=lambda item: item["name"])
 
 
+_SERIALIZED_IDENTITY_KEYS = {
+    "version",
+    *(source for source, _target in REPORT_PROVENANCE_FIELDS),
+}
+
+
 def _serialized_otype_metadata(archive: Path) -> dict[str, str]:
-    """Read the generic TF identity serialized into the canonical otype header."""
+    """Read release identity from a Text-Fabric-compatible otype header."""
 
     try:
         with ZipFile(archive) as zf:
@@ -204,22 +221,37 @@ def _serialized_otype_metadata(archive: Path) -> dict[str, str]:
     except (OSError, BadZipFile, RuntimeError) as exc:
         raise DistributionContractError(f"could not read serialized otype metadata: {exc}") from exc
     try:
-        text = payload.decode("utf-8")
+        lines = payload.decode("utf-8").splitlines()
     except UnicodeDecodeError as exc:
         raise DistributionContractError("serialized otype.tf is not valid UTF-8") from exc
 
+    if not lines or lines[0] != "@node":
+        raise DistributionContractError("serialized otype.tf header must start with @node")
+
     metadata: dict[str, str] = {}
-    for line in text.splitlines():
-        if not line:
+    saw_blank = False
+    for line in lines[1:]:
+        if line == "":
+            saw_blank = True
             break
         if not line.startswith("@") or "=" not in line:
-            continue
-        key, value = line[1:].split("=", 1)
-        if key in metadata:
             raise DistributionContractError(
-                f"serialized otype.tf contains duplicate metadata key {key!r}"
+                "serialized otype.tf metadata must end with a blank line before data"
             )
-        metadata[key] = value
+        key, value = line[1:].split("=", 1)
+        if not key:
+            raise DistributionContractError("serialized otype.tf contains an empty metadata key")
+        if key in _SERIALIZED_IDENTITY_KEYS and key in metadata:
+            raise DistributionContractError(
+                f"serialized otype.tf contains duplicate identity metadata key {key!r}"
+            )
+        # Text-Fabric may repeat non-identity generic metadata such as writtenBy.
+        # Publication consumes only the explicitly enumerated identity keys.
+        metadata.setdefault(key, value)
+    if not saw_blank:
+        raise DistributionContractError(
+            "serialized otype.tf metadata is missing the required blank separator"
+        )
     return metadata
 
 
@@ -231,46 +263,54 @@ def _validate_serialized_identity(
     data_version: str,
 ) -> None:
     metadata = _serialized_otype_metadata(archive)
-    provenance = _require_mapping(identity.get("provenance"), "report-derived provenance")
-    expected = {
-        "version": (data_version, "data version"),
-        "converterVersion": (converter_version, "converter version"),
-        "upstreamRepository": (identity["upstream_repository"], "upstream repository"),
-        "upstreamCommit": (identity["upstream_commit"], "upstream commit"),
-        "sourceIdentityStatus": (provenance["source_identity_status"], "source identity status"),
-        "contentLicenseStatus": (provenance["content_license_status"], "content license status"),
-        "contentLicense": (provenance["content_license"], "content license"),
-        "converterSoftwareLicense": (provenance["converter_software_license"], "converter software license"),
-        "upstreamSoftwareLicense": (provenance["upstream_software_license"], "upstream software license"),
-    }
-    optional = {
-        "upstreamLicenseCommit": ("upstream_license_commit", "upstream license commit"),
-        "contentLicenseSource": ("content_license_source", "content license source"),
-    }
-    for serialized_key, (report_key, label) in optional.items():
-        if report_key in provenance:
-            expected[serialized_key] = (provenance[report_key], label)
+    serialized_provenance = report_provenance(metadata)
+    expected_provenance = _require_mapping(
+        identity.get("serialized_provenance"), "report-derived serialized provenance"
+    )
 
-    for key, (expected_value, label) in expected.items():
-        actual = metadata.get(key)
+    for report_key, expected_value in expected_provenance.items():
+        label = report_key.replace("_", " ")
+        actual = serialized_provenance.get(report_key)
         if actual is None:
             raise DistributionContractError(
-                f"serialized Text-Fabric identity is missing {label} metadata ({key})"
+                f"serialized Text-Fabric identity is missing {label} metadata"
             )
         if actual != expected_value:
             raise DistributionContractError(
                 f"serialized Text-Fabric {label} mismatch: {actual!r} != {expected_value!r}"
             )
 
+    actual_data_version = metadata.get("version")
+    if actual_data_version is None:
+        raise DistributionContractError(
+            "serialized Text-Fabric identity is missing data version metadata (version)"
+        )
+    if actual_data_version != data_version:
+        raise DistributionContractError(
+            f"serialized Text-Fabric data version mismatch: {actual_data_version!r} != {data_version!r}"
+        )
+
 
 def _directory_feature_records(directory: Path) -> list[dict[str, Any]]:
+    if directory.is_symlink():
+        raise DistributionContractError(
+            f"extracted TF directory must not itself be a symlink: {directory}"
+        )
     if not directory.is_dir():
         raise DistributionContractError(f"missing extracted TF directory: {directory}")
 
+    entries = list(directory.rglob("*"))
+    symlinks = sorted(path for path in entries if path.is_symlink())
+    if symlinks:
+        raise DistributionContractError(
+            "extracted TF directory contains symlinked entries: "
+            + ", ".join(str(path.relative_to(directory)) for path in symlinks)
+        )
+
     nested = [
         path
-        for path in directory.rglob("*.tf")
-        if path.parent != directory
+        for path in entries
+        if path.suffix == ".tf" and path.parent != directory and path.is_file()
     ]
     if nested:
         raise DistributionContractError(
@@ -444,7 +484,7 @@ def _manifest_publication_identity(manifest: Mapping[str, Any]) -> tuple[str, st
         _require_nonempty_string(release.get("tag"), "manifest release tag"),
         _require_git_sha(release.get("commit"), "manifest release commit"),
         _require_nonempty_string(converter.get("version"), "manifest converter version"),
-        _require_nonempty_string(text_fabric.get("data_version"), "manifest data version"),
+        _require_data_version(text_fabric.get("data_version")),
     )
 
 
@@ -607,12 +647,12 @@ def stage_distribution_assets(
     if not report_source.is_file():
         raise DistributionContractError(f"missing conversion report: {report_source}")
 
-    # Reject an invalid report and unsafe materialized feature layout before
-    # creating release-visible output. The same normalized feature set is used
-    # for report binding, archive construction, and extracted verification.
+    # Reject an unsafe materialized layout before trusting a report from the
+    # same directory. The same normalized feature set is then used for report
+    # binding, archive construction, and extracted verification.
+    source_records = _directory_feature_records(source)
     report = _load_report(report_source)
     _report_identity(report, converter_version=converter_version)
-    source_records = _directory_feature_records(source)
     source_identity = _feature_identity(source_records)
     if _report_feature_identity(report) != source_identity:
         raise DistributionContractError(

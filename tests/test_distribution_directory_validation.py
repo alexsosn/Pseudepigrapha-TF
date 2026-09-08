@@ -19,7 +19,7 @@ UPSTREAM_REPOSITORY = "https://github.com/OnlineCriticalPseudepigrapha/Online-Cr
 UPSTREAM_COMMIT = "c939dcbacad78c5d18d2c4282cad23c47e19ac07"
 FEATURES = {
     "book.tf": b"@node\n1\t1En__Ethiopic\n",
-    "otype.tf": b"@node\n1\tword\n",
+    "otype.tf": b'@node\n@contentLicense=CC-BY-4.0\n@contentLicenseStatus=verified\n@converterSoftwareLicense=MIT\n@converterVersion=0.1.0\n@sourceIdentityStatus=verified\n@upstreamCommit=c939dcbacad78c5d18d2c4282cad23c47e19ac07\n@upstreamRepository=https://github.com/OnlineCriticalPseudepigrapha/Online-Critical-Pseudepigrapha\n@upstreamSoftwareLicense=GPL-3.0\n@valueType=str\n@version=0.1\n\n1\tword\n',
     "oslots.tf": b"@edge\n2\t1\n",
 }
 

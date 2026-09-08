@@ -66,7 +66,7 @@ def _assets(tmp_path: Path, *, report: dict | None = None) -> tuple[Path, Path]:
     with ZipFile(archive, "w", compression=ZIP_DEFLATED) as zf:
         # Deliberately write in non-lexical order: manifest feature identity must
         # normalize archive container ordering rather than inherit it.
-        zf.writestr("otype.tf", "@node\n@valueType=str\n1\tword\n")
+        zf.writestr("otype.tf", '@node\n@contentLicense=CC-BY-4.0\n@contentLicenseSource=https://github.com/OnlineCriticalPseudepigrapha/Online-Critical-Pseudepigrapha/blob/c939dcbacad78c5d18d2c4282cad23c47e19ac07/LICENSE.CC-BY-4.0\n@contentLicenseStatus=verified\n@converterSoftwareLicense=MIT\n@converterVersion=0.1.0\n@sourceIdentityStatus=verified\n@upstreamCommit=c939dcbacad78c5d18d2c4282cad23c47e19ac07\n@upstreamLicenseCommit=8c8c2c55a2c55ba4b23ac506956f98dcc25045b2\n@upstreamRepository=https://github.com/OnlineCriticalPseudepigrapha/Online-Critical-Pseudepigrapha\n@upstreamSoftwareLicense=GPL-3.0\n@valueType=str\n@version=0.1\n\n1\tword\n')
         zf.writestr("book.tf", "@node\n@valueType=str\n2\t1En__Ethiopic\n")
         zf.writestr("oslots.tf", "@edge\n2\t1\n")
     if report is None:
