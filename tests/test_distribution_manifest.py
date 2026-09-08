@@ -41,6 +41,7 @@ def _report(*, status: str = "ok", source_status: str = "verified", license_stat
 
 
 def _assets(tmp_path: Path, *, report: dict | None = None) -> tuple[Path, Path]:
+    tmp_path.mkdir(parents=True, exist_ok=True)
     archive = tmp_path / "tf-0.1.zip"
     with ZipFile(archive, "w", compression=ZIP_DEFLATED) as zf:
         # Deliberately write in non-lexical order: manifest feature identity must
