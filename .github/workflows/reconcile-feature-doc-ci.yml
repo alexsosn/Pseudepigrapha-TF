@@ -24,24 +24,26 @@ jobs:
           path = Path('.github/workflows/test.yml')
           text = path.read_text(encoding='utf-8')
           marker = "      - name: Validate semantic parity report\n"
-          coverage = """      - name: Verify full-corpus feature-help coverage
-        run: |
-          python - <<'PYDOC'
-          from pathlib import Path
-
-          tf_dir = Path('/tmp/pseudepigrapha-tf/0.1')
-          docs_dir = Path('docs/features')
-          serialized = {
-              path.stem
-              for path in tf_dir.glob('*.tf')
-              if not path.stem.startswith('__') and path.stem != 'otext'
-          }
-          documented = {path.stem for path in docs_dir.glob('*.md') if path.stem != '0_home'}
-          missing = sorted(serialized - documented)
-          assert not missing, f'serialized TF features lack tracked documentation: {missing}'
-          assert (docs_dir / '0_home.md').is_file()
-          PYDOC
-"""
+          coverage_lines = [
+              "      - name: Verify full-corpus feature-help coverage",
+              "        run: |",
+              "          python - <<'PYDOC'",
+              "          from pathlib import Path",
+              "",
+              "          tf_dir = Path('/tmp/pseudepigrapha-tf/0.1')",
+              "          docs_dir = Path('docs/features')",
+              "          serialized = {",
+              "              path.stem",
+              "              for path in tf_dir.glob('*.tf')",
+              "              if not path.stem.startswith('__') and path.stem != 'otext'",
+              "          }",
+              "          documented = {path.stem for path in docs_dir.glob('*.md') if path.stem != '0_home'}",
+              "          missing = sorted(serialized - documented)",
+              "          assert not missing, f'serialized TF features lack tracked documentation: {missing}'",
+              "          assert (docs_dir / '0_home.md').is_file()",
+              "          PYDOC",
+          ]
+          coverage = "\n".join(coverage_lines) + "\n"
           if 'Verify full-corpus feature-help coverage' not in text:
               if marker not in text:
                   raise SystemExit('semantic parity marker not found')
