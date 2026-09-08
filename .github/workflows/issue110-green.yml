@@ -35,7 +35,7 @@ jobs:
       - name: Commit clean GREEN
         run: |
           set -euo pipefail
-          rm scripts/issue110_green.py .github/workflows/issue110-green.yml
+          rm scripts/issue110_green.py .github/workflows/issue110-green.yml .issue110-green-trigger
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add -A
