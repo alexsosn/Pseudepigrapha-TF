@@ -7,3 +7,5 @@
 **Category:** Apparatus and witness features/relations
 
 mixed XML content inside the OCP reading
+
+**Observed node types in render graph:** `reading`

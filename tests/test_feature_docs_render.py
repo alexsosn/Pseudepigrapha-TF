@@ -2,10 +2,12 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
 import yaml
 
 import pseudepigrapha_tf.feature_docs as feature_docs
 from pseudepigrapha_tf import build_tf_data
+from pseudepigrapha_tf.graph import TFData
 from pseudepigrapha_tf.parser import parse_file
 
 
@@ -43,6 +45,44 @@ def test_renderer_covers_supported_contract_deterministically():
     assert "**Kind:** node" in first["source_ref.md"]
     assert "**Value type:** `str`" in first["source_ref.md"]
     assert contract["node"]["source_ref"]["description"] in first["source_ref.md"]
+
+
+def test_node_page_exposes_observed_node_applicability():
+    data = _data()
+    contract = feature_docs.serialized_feature_contract(data, include_supported=True)["node"]["source_ref"]
+    observed = contract["observedNodeTypes"]
+    assert observed
+
+    page = feature_docs.render_feature_docs(data)["source_ref.md"]
+    expected = ", ".join(f"`{node_type}`" for node_type in observed)
+    assert f"**Observed node types in render graph:** {expected}" in page
+
+
+def test_optional_metadata_page_exposes_canonical_supported_node_applicability():
+    data = _data()
+    contract = feature_docs.serialized_feature_contract(data, include_supported=True)["node"]["intro_title_json"]
+
+    # Fixture-local absence stays explicit; supported applicability comes from
+    # the real public-metadata emitter probe rather than a docs-only name map.
+    assert contract["observedNodeTypes"] == ()
+    assert contract["supportedNodeTypes"] == ("document_metadata",)
+
+    page = feature_docs.render_feature_docs(data)["intro_title_json.md"]
+    assert "**Observed node types in render graph:** none in this render graph" in page
+    assert "**Supported node types:** `document_metadata`" in page
+
+
+def test_supported_probe_fails_closed_without_feature_applicability_evidence():
+    data = TFData(
+        node_features={
+            "otype": {1: "word", 2: "document_metadata", 3: "division"},
+        },
+        edge_features={"oslots": {2: {1}, 3: {1}}},
+        metadata={"probe": {"valueType": "str", "description": "probe feature"}},
+    )
+
+    with pytest.raises(ValueError, match="probe.*node type|applicability.*probe"):
+        feature_docs._supported_node_descriptors_from_probe(data, ("probe",))
 
 
 def test_renderer_preserves_controlled_vocabulary_from_canonical_metadata():

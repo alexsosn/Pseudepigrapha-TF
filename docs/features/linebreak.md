@@ -7,3 +7,5 @@
 **Category:** Remaining source-preserved XML attributes/content
 
 literal upstream reading linebreak attribute
+
+**Observed node types in render graph:** `reading`

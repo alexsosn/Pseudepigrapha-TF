@@ -7,3 +7,5 @@
 **Category:** Apparatus and witness features/relations
 
 literal upstream manuscript abbreviation or preserved undeclared witness token
+
+**Observed node types in render graph:** `manuscript`
