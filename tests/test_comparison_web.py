@@ -35,7 +35,7 @@ def _find_local_app(output):
         "",
         None,
         "github",
-        False,
+        True,
         version="0.1",
         locations=[str(output)],
         modules=[""],
@@ -135,11 +135,11 @@ def test_stock_tf_browser_and_compare_route_coexist_on_one_flask_app(tmp_path):
     client = flask_app.test_client()
 
     root = client.get("/")
-    assert root.status_code == 200
+    assert root.status_code == 200, root.get_data(as_text=True)
 
     comparison = client.get("/compare?work=Sample&chapter=1&verse=Heading")
     html = comparison.get_data(as_text=True)
-    assert comparison.status_code == 200
+    assert comparison.status_code == 200, html
     assert 'class="comparison-page"' in html
     assert 'class="source-version-card"' in html
     assert "Sample" in html
@@ -158,6 +158,11 @@ def test_local_loader_reuses_tracked_app_and_materialized_tf(tmp_path):
         version="0.1",
         silent="deep",
     )
-    response = flask_app.test_client().get("/compare?work=Sample&chapter=1&verse=Heading")
-    assert response.status_code == 200
-    assert "Sample" in response.get_data(as_text=True)
+    client = flask_app.test_client()
+    root = client.get("/")
+    assert root.status_code == 200, root.get_data(as_text=True)
+
+    response = client.get("/compare?work=Sample&chapter=1&verse=Heading")
+    html = response.get_data(as_text=True)
+    assert response.status_code == 200, html
+    assert "Sample" in html
