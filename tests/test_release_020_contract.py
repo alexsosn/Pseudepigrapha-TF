@@ -44,11 +44,8 @@ def test_frozen_release_identity_is_consistent_across_owned_surfaces():
     assert f"tf-{_app_data_version()}.zip" == EXPECTED_TF_ASSET
 
 
-def test_serialized_tf_data_version_matches_frozen_release_identity():
-    data = build_tf_data(
-        [parse_file(FIXTURES / "sample.xml")],
-        converter_version=EXPECTED_PACKAGE_VERSION,
-    )
+def test_serialized_tf_data_version_matches_frozen_release_identity_by_default():
+    data = build_tf_data([parse_file(FIXTURES / "sample.xml")])
 
     assert data.metadata[""]["version"] == EXPECTED_DATA_VERSION
     assert data.metadata[""]["converterVersion"] == EXPECTED_PACKAGE_VERSION
