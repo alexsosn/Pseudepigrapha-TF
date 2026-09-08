@@ -1,10 +1,45 @@
 from __future__ import annotations
 
+import shutil
 from pathlib import Path
+from tempfile import mkdtemp
 
 import pytest
 
 import pseudepigrapha_tf.writer as writer
+from pseudepigrapha_tf.graph import build_tf_data
+from pseudepigrapha_tf.parser import parse_file
+
+
+FIXTURE = Path(__file__).parent / "fixtures" / "sample.xml"
+
+
+class CompleteStageFabric:
+    def __init__(self, *args, **kwargs):
+        pass
+
+    def save(self, **kwargs):
+        stage = Path(kwargs["location"])
+        for name, text in (
+            ("oslots.tf", "new oslots\n"),
+            ("otype.tf", "new otype\n"),
+            ("new_feature.tf", "new only\n"),
+        ):
+            (stage / name).write_text(text, encoding="utf-8")
+        return True
+
+
+class CleanupFailingTemporaryDirectory:
+    def __init__(self, cleanup_error: BaseException, *args, **kwargs):
+        self.cleanup_error = cleanup_error
+        self.path = Path(mkdtemp(prefix=kwargs.get("prefix"), dir=kwargs.get("dir")))
+
+    def __enter__(self):
+        return str(self.path)
+
+    def __exit__(self, exc_type, exc, tb):
+        shutil.rmtree(self.path, ignore_errors=True)
+        raise self.cleanup_error
 
 
 def _seed_transaction(tmp_path: Path) -> tuple[Path, Path, dict[str, bytes]]:
@@ -27,6 +62,58 @@ def _seed_transaction(tmp_path: Path) -> tuple[Path, Path, dict[str, bytes]]:
         (stage / name).write_text(text, encoding="utf-8")
     before = {path.name: path.read_bytes() for path in output.iterdir()}
     return stage, output, before
+
+
+def _standard_write_with_stage_cleanup_failure(monkeypatch, tmp_path: Path, cleanup_error: BaseException):
+    import tf.fabric
+
+    output = tmp_path / "tf"
+    output.mkdir()
+    for name, text in (
+        ("otype.tf", "old otype\n"),
+        ("oslots.tf", "old oslots\n"),
+        ("obsolete.tf", "old obsolete\n"),
+        ("conversion-report.json", '{"old": true}\n'),
+    ):
+        (output / name).write_text(text, encoding="utf-8")
+
+    monkeypatch.setattr(tf.fabric, "Fabric", CompleteStageFabric)
+    monkeypatch.setattr(
+        writer,
+        "TemporaryDirectory",
+        lambda *args, **kwargs: CleanupFailingTemporaryDirectory(cleanup_error, *args, **kwargs),
+    )
+
+    data = build_tf_data([parse_file(FIXTURE)])
+    try:
+        result = writer.write_tf(data, output)
+    except BaseException as exc:
+        pytest.fail(
+            f"post-commit stage cleanup {type(exc).__name__} escaped write_tf: {exc}"
+        )
+
+    assert result is True
+    assert (output / "otype.tf").read_bytes() == b"new otype\n"
+    assert (output / "oslots.tf").read_bytes() == b"new oslots\n"
+    assert (output / "new_feature.tf").read_bytes() == b"new only\n"
+    assert not (output / "obsolete.tf").exists()
+    assert (output / "conversion-report.json").read_bytes() == b'{"old": true}\n'
+
+
+def test_stage_cleanup_oserror_after_commit_cannot_turn_write_into_failure(monkeypatch, tmp_path):
+    _standard_write_with_stage_cleanup_failure(
+        monkeypatch,
+        tmp_path,
+        OSError("stage cleanup failed"),
+    )
+
+
+def test_stage_cleanup_interrupt_after_commit_cannot_turn_write_into_failure(monkeypatch, tmp_path):
+    _standard_write_with_stage_cleanup_failure(
+        monkeypatch,
+        tmp_path,
+        KeyboardInterrupt("stage cleanup interrupted"),
+    )
 
 
 def test_cleanup_interrupt_after_successful_rollback_preserves_original_error(monkeypatch, tmp_path):
