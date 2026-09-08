@@ -1,0 +1,220 @@
+name: issue97-final-green2
+
+on:
+  push:
+    branches:
+      - research/97-distribution-contract
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    if: ${{ !contains(github.event.head_commit.message, '[issue97-final-green2-done]') }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: research/97-distribution-contract
+          fetch-depth: 1
+      - name: Apply final distribution GREEN
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          def replace_once(text, old, new, label):
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f'{label}: expected one target, found {count}')
+              return text.replace(old, new, 1)
+
+          path = Path('src/pseudepigrapha_tf/distribution.py')
+          text = path.read_text(encoding='utf-8')
+          text = replace_once(
+              text,
+              'from zipfile import BadZipFile, ZIP_DEFLATED, ZipFile\n\n\nSCHEMA_VERSION',
+              'from zipfile import BadZipFile, ZIP_DEFLATED, ZipFile\n\nfrom .provenance import REPORT_PROVENANCE_FIELDS, report_provenance\n\n\nSCHEMA_VERSION',
+              'provenance imports',
+          )
+          text = replace_once(
+              text,
+              '''def _require_data_version(value: object) -> str:\n    value = _require_nonempty_string(value, "Text-Fabric data version")\n    if value in {".", ".."} or "/" in value or "\\\\" in value:\n        raise DistributionContractError(\n            "Text-Fabric data version must be one safe path component"\n        )\n    return value\n''',
+              '''def _require_data_version(value: object) -> str:\n    value = _require_nonempty_string(value, "Text-Fabric data version")\n    if value in {".", ".."} or "/" in value or "\\\\" in value or "\\x00" in value:\n        raise DistributionContractError(\n            "Text-Fabric data version must be one safe path component"\n        )\n    return value\n''',
+              'safe data version',
+          )
+          text = replace_once(
+              text,
+              '''    return {\n        "upstream_repository": upstream_repository,\n        "upstream_commit": upstream_commit,\n        "provenance": manifest_provenance,\n    }\n''',
+              '''    serialized_provenance: dict[str, str] = {}\n    for _serialized_key, report_key in REPORT_PROVENANCE_FIELDS:\n        value = provenance.get(report_key)\n        if value is not None:\n            serialized_provenance[report_key] = _require_nonempty_string(\n                value, f"report provenance {report_key}"\n            )\n\n    return {\n        "upstream_repository": upstream_repository,\n        "upstream_commit": upstream_commit,\n        "provenance": manifest_provenance,\n        "serialized_provenance": serialized_provenance,\n    }\n''',
+              'report serialized provenance',
+          )
+
+          start = text.index('def _serialized_otype_metadata(')
+          end = text.index('\n\ndef _directory_feature_records', start)
+          replacement = '''def _serialized_otype_metadata(archive: Path) -> dict[str, str]:
+    """Read effective generic TF metadata from the canonical otype header."""
+
+    try:
+        with ZipFile(archive) as zf:
+            payload = zf.read("otype.tf")
+    except KeyError as exc:
+        raise DistributionContractError("TF archive is missing required otype.tf") from exc
+    except (OSError, BadZipFile, RuntimeError) as exc:
+        raise DistributionContractError(f"could not read serialized otype metadata: {exc}") from exc
+    try:
+        lines = payload.decode("utf-8").splitlines()
+    except UnicodeDecodeError as exc:
+        raise DistributionContractError("serialized otype.tf is not valid UTF-8") from exc
+
+    if not lines or lines[0] != "@node":
+        raise DistributionContractError("serialized otype.tf header must start with @node")
+
+    metadata: dict[str, str] = {}
+    saw_blank = False
+    for line in lines[1:]:
+        if line == "":
+            saw_blank = True
+            break
+        if not line.startswith("@"):
+            raise DistributionContractError(
+                "serialized otype.tf metadata must end with a blank line before data"
+            )
+        fields = line[1:].split("=", 1)
+        key = fields[0]
+        if not key:
+            raise DistributionContractError("serialized otype.tf contains an empty metadata key")
+        # Match Text-Fabric's effective read behavior: duplicate metadata keys are
+        # assigned in order, so the last value wins (notably writtenBy).
+        metadata[key] = fields[1] if len(fields) == 2 else ""
+    if not saw_blank:
+        raise DistributionContractError(
+            "serialized otype.tf metadata is missing the required blank separator"
+        )
+    return metadata
+
+
+def _validate_serialized_identity(
+    archive: Path,
+    *,
+    identity: Mapping[str, Any],
+    converter_version: str,
+    data_version: str,
+) -> None:
+    metadata = _serialized_otype_metadata(archive)
+    serialized_provenance = report_provenance(metadata)
+    expected_provenance = _require_mapping(
+        identity.get("serialized_provenance"), "report-derived serialized provenance"
+    )
+
+    for report_key, expected_value in expected_provenance.items():
+        label = report_key.replace("_", " ")
+        actual = serialized_provenance.get(report_key)
+        if actual is None:
+            raise DistributionContractError(
+                f"serialized Text-Fabric identity is missing {label} metadata"
+            )
+        if actual != expected_value:
+            raise DistributionContractError(
+                f"serialized Text-Fabric {label} mismatch: {actual!r} != {expected_value!r}"
+            )
+
+    actual_data_version = metadata.get("version")
+    if actual_data_version is None:
+        raise DistributionContractError(
+            "serialized Text-Fabric identity is missing data version metadata (version)"
+        )
+    if actual_data_version != data_version:
+        raise DistributionContractError(
+            f"serialized Text-Fabric data version mismatch: {actual_data_version!r} != {data_version!r}"
+        )
+'''
+          text = text[:start] + replacement + text[end:]
+
+          text = replace_once(
+              text,
+              '''def _directory_feature_records(directory: Path) -> list[dict[str, Any]]:\n    if not directory.is_dir():\n        raise DistributionContractError(f"missing extracted TF directory: {directory}")\n\n    nested = [\n        path\n        for path in directory.rglob("*.tf")\n        if path.parent != directory\n    ]\n''',
+              '''def _directory_feature_records(directory: Path) -> list[dict[str, Any]]:\n    if directory.is_symlink():\n        raise DistributionContractError(\n            f"extracted TF directory must not itself be a symlink: {directory}"\n        )\n    if not directory.is_dir():\n        raise DistributionContractError(f"missing extracted TF directory: {directory}")\n\n    entries = list(directory.rglob("*"))\n    symlinks = sorted(path for path in entries if path.is_symlink())\n    if symlinks:\n        raise DistributionContractError(\n            "extracted TF directory contains symlinked entries: "\n            + ", ".join(str(path.relative_to(directory)) for path in symlinks)\n        )\n\n    nested = [\n        path\n        for path in entries\n        if path.suffix == ".tf" and path.parent != directory and path.is_file()\n    ]\n''',
+              'symlink layout guard',
+          )
+          text = replace_once(
+              text,
+              '_require_nonempty_string(text_fabric.get("data_version"), "manifest data version"),',
+              '_require_data_version(text_fabric.get("data_version")),',
+              'manifest data version validation',
+          )
+          text = replace_once(
+              text,
+              '''    # Reject an invalid report and unsafe materialized feature layout before\n    # creating release-visible output. The same normalized feature set is used\n    # for report binding, archive construction, and extracted verification.\n    report = _load_report(report_source)\n    _report_identity(report, converter_version=converter_version)\n    source_records = _directory_feature_records(source)\n''',
+              '''    # Reject an unsafe materialized layout before trusting a report from the\n    # same directory. The same normalized feature set is then used for report\n    # binding, archive construction, and extracted verification.\n    source_records = _directory_feature_records(source)\n    report = _load_report(report_source)\n    _report_identity(report, converter_version=converter_version)\n''',
+              'staging preflight order',
+          )
+          path.write_text(text, encoding='utf-8')
+
+          required_header = b'''@node
+@contentLicense=CC-BY-4.0
+@contentLicenseStatus=verified
+@converterSoftwareLicense=MIT
+@converterVersion=0.1.0
+@sourceIdentityStatus=verified
+@upstreamCommit=c939dcbacad78c5d18d2c4282cad23c47e19ac07
+@upstreamRepository=https://github.com/OnlineCriticalPseudepigrapha/Online-Critical-Pseudepigrapha
+@upstreamSoftwareLicense=GPL-3.0
+@valueType=str
+@version=0.1
+
+1\tword
+'''
+          for filename, target in (
+              ('tests/test_distribution_directory_validation.py', '"otype.tf": b"@node\\n1\\tword\\n",'),
+              ('tests/test_distribution_feature_set.py', '"otype.tf": b"@node\\n1\\tword\\n",'),
+          ):
+              p = Path(filename)
+              t = p.read_text(encoding='utf-8')
+              t = replace_once(t, target, f'"otype.tf": {required_header!r},', filename)
+              p.write_text(t, encoding='utf-8')
+
+          p = Path('tests/test_distribution_staging.py')
+          t = p.read_text(encoding='utf-8')
+          t = replace_once(
+              t,
+              '(source / "otype.tf").write_bytes(b"@node\\n@valueType=str\\n1\\tword\\n")',
+              f'(source / "otype.tf").write_bytes({required_header!r})',
+              'staging fixture otype',
+          )
+          p.write_text(t, encoding='utf-8')
+
+          manifest_header = '''@node
+@contentLicense=CC-BY-4.0
+@contentLicenseSource=https://github.com/OnlineCriticalPseudepigrapha/Online-Critical-Pseudepigrapha/blob/c939dcbacad78c5d18d2c4282cad23c47e19ac07/LICENSE.CC-BY-4.0
+@contentLicenseStatus=verified
+@converterSoftwareLicense=MIT
+@converterVersion=0.1.0
+@sourceIdentityStatus=verified
+@upstreamCommit=c939dcbacad78c5d18d2c4282cad23c47e19ac07
+@upstreamLicenseCommit=8c8c2c55a2c55ba4b23ac506956f98dcc25045b2
+@upstreamRepository=https://github.com/OnlineCriticalPseudepigrapha/Online-Critical-Pseudepigrapha
+@upstreamSoftwareLicense=GPL-3.0
+@valueType=str
+@version=0.1
+
+1\tword
+'''
+          p = Path('tests/test_distribution_manifest.py')
+          t = p.read_text(encoding='utf-8')
+          t = replace_once(
+              t,
+              'zf.writestr("otype.tf", "@node\\n@valueType=str\\n1\\tword\\n")',
+              f'zf.writestr("otype.tf", {manifest_header!r})',
+              'manifest fixture otype',
+          )
+          p.write_text(t, encoding='utf-8')
+          PY
+      - name: Remove one-shot workflow and commit
+        run: |
+          set -euo pipefail
+          rm .github/workflows/issue97-final-green2.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/pseudepigrapha_tf/distribution.py tests/test_distribution_directory_validation.py tests/test_distribution_feature_set.py tests/test_distribution_manifest.py tests/test_distribution_staging.py .github/workflows/issue97-final-green2.yml
+          git commit -m "fix: close serialized distribution integrity gaps [issue97-final-green2-done]"
+          git push origin HEAD:research/97-distribution-contract
