@@ -186,6 +186,38 @@ def test_builder_and_validator_fail_closed_on_bad_report_provenance(tmp_path):
             )
 
 
+def test_builder_rejects_internally_inconsistent_success_report(tmp_path):
+    bad_reports = []
+
+    failed_checks = _report()
+    failed_checks["failed_checks"] = ["source_hashes"]
+    bad_reports.append((failed_checks, "failed_checks"))
+
+    false_check = _report()
+    false_check["semantic_checks"]["source_hashes"] = False
+    bad_reports.append((false_check, "semantic_checks"))
+
+    missing_checks = _report()
+    missing_checks["semantic_checks"] = {}
+    bad_reports.append((missing_checks, "semantic_checks"))
+
+    wrong_failed_checks_type = _report()
+    wrong_failed_checks_type["failed_checks"] = ""
+    bad_reports.append((wrong_failed_checks_type, "failed_checks"))
+
+    for index, (bad_report, match) in enumerate(bad_reports):
+        archive, report = _assets(tmp_path / f"inconsistent-{index}", report=bad_report)
+        with pytest.raises(DistributionContractError, match=match):
+            build_distribution_manifest(
+                archive,
+                report,
+                release_tag="v0.1.1-test",
+                release_commit=RELEASE_COMMIT,
+                converter_version="0.1.0",
+                data_version="0.1",
+            )
+
+
 def test_builder_rejects_converter_version_disagreement_with_report(tmp_path):
     archive, report = _assets(tmp_path)
 
