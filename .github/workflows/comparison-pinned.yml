@@ -1,0 +1,50 @@
+name: comparison-pinned
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'src/pseudepigrapha_tf/comparison.py'
+      - 'src/pseudepigrapha_tf/web.py'
+      - 'tests/pinned_comparison_acceptance.py'
+      - '.github/workflows/comparison-pinned.yml'
+  pull_request:
+    paths:
+      - 'src/pseudepigrapha_tf/comparison.py'
+      - 'src/pseudepigrapha_tf/web.py'
+      - 'tests/pinned_comparison_acceptance.py'
+      - '.github/workflows/comparison-pinned.yml'
+
+concurrency:
+  group: comparison-pinned-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  PYTHONUNBUFFERED: '1'
+
+jobs:
+  pinned-comparison:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+      - name: Install comparison build
+        run: pip install -e .
+      - name: Clone pinned OCP source
+        run: |
+          git clone https://github.com/OnlineCriticalPseudepigrapha/Online-Critical-Pseudepigrapha.git /tmp/ocp
+          git -C /tmp/ocp checkout c939dcbacad78c5d18d2c4282cad23c47e19ac07
+      - name: Materialize pinned full corpus
+        run: |
+          DATA_VERSION="$(python -c 'from pseudepigrapha_tf.release_identity import TF_DATA_VERSION; print(TF_DATA_VERSION)')"
+          pseudepigrapha-tf convert /tmp/ocp/static/docs \
+            --output "/tmp/pseudepigrapha-tf/${DATA_VERSION}" \
+            --upstream-commit c939dcbacad78c5d18d2c4282cad23c47e19ac07
+      - name: Verify 1 Enoch comparison workflow
+        run: |
+          DATA_VERSION="$(python -c 'from pseudepigrapha_tf.release_identity import TF_DATA_VERSION; print(TF_DATA_VERSION)')"
+          python tests/pinned_comparison_acceptance.py "/tmp/pseudepigrapha-tf/${DATA_VERSION}"
