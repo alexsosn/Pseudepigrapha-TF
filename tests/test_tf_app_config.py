@@ -63,29 +63,30 @@ def test_app_routes_general_help_to_tracked_documentation():
     assert (ROOT / "docs" / "tf-app.md").is_file()
 
 
-def test_app_has_explicit_policies_for_all_technical_anchor_types():
+def test_static_type_display_only_contains_universal_corpus_types():
     cfg = _config()
-    type_display = cfg["typeDisplay"]
 
-    assert TECHNICAL_TYPES <= set(type_display)
+    assert set(cfg["typeDisplay"]) == {"book"}
+
+
+def test_dynamic_app_has_explicit_policies_for_all_technical_anchor_types():
+    module = _app_module()
+    policies = module.TYPE_POLICIES
+
+    assert set(policies) == TECHNICAL_TYPES
+    assert policies["div"].get("base") is not True
+    assert policies["unit"].get("base") is not True
     for node_type in TECHNICAL_TYPES:
-        assert type_display[node_type].get("hidden") is True, node_type
+        assert policies[node_type].get("hidden") is True, node_type
 
-    # Structural locus nodes remain traversable structures. Nodes whose own
-    # content differs from their oslots support are base nodes with explicit
-    # own-content templates, so the global text-orig-full format cannot leak
-    # technical anchor words into their advanced-app rendering.
-    assert type_display["div"].get("base") is not True
-    assert type_display["unit"].get("base") is not True
     for node_type, template in OWN_CONTENT_TEMPLATES.items():
-        assert type_display[node_type].get("base") is True, node_type
-        assert type_display[node_type].get("template") == template, node_type
+        assert policies[node_type].get("base") is True, node_type
+        assert policies[node_type].get("template") == template, node_type
 
-    assert type_display["variant_word"]["level"] == 0
-    assert type_display["manuscript"]["label"] == "{ms_abbrev}"
-    assert type_display["resource"]["label"] == "{resource_name}"
-    assert type_display["version_metadata"]["label"] == "{version_title}"
-    assert type_display["document_metadata"]["label"] == "{intro_label}"
+    assert policies["manuscript"]["label"] == "{ms_abbrev}"
+    assert policies["resource"]["label"] == "{resource_name}"
+    assert policies["version_metadata"]["label"] == "{version_title}"
+    assert policies["document_metadata"]["label"] == "{intro_label}"
 
 
 def test_plain_custom_hook_matches_own_content_templates():
