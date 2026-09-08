@@ -38,13 +38,26 @@ def _supported_node_descriptors_from_probe(
     result: dict[str, dict[str, Any]] = {}
     for name in names:
         observed = _observed_node_types(data, data.node_features.get(name, {}))
+        if observed:
+            supported_node_types = observed
+        elif len(layer_node_types) == 1:
+            # Optional/stable-empty features may have no value in the probe.
+            # A single emitted layer type is still unambiguous evidence; a
+            # multi-type probe would require guessing and must fail closed.
+            supported_node_types = layer_node_types
+        else:
+            candidates = ", ".join(layer_node_types)
+            raise ValueError(
+                f"cannot infer supported node type for {name!r}: "
+                f"feature has no value in emitter probe and candidate node types are {candidates}"
+            )
         result[name] = {
             "metadata": with_documentation_category(
                 name,
                 kind="node",
                 metadata=data.metadata[name],
             ),
-            "supportedNodeTypes": observed or layer_node_types,
+            "supportedNodeTypes": supported_node_types,
         }
     return result
 
