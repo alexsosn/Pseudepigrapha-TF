@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from copy import deepcopy
+import hashlib
 import json
 from pathlib import Path
 from zipfile import ZIP_DEFLATED, ZipFile
@@ -40,6 +41,25 @@ def _report(*, status: str = "ok", source_status: str = "verified", license_stat
     }
 
 
+def _archive_identity(archive: Path) -> dict:
+    with ZipFile(archive) as zf:
+        records = [
+            {
+                "name": name,
+                "bytes": len(payload),
+                "sha256": hashlib.sha256(payload).hexdigest(),
+            }
+            for name in sorted(zf.namelist())
+            for payload in (zf.read(name),)
+        ]
+    canonical = json.dumps(records, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    return {
+        "feature_count": len(records),
+        "features": records,
+        "feature_set_sha256": hashlib.sha256(canonical).hexdigest(),
+    }
+
+
 def _assets(tmp_path: Path, *, report: dict | None = None) -> tuple[Path, Path]:
     tmp_path.mkdir(parents=True, exist_ok=True)
     archive = tmp_path / "tf-0.1.zip"
@@ -49,9 +69,12 @@ def _assets(tmp_path: Path, *, report: dict | None = None) -> tuple[Path, Path]:
         zf.writestr("otype.tf", "@node\n@valueType=str\n1\tword\n")
         zf.writestr("book.tf", "@node\n@valueType=str\n2\t1En__Ethiopic\n")
         zf.writestr("oslots.tf", "@edge\n2\t1\n")
+    if report is None:
+        report = _report()
+        report["text_fabric"] = _archive_identity(archive)
     report_path = tmp_path / "conversion-report.json"
     report_path.write_text(
-        json.dumps(report or _report(), ensure_ascii=False, indent=2, sort_keys=True) + "\n",
+        json.dumps(report, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
         encoding="utf-8",
     )
     return archive, report_path
