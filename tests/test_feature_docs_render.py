@@ -60,8 +60,8 @@ def test_optional_metadata_page_exposes_canonical_supported_node_applicability()
     data = _data()
     contract = feature_docs.serialized_feature_contract(data, include_supported=True)["node"]["intro_title_json"]
 
-    # The small XML fixture does not attach the public metadata layer, but the
-    # real emitter establishes document_metadata as its canonical node type.
+    # Fixture-local absence stays explicit; supported applicability comes from
+    # the real public-metadata emitter probe rather than a docs-only name map.
     assert contract["observedNodeTypes"] == ()
     assert contract["supportedNodeTypes"] == ("document_metadata",)
 
