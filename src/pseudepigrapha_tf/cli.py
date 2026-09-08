@@ -35,7 +35,7 @@ def _parser() -> argparse.ArgumentParser:
         help="convert all direct *.xml files plus public OCP work metadata in an OCP docs directory",
     )
     convert.add_argument("source", type=Path, help="path to OCP static/docs")
-    convert.add_argument("--output", type=Path, default=Path("tf/0.1"), help="Text-Fabric output directory")
+    convert.add_argument("--output", type=Path, default=Path("tf/0.2"), help="Text-Fabric output directory")
     convert.add_argument(
         "--upstream-commit",
         default=None,
