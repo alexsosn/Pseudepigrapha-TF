@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 from zipfile import ZIP_DEFLATED, ZipFile
 
@@ -100,4 +101,16 @@ def test_directory_verifier_rejects_nested_feature_files(tmp_path):
     (nested / "shadow.tf").write_bytes(b"@node\n")
 
     with pytest.raises(DistributionContractError, match="nested.*feature"):
+        validate_feature_directory(manifest, source)
+
+
+@pytest.mark.skipif(os.name == "nt", reason="symlink creation is not reliably available on Windows CI")
+def test_directory_verifier_rejects_symlinked_directories_hiding_nested_features(tmp_path):
+    source, manifest = _fixture(tmp_path)
+    external = tmp_path / "external-generation"
+    external.mkdir()
+    (external / "shadow.tf").write_bytes(b"@node\n")
+    (source / "linked-generation").symlink_to(external, target_is_directory=True)
+
+    with pytest.raises(DistributionContractError, match="symlink|nested.*feature|feature.*nested"):
         validate_feature_directory(manifest, source)
