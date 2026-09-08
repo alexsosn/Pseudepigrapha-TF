@@ -44,6 +44,15 @@ def _require_nonempty_string(value: object, label: str) -> str:
     return value
 
 
+def _require_git_sha(value: object, label: str) -> str:
+    value = _require_nonempty_string(value, label)
+    if len(value) != 40 or any(char not in "0123456789abcdef" for char in value):
+        raise DistributionContractError(
+            f"{label} must be a 40-character lowercase hexadecimal Git SHA"
+        )
+    return value
+
+
 def _load_report(path: Path) -> dict[str, Any]:
     if path.name != REPORT_NAME:
         raise DistributionContractError(
@@ -109,7 +118,7 @@ def _report_identity(report: Mapping[str, Any], *, converter_version: str) -> di
     upstream_repository = _require_nonempty_string(
         provenance.get("upstream_repository"), "report upstream repository"
     )
-    upstream_commit = _require_nonempty_string(
+    upstream_commit = _require_git_sha(
         provenance.get("upstream_commit"), "report upstream commit"
     )
 
@@ -212,6 +221,56 @@ def _feature_set_sha256(records: list[dict[str, Any]]) -> str:
     return _sha256_bytes(payload)
 
 
+def _feature_identity(records: list[dict[str, Any]]) -> dict[str, Any]:
+    return {
+        "feature_count": len(records),
+        "features": records,
+        "feature_set_sha256": _feature_set_sha256(records),
+    }
+
+
+def feature_directory_identity(directory: str | Path) -> dict[str, Any]:
+    """Return normalized identity for one materialized top-level TF feature set."""
+
+    return _feature_identity(_directory_feature_records(Path(directory)))
+
+
+def _report_feature_identity(report: Mapping[str, Any]) -> dict[str, Any]:
+    raw = _require_mapping(report.get("text_fabric"), "report Text-Fabric feature identity")
+    raw_features = raw.get("features")
+    if not isinstance(raw_features, list) or not raw_features:
+        raise DistributionContractError(
+            "report Text-Fabric feature identity must contain a non-empty features array"
+        )
+    records: list[dict[str, Any]] = []
+    names: set[str] = set()
+    for index, item in enumerate(raw_features):
+        record = _require_mapping(item, f"report feature record {index}")
+        name = _require_nonempty_string(record.get("name"), f"report feature record {index} name")
+        if "/" in name or "\\" in name or not name.endswith(".tf") or name in names:
+            raise DistributionContractError(f"report feature record has invalid name {name!r}")
+        names.add(name)
+        byte_count = record.get("bytes")
+        sha256 = record.get("sha256")
+        if type(byte_count) is not int or byte_count < 0:
+            raise DistributionContractError(f"report feature {name!r} has invalid byte size")
+        if (
+            not isinstance(sha256, str)
+            or len(sha256) != 64
+            or any(char not in "0123456789abcdef" for char in sha256)
+        ):
+            raise DistributionContractError(f"report feature {name!r} has invalid sha256")
+        records.append({"name": name, "bytes": byte_count, "sha256": sha256})
+    if records != sorted(records, key=lambda item: item["name"]):
+        raise DistributionContractError("report feature records are not canonically sorted")
+    identity = _feature_identity(records)
+    if raw.get("feature_count") != identity["feature_count"]:
+        raise DistributionContractError("report feature count does not match feature records")
+    if raw.get("feature_set_sha256") != identity["feature_set_sha256"]:
+        raise DistributionContractError("report feature-set sha256 does not match feature records")
+    return identity
+
+
 def canonical_manifest_bytes(manifest: Mapping[str, Any]) -> bytes:
     """Serialize a schema-v1 manifest deterministically for release publication."""
 
@@ -240,7 +299,7 @@ def build_distribution_manifest(
     archive = Path(tf_archive)
     report_file = Path(report_path)
     release_tag = _require_nonempty_string(release_tag, "release tag")
-    release_commit = _require_nonempty_string(release_commit, "release commit")
+    release_commit = _require_git_sha(release_commit, "release commit")
     converter_version = _require_nonempty_string(converter_version, "converter version")
     data_version = _require_nonempty_string(data_version, "Text-Fabric data version")
 
@@ -257,6 +316,12 @@ def build_distribution_manifest(
     report = _load_report(report_file)
     identity = _report_identity(report, converter_version=converter_version)
     features = _feature_records(archive)
+    feature_identity = _feature_identity(features)
+    report_feature_identity = _report_feature_identity(report)
+    if report_feature_identity != feature_identity:
+        raise DistributionContractError(
+            "report Text-Fabric feature identity does not match serialized feature bytes"
+        )
 
     return {
         "schema_version": SCHEMA_VERSION,
@@ -267,9 +332,7 @@ def build_distribution_manifest(
         "converter": {"version": converter_version},
         "text_fabric": {
             "data_version": data_version,
-            "feature_count": len(features),
-            "features": features,
-            "feature_set_sha256": _feature_set_sha256(features),
+            **feature_identity,
         },
         "upstream": {
             "repository": identity["upstream_repository"],
@@ -294,7 +357,7 @@ def _manifest_publication_identity(manifest: Mapping[str, Any]) -> tuple[str, st
     text_fabric = _require_mapping(manifest.get("text_fabric"), "manifest text_fabric")
     return (
         _require_nonempty_string(release.get("tag"), "manifest release tag"),
-        _require_nonempty_string(release.get("commit"), "manifest release commit"),
+        _require_git_sha(release.get("commit"), "manifest release commit"),
         _require_nonempty_string(converter.get("version"), "manifest converter version"),
         _require_nonempty_string(text_fabric.get("data_version"), "manifest data version"),
     )
@@ -458,14 +521,18 @@ def stage_distribution_assets(
     if not report_source.is_file():
         raise DistributionContractError(f"missing conversion report: {report_source}")
 
-    # Reject an invalid report before creating release-visible output. This is
-    # intentionally the same provenance gate used by manifest construction.
+    # Reject an invalid report and unsafe materialized feature layout before
+    # creating release-visible output. The same normalized feature set is used
+    # for report binding, archive construction, and extracted verification.
     report = _load_report(report_source)
     _report_identity(report, converter_version=converter_version)
-
-    features = sorted(path for path in source.glob("*.tf") if path.is_file())
-    if not features:
-        raise DistributionContractError("materialized TF directory contains no feature files")
+    source_records = _directory_feature_records(source)
+    source_identity = _feature_identity(source_records)
+    if _report_feature_identity(report) != source_identity:
+        raise DistributionContractError(
+            "report Text-Fabric feature identity does not match materialized feature bytes"
+        )
+    features = [source / record["name"] for record in source_records]
 
     destination.parent.mkdir(parents=True, exist_ok=True)
     stage = Path(

@@ -13,6 +13,7 @@ from .classifications import (
     load_historical_classifications,
 )
 from .conversion import build_tf_data
+from .distribution import feature_directory_identity
 from .metadata import (
     attach_public_metadata,
     augment_conversion_report_with_public_metadata,
@@ -139,6 +140,8 @@ def main(argv: list[str] | None = None) -> int:
         if not _write_prevalidated_tf(data, args.output):
             raise SystemExit("Text-Fabric refused the generated dataset")
         stage_started = _stage("write_text_fabric", stage_started)
+        report["text_fabric"] = feature_directory_identity(args.output)
+        write_conversion_report(report, staged_report)
         staged_report.replace(publication_path)
 
     metadata_count = sum(
