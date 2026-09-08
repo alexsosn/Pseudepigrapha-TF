@@ -1,0 +1,189 @@
+name: issue97-final-green
+
+on:
+  push:
+    branches:
+      - research/97-distribution-contract
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    if: ${{ !contains(github.event.head_commit.message, '[issue97-final-green-done]') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: research/97-distribution-contract
+          fetch-depth: 2
+      - name: Assert exact parent
+        run: |
+          test "$(git rev-parse HEAD^)" = "4798f7b238906cbadadfe163e100f9835b8bd3bf"
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+      - name: Apply bounded GREEN and migrate publication fixtures
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          def replace_once(path: str, old: str, new: str, label: str) -> None:
+              p = Path(path)
+              text = p.read_text(encoding="utf-8")
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f"{label}: expected one target, found {count}")
+              p.write_text(text.replace(old, new, 1), encoding="utf-8")
+
+          distribution = "src/pseudepigrapha_tf/distribution.py"
+
+          replace_once(
+              distribution,
+              '    if value in {".", ".."} or "/" in value or "\\\\" in value:\n',
+              '    if value in {".", ".."} or "/" in value or "\\\\" in value or "\\x00" in value:\n',
+              "NUL-safe data version",
+          )
+
+          replace_once(
+              distribution,
+              '    for key in ("upstream_license_commit", "content_license_source"):\n',
+              '    for key in (\n        "upstream_license_commit",\n        "content_license_source",\n        "content_license_url",\n        "content_license_scope",\n        "content_attribution",\n        "content_citation",\n    ):\n',
+              "canonical optional provenance mapping",
+          )
+
+          old_parser = '''def _serialized_otype_metadata(archive: Path) -> dict[str, str]:\n    """Read the generic TF identity serialized into the canonical otype header."""\n\n    try:\n        with ZipFile(archive) as zf:\n            payload = zf.read("otype.tf")\n    except KeyError as exc:\n        raise DistributionContractError("TF archive is missing required otype.tf") from exc\n    except (OSError, BadZipFile, RuntimeError) as exc:\n        raise DistributionContractError(f"could not read serialized otype metadata: {exc}") from exc\n    try:\n        text = payload.decode("utf-8")\n    except UnicodeDecodeError as exc:\n        raise DistributionContractError("serialized otype.tf is not valid UTF-8") from exc\n\n    metadata: dict[str, str] = {}\n    for line in text.splitlines():\n        if not line:\n            break\n        if not line.startswith("@") or "=" not in line:\n            continue\n        key, value = line[1:].split("=", 1)\n        if key in metadata:\n            raise DistributionContractError(\n                f"serialized otype.tf contains duplicate metadata key {key!r}"\n            )\n        metadata[key] = value\n    return metadata\n'''
+          new_parser = '''_SERIALIZED_IDENTITY_KEYS = {\n    "version",\n    "converterVersion",\n    "upstreamRepository",\n    "upstreamCommit",\n    "sourceIdentityStatus",\n    "contentLicenseStatus",\n    "contentLicense",\n    "converterSoftwareLicense",\n    "upstreamSoftwareLicense",\n    "upstreamLicenseCommit",\n    "contentLicenseSource",\n    "contentLicenseUrl",\n    "contentLicenseScope",\n    "contentAttribution",\n    "contentCitation",\n}\n\n\ndef _serialized_otype_metadata(archive: Path) -> dict[str, str]:\n    """Read release identity from a Text-Fabric-compatible otype header."""\n\n    try:\n        with ZipFile(archive) as zf:\n            payload = zf.read("otype.tf")\n    except KeyError as exc:\n        raise DistributionContractError("TF archive is missing required otype.tf") from exc\n    except (OSError, BadZipFile, RuntimeError) as exc:\n        raise DistributionContractError(f"could not read serialized otype metadata: {exc}") from exc\n    try:\n        lines = payload.decode("utf-8").splitlines()\n    except UnicodeDecodeError as exc:\n        raise DistributionContractError("serialized otype.tf is not valid UTF-8") from exc\n\n    if not lines or lines[0] != "@node":\n        raise DistributionContractError("serialized otype.tf must start with the Text-Fabric @node header")\n\n    metadata: dict[str, str] = {}\n    terminated = False\n    for line in lines[1:]:\n        if line == "":\n            terminated = True\n            break\n        if not line.startswith("@") or "=" not in line:\n            raise DistributionContractError(\n                "serialized otype.tf metadata header must end with a blank line before feature data"\n            )\n        key, value = line[1:].split("=", 1)\n        if not key:\n            raise DistributionContractError("serialized otype.tf contains an empty metadata key")\n        if key in _SERIALIZED_IDENTITY_KEYS and key in metadata:\n            raise DistributionContractError(\n                f"serialized otype.tf contains duplicate identity metadata key {key!r}"\n            )\n        # Text-Fabric itself may repeat non-identity generic metadata such as\n        # writtenBy. Preserve the first value because publication only consumes\n        # the explicitly enumerated identity keys above.\n        metadata.setdefault(key, value)\n\n    if not terminated:\n        raise DistributionContractError(\n            "serialized otype.tf metadata header is not terminated by a blank line"\n        )\n    return metadata\n'''
+          replace_once(distribution, old_parser, new_parser, "TF-compatible otype parser")
+
+          replace_once(
+              distribution,
+              '''    optional = {\n        "upstreamLicenseCommit": ("upstream_license_commit", "upstream license commit"),\n        "contentLicenseSource": ("content_license_source", "content license source"),\n    }\n''',
+              '''    optional = {\n        "upstreamLicenseCommit": ("upstream_license_commit", "upstream license commit"),\n        "contentLicenseSource": ("content_license_source", "content license source"),\n        "contentLicenseUrl": ("content_license_url", "content license URL"),\n        "contentLicenseScope": ("content_license_scope", "content license scope"),\n        "contentAttribution": ("content_attribution", "content attribution"),\n        "contentCitation": ("content_citation", "content citation"),\n    }\n''',
+              "serialized optional provenance mapping",
+          )
+
+          replace_once(
+              distribution,
+              '''def _directory_feature_records(directory: Path) -> list[dict[str, Any]]:\n    if not directory.is_dir():\n        raise DistributionContractError(f"missing extracted TF directory: {directory}")\n\n    nested = [\n''',
+              '''def _directory_feature_records(directory: Path) -> list[dict[str, Any]]:\n    if not directory.is_dir():\n        raise DistributionContractError(f"missing extracted TF directory: {directory}")\n    if directory.is_symlink():\n        raise DistributionContractError(\n            f"extracted TF directory must not itself be a symlink: {directory}"\n        )\n\n    symlinks = sorted(path for path in directory.rglob("*") if path.is_symlink())\n    if symlinks:\n        raise DistributionContractError(\n            "extracted TF directory contains symlinked entries: "\n            + ", ".join(str(path.relative_to(directory)) for path in symlinks)\n        )\n\n    nested = [\n''',
+              "symlink-hidden generation guard",
+          )
+
+          replace_once(
+              distribution,
+              '''    # Reject an invalid report and unsafe materialized feature layout before\n    # creating release-visible output. The same normalized feature set is used\n    # for report binding, archive construction, and extracted verification.\n    report = _load_report(report_source)\n    _report_identity(report, converter_version=converter_version)\n    source_records = _directory_feature_records(source)\n''',
+              '''    # Reject an unsafe materialized layout before trusting report contents or\n    # creating release-visible output. The same normalized feature set is used\n    # for report binding, archive construction, and extracted verification.\n    source_records = _directory_feature_records(source)\n    report = _load_report(report_source)\n    _report_identity(report, converter_version=converter_version)\n''',
+              "filesystem preflight ordering",
+          )
+
+          required_header = (
+              '@node\\n'
+              '@contentLicense=CC-BY-4.0\\n'
+              '@contentLicenseStatus=verified\\n'
+              '@converterSoftwareLicense=MIT\\n'
+              '@converterVersion=0.1.0\\n'
+              '@sourceIdentityStatus=verified\\n'
+              f'@upstreamCommit=c939dcbacad78c5d18d2c4282cad23c47e19ac07\\n'
+              '@upstreamRepository=https://github.com/OnlineCriticalPseudepigrapha/Online-Critical-Pseudepigrapha\\n'
+              '@upstreamSoftwareLicense=GPL-3.0\\n'
+              '@valueType=str\\n'
+              '@version=0.1\\n\\n'
+              '1\\tword\\n'
+          )
+
+          # Legacy synthetic publication fixtures must now satisfy the same\n          # serialized identity contract as real release candidates.
+          for path in (
+              "tests/test_distribution_directory_validation.py",
+              "tests/test_distribution_feature_set.py",
+          ):
+              replace_once(
+                  path,
+                  '"otype.tf": b"@node\\n1\\tword\\n",',
+                  f'"otype.tf": {required_header.encode()!r},',
+                  f"serialized identity fixture: {path}",
+              )
+
+          manifest_header = (
+              '@node\\n'
+              '@contentLicense=CC-BY-4.0\\n'
+              '@contentLicenseSource=https://github.com/OnlineCriticalPseudepigrapha/Online-Critical-Pseudepigrapha/blob/c939dcbacad78c5d18d2c4282cad23c47e19ac07/LICENSE.CC-BY-4.0\\n'
+              '@contentLicenseStatus=verified\\n'
+              '@converterSoftwareLicense=MIT\\n'
+              '@converterVersion=0.1.0\\n'
+              '@sourceIdentityStatus=verified\\n'
+              '@upstreamCommit=c939dcbacad78c5d18d2c4282cad23c47e19ac07\\n'
+              '@upstreamLicenseCommit=8c8c2c55a2c55ba4b23ac506956f98dcc25045b2\\n'
+              '@upstreamRepository=https://github.com/OnlineCriticalPseudepigrapha/Online-Critical-Pseudepigrapha\\n'
+              '@upstreamSoftwareLicense=GPL-3.0\\n'
+              '@valueType=str\\n'
+              '@version=0.1\\n\\n'
+              '1\\tword\\n'
+          )
+          replace_once(
+              "tests/test_distribution_manifest.py",
+              '        zf.writestr("otype.tf", "@node\\n@valueType=str\\n1\\tword\\n")',
+              f'        zf.writestr("otype.tf", {manifest_header!r})',
+              "manifest publishable otype fixture",
+          )
+
+          replace_once(
+              "tests/test_distribution_staging.py",
+              '    (source / "otype.tf").write_bytes(b"@node\\n@valueType=str\\n1\\tword\\n")',
+              f'    (source / "otype.tf").write_bytes({required_header.encode()!r})',
+              "staging publishable otype fixture",
+          )
+
+          adv = "tests/test_distribution_adversarial_review.py"
+          replace_once(
+              adv,
+              '    build_distribution_manifest,\n    stage_distribution_assets,\n)',
+              '    build_distribution_manifest,\n    feature_directory_identity,\n    stage_distribution_assets,\n)',
+              "adversarial fixture identity import",
+          )
+          replace_once(
+              adv,
+              '        zf.writestr("otype.tf", "@node\\n@valueType=str\\n1\\tword\\n")',
+              f'        zf.writestr("otype.tf", {required_header!r})',
+              "adversarial archive otype fixture",
+          )
+          replace_once(
+              adv,
+              '    (source / "otype.tf").write_bytes(b"@node\\n@valueType=str\\n1\\tword\\n")',
+              f'    (source / "otype.tf").write_bytes({required_header.encode()!r})',
+              "adversarial materialized otype fixture",
+          )
+          replace_once(
+              adv,
+              '''    (source / "conversion-report.json").write_text(\n        json.dumps(_report(), sort_keys=True) + "\\n",\n        encoding="utf-8",\n    )\n''',
+              '''    report = _report()\n    report["text_fabric"] = feature_directory_identity(source)\n    (source / "conversion-report.json").write_text(\n        json.dumps(report, sort_keys=True) + "\\n",\n        encoding="utf-8",\n    )\n''',
+              "adversarial materialized report feature identity",
+          )
+          PY
+      - name: Verify focused GREEN
+        run: |
+          pip install -e '.[dev]'
+          pytest -q \
+            tests/test_distribution_adversarial_review.py \
+            tests/test_distribution_directory_validation.py \
+            tests/test_distribution_feature_set.py \
+            tests/test_distribution_manifest.py \
+            tests/test_distribution_serialized_identity.py \
+            tests/test_distribution_staging.py
+      - name: Remove helper and commit exact GREEN
+        run: |
+          set -euo pipefail
+          rm .github/workflows/issue97-final-green.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/pseudepigrapha_tf/distribution.py \
+            tests/test_distribution_adversarial_review.py \
+            tests/test_distribution_directory_validation.py \
+            tests/test_distribution_feature_set.py \
+            tests/test_distribution_manifest.py \
+            tests/test_distribution_staging.py \
+            .github/workflows/issue97-final-green.yml
+          git commit -m "fix: close final distribution integrity gaps [issue97-final-green-done]"
+          git push origin HEAD:research/97-distribution-contract
