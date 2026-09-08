@@ -9,6 +9,7 @@ import pytest
 from pseudepigrapha_tf.distribution import (
     DistributionContractError,
     build_distribution_manifest,
+    feature_directory_identity,
     validate_feature_directory,
 )
 
@@ -40,6 +41,7 @@ def _fixture(tmp_path: Path):
                 "status": "ok",
                 "failed_checks": [],
                 "semantic_checks": {"probe": True},
+                "text_fabric": feature_directory_identity(source),
                 "provenance": {
                     "upstream_repository": UPSTREAM_REPOSITORY,
                     "upstream_commit": UPSTREAM_COMMIT,
