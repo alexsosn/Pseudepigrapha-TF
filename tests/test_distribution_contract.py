@@ -19,12 +19,19 @@ def _distribution():
     return importlib.import_module("pseudepigrapha_tf.distribution")
 
 
-def _report(*, status: str = "ok", source_identity: str = "verified", license_status: str = "verified"):
+def _report(
+    *,
+    status: str = "ok",
+    source_identity: str = "verified",
+    license_status: str = "verified",
+    converter_version: str = "0.1.0",
+):
     return {
         "status": status,
         "provenance": {
             "upstream_repository": UPSTREAM_REPOSITORY,
             "upstream_commit": UPSTREAM_COMMIT,
+            "converter_version": converter_version,
             "source_identity_status": source_identity,
             "content_license_status": license_status,
             "content_license": "CC-BY-4.0",
@@ -121,7 +128,10 @@ def test_validator_rejects_asset_mutation(tmp_path, target):
     else:
         report_path.write_bytes(report_path.read_bytes() + b" ")
 
-    with pytest.raises(distribution.DistributionContractError, match=target if target == "archive" else "report"):
+    with pytest.raises(
+        distribution.DistributionContractError,
+        match=target if target == "archive" else "report",
+    ):
         distribution.validate_dataset_manifest(manifest, archive, report_path)
 
 
@@ -145,6 +155,21 @@ def test_builder_rejects_non_ok_or_unverified_conversion_report(tmp_path):
                 converter_version="0.1.0",
                 tf_data_version="0.1",
             )
+
+
+def test_builder_rejects_converter_version_that_disagrees_with_report(tmp_path):
+    distribution = _distribution()
+    archive, report_path = _files(tmp_path, report=_report(converter_version="0.2.0"))
+
+    with pytest.raises(distribution.DistributionContractError, match="converter version"):
+        distribution.build_dataset_manifest(
+            archive,
+            report_path,
+            release_tag="v0.1.0",
+            release_commit=RELEASE_COMMIT,
+            converter_version="0.1.0",
+            tf_data_version="0.1",
+        )
 
 
 def test_validator_rejects_wrong_publication_identity(tmp_path):
