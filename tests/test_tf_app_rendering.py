@@ -113,6 +113,17 @@ def test_pretty_explicit_omission_remains_visibly_distinct_from_reading(tmp_path
     assert "πλήρης" not in html, html
 
 
+def test_pretty_reading_without_omission_feature_still_uses_own_text(tmp_path):
+    app = _load_app_for_rendering(tmp_path, "one_division.xml")
+    api = app.api
+    assert not hasattr(api.F, "is_omission")
+    reading = next(iter(api.F.otype.s("reading")))
+
+    html = app.pretty(reading, _asString=True)
+
+    assert "abc def" in html, html
+
+
 def test_pretty_variant_word_uses_variant_surface_not_primary_anchor_text(tmp_path):
     app = _load_app_for_rendering(tmp_path)
     api = app.api
