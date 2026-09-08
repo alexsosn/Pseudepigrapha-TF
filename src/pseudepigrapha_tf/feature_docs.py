@@ -4,7 +4,9 @@ import json
 from pathlib import Path
 from typing import Any
 
+from .classifications import load_historical_classifications
 from .graph import EDGE_DESCRIPTIONS, EDGE_FEATURE_CONTRACTS, FEATURE_DESCRIPTIONS, INT_FEATURES, TFData
+from .metadata import ALL_INTRO_FEATURES, _intro_feature_description
 from .writer import (
     _edge_features_with_api_dependencies,
     _metadata_with_serialized_features,
@@ -70,6 +72,48 @@ def _documentation_category(name: str, *, kind: str) -> str:
     return "Remaining source-preserved XML attributes/content"
 
 
+def _supported_node_metadata() -> dict[str, dict[str, str]]:
+    """Return stable metadata for supported features not guaranteed in a small build."""
+
+    result = {
+        name: {
+            "valueType": "str",
+            "description": _intro_feature_description(name),
+            "documentationCategory": "Public work metadata",
+        }
+        for name in ALL_INTRO_FEATURES
+    }
+    result["intro_label"] = {
+        "valueType": "str",
+        "description": "short display label for an OCP document_metadata node",
+        "documentationCategory": "Public work metadata",
+    }
+
+    classifications = load_historical_classifications()
+    result["historical_ocp_doc_id"] = {
+        "valueType": "int",
+        "description": "published OCP docs.id from the historical 2017 classification snapshot",
+        "documentationCategory": "Historical classifications",
+    }
+    result["historical_genres_json"] = {
+        "valueType": "str",
+        "description": "JSON array of exact public OCP genre labels from the historical 2017 catalogue",
+        "documentationCategory": "Historical classifications",
+        "controlledVocabularyJson": json.dumps(
+            list(classifications.genres.values()), ensure_ascii=False, separators=(",", ":")
+        ),
+    }
+    result["historical_biblical_figures_json"] = {
+        "valueType": "str",
+        "description": "JSON array of exact public OCP biblical-figure labels from the historical 2017 catalogue",
+        "documentationCategory": "Historical classifications",
+        "controlledVocabularyJson": json.dumps(
+            list(classifications.biblical_figures.values()), ensure_ascii=False, separators=(",", ":")
+        ),
+    }
+    return result
+
+
 def edge_feature_contracts() -> dict[str, dict[str, Any]]:
     """Return a deterministic read-only copy of supported edge semantics."""
 
@@ -115,17 +159,20 @@ def serialized_feature_contract(
     node_features = _node_features_with_format_dependencies(data, isolate=True)
     edge_features = _edge_features_with_api_dependencies(data, isolate=True)
     metadata = _metadata_with_serialized_features(data, node_features, edge_features)
+    supported_node_metadata = _supported_node_metadata() if include_supported else {}
     edges = edge_feature_contracts()
 
     node_names = set(node_features)
     edge_names = set(edge_features)
     if include_supported:
         node_names.update(FEATURE_DESCRIPTIONS)
+        node_names.update(supported_node_metadata)
         edge_names.update(edges)
 
     node_contract: dict[str, dict[str, Any]] = {}
     for name in sorted(node_names):
-        meta = dict(metadata.get(name, {}))
+        meta = dict(supported_node_metadata.get(name, {}))
+        meta.update(metadata.get(name, {}))
         meta.setdefault("valueType", "int" if name in INT_FEATURES else "str")
         meta.setdefault("description", FEATURE_DESCRIPTIONS.get(name, f"OCP/TF feature {name}"))
         meta.setdefault("documentationCategory", _documentation_category(name, kind="node"))
@@ -181,16 +228,12 @@ def _render_feature_page(item: dict[str, Any]) -> str:
         "",
         item["description"],
     ]
-    if item["kind"] == "node" and item.get("observedNodeTypes"):
-        lines.extend(["", "**Observed on node types:** " + ", ".join(f"`{name}`" for name in item["observedNodeTypes"])])
     if item["kind"] == "edge":
         lines.extend(["", f"**Direction:** {_direction(item)}", "", f"**Cardinality:** {item.get('cardinality', 'unspecified')}"])
         if item.get("sourceQualifier"):
             lines.extend(["", f"**Source qualifier:** `{item['sourceQualifier']}`"])
         if item.get("technicalSupport"):
             lines.extend(["", "This is a **technical Text-Fabric support relation**; its anchors are not scholarly containment claims."])
-    if not item.get("serialized", True):
-        lines.extend(["", "**Serialized in this corpus:** no", "", "**Supported by converter:** yes"])
     controlled = item["metadata"].get("controlledVocabularyJson")
     if controlled:
         try:
@@ -204,7 +247,7 @@ def _render_feature_page(item: dict[str, Any]) -> str:
 
 
 def render_feature_docs(data: TFData) -> dict[str, str]:
-    """Render deterministic Markdown documentation for the supported feature contract."""
+    """Render snapshot-independent Markdown documentation for the supported feature contract."""
 
     contract = serialized_feature_contract(data, include_supported=True)
     items = {**contract["node"], **contract["edge"]}
@@ -216,7 +259,7 @@ def render_feature_docs(data: TFData) -> dict[str, str]:
     landing = [
         "# Text-Fabric feature reference",
         "",
-        "Generated from the converter's serialization-normalized feature and edge contracts.",
+        "Generated from the converter's serialization-normalized supported feature and edge contracts.",
     ]
     for category in DOCUMENTATION_CATEGORIES:
         landing.extend(["", f"## {category}", ""])
@@ -224,7 +267,7 @@ def render_feature_docs(data: TFData) -> dict[str, str]:
         if names:
             landing.extend(f"- [`{name}`]({name}.md)" for name in names)
         else:
-            landing.append("_No features in this build._")
+            landing.append("_No features in this contract._")
     pages["0_home.md"] = "\n".join(landing).rstrip() + "\n"
     return pages
 
