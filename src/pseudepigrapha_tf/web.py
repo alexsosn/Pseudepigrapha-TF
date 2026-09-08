@@ -6,7 +6,11 @@ from typing import Any
 
 from flask import Response, request
 
-from .comparison import build_passage_comparison, render_passage_comparison
+from .comparison import (
+    build_passage_comparison,
+    passage_neighbors,
+    render_passage_comparison,
+)
 
 
 def _h(value: object) -> str:
@@ -86,6 +90,14 @@ def _witness_selection(args: Any) -> dict[str, tuple[str, ...]] | None:
     return result or None
 
 
+def _selected_version_ids(model: dict[str, object]) -> tuple[str, ...]:
+    return tuple(
+        str(choice.get("id", ""))
+        for choice in model.get("version_choices", ())
+        if isinstance(choice, dict) and choice.get("selected")
+    )
+
+
 def register_comparison_route(flask_app: Any, tf_app: Any) -> Any:
     """Register the verse comparison page on an existing TF Flask app."""
 
@@ -100,7 +112,10 @@ def register_comparison_route(flask_app: Any, tf_app: Any) -> Any:
         if not (work and chapter and verse):
             return Response(_landing_html(tf_app.api), mimetype="text/html")
 
-        selected_versions = tuple(value for value in request.args.getlist("version") if value)
+        selected_versions = tuple(
+            value for value in request.args.getlist("version") if value
+        )
+        selected_witnesses = _witness_selection(request.args)
         try:
             model = build_passage_comparison(
                 tf_app.api,
@@ -108,8 +123,18 @@ def register_comparison_route(flask_app: Any, tf_app: Any) -> Any:
                 chapter,
                 verse,
                 selected_versions=selected_versions or None,
-                selected_witnesses=_witness_selection(request.args),
+                selected_witnesses=selected_witnesses,
             )
+            # The normal builder always exposes version choices. Keep route unit
+            # tests free to substitute a deliberately tiny fake model.
+            if "version_choices" in model:
+                model["navigation"] = passage_neighbors(
+                    tf_app.api,
+                    work,
+                    chapter,
+                    verse,
+                    preferred_versions=_selected_version_ids(model),
+                )
         except (KeyError, ValueError) as error:
             return Response(_error_html(error), status=400, mimetype="text/html")
         return Response(render_passage_comparison(model), mimetype="text/html")
@@ -137,7 +162,9 @@ def create_comparison_web_app(tf_app: Any, *, app_name: str | None = None) -> An
         ) from error
 
     context = getattr(tf_app, "context", None)
-    resolved_name = app_name or getattr(context, "appName", None) or "pseudepigrapha-tf"
+    resolved_name = (
+        app_name or getattr(context, "appName", None) or "pseudepigrapha-tf"
+    )
     web = Web(makeTfKernel(tf_app, resolved_name))
     return register_comparison_route(factory(web), tf_app)
 
