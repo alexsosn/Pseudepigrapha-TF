@@ -56,11 +56,37 @@ def _load_report(path: Path) -> dict[str, Any]:
     return dict(_require_mapping(value, "conversion report"))
 
 
-def _report_identity(report: Mapping[str, Any], *, converter_version: str) -> dict[str, Any]:
+def _validate_report_audit(report: Mapping[str, Any]) -> None:
+    """Require the report's success marker to agree with its semantic evidence."""
+
     if report.get("status") != "ok":
         raise DistributionContractError(
             f"conversion report status must be 'ok', got {report.get('status')!r}"
         )
+
+    failed_checks = report.get("failed_checks")
+    if not isinstance(failed_checks, list):
+        raise DistributionContractError("report failed_checks must be a JSON array")
+    if failed_checks:
+        raise DistributionContractError(
+            f"report failed_checks must be empty for publication, got {failed_checks!r}"
+        )
+
+    semantic_checks = _require_mapping(report.get("semantic_checks"), "report semantic_checks")
+    if not semantic_checks:
+        raise DistributionContractError("report semantic_checks must be non-empty")
+    failed_semantic = sorted(
+        str(name) for name, value in semantic_checks.items() if value is not True
+    )
+    if failed_semantic:
+        raise DistributionContractError(
+            "report semantic_checks must all be exactly true; failed: "
+            + ", ".join(failed_semantic)
+        )
+
+
+def _report_identity(report: Mapping[str, Any], *, converter_version: str) -> dict[str, Any]:
+    _validate_report_audit(report)
 
     provenance = _require_mapping(report.get("provenance"), "report provenance")
     if provenance.get("source_identity_status") != "verified":
@@ -147,6 +173,33 @@ def _feature_records(archive: Path) -> list[dict[str, Any]]:
         raise DistributionContractError(f"invalid TF archive: {exc}") from exc
 
     return sorted(records, key=lambda item: item["name"])
+
+
+def _directory_feature_records(directory: Path) -> list[dict[str, Any]]:
+    if not directory.is_dir():
+        raise DistributionContractError(f"missing extracted TF directory: {directory}")
+
+    nested = [
+        path
+        for path in directory.rglob("*.tf")
+        if path.parent != directory
+    ]
+    if nested:
+        raise DistributionContractError(
+            "extracted TF directory contains nested feature files: "
+            + ", ".join(str(path.relative_to(directory)) for path in sorted(nested))
+        )
+
+    features = sorted(path for path in directory.glob("*.tf") if path.is_file())
+    if not features:
+        raise DistributionContractError("extracted TF directory contains no feature files")
+    if any(path.is_symlink() for path in features):
+        raise DistributionContractError("extracted TF directory contains symlinked feature files")
+
+    try:
+        return [_file_record(path) for path in features]
+    except OSError as exc:
+        raise DistributionContractError(f"could not read extracted TF feature: {exc}") from exc
 
 
 def _feature_set_sha256(records: list[dict[str, Any]]) -> str:
@@ -245,6 +298,60 @@ def _manifest_publication_identity(manifest: Mapping[str, Any]) -> tuple[str, st
         _require_nonempty_string(converter.get("version"), "manifest converter version"),
         _require_nonempty_string(text_fabric.get("data_version"), "manifest data version"),
     )
+
+
+def _manifest_feature_records(manifest: Mapping[str, Any]) -> list[dict[str, Any]]:
+    text_fabric = _require_mapping(manifest.get("text_fabric"), "manifest text_fabric")
+    raw_records = text_fabric.get("features")
+    if not isinstance(raw_records, list) or not raw_records:
+        raise DistributionContractError("manifest text_fabric features must be a non-empty JSON array")
+
+    records: list[dict[str, Any]] = []
+    names: set[str] = set()
+    for index, raw in enumerate(raw_records):
+        record = _require_mapping(raw, f"manifest feature record {index}")
+        name = _require_nonempty_string(record.get("name"), f"manifest feature record {index} name")
+        if "/" in name or "\\" in name or not name.endswith(".tf"):
+            raise DistributionContractError(f"manifest feature name is not a top-level .tf file: {name!r}")
+        if name in names:
+            raise DistributionContractError(f"manifest contains duplicate feature record {name!r}")
+        names.add(name)
+
+        byte_count = record.get("bytes")
+        if type(byte_count) is not int or byte_count < 0:
+            raise DistributionContractError(f"manifest feature {name!r} has invalid byte size")
+        sha256 = record.get("sha256")
+        if (
+            not isinstance(sha256, str)
+            or len(sha256) != 64
+            or any(char not in "0123456789abcdef" for char in sha256)
+        ):
+            raise DistributionContractError(f"manifest feature {name!r} has invalid sha256")
+        records.append({"name": name, "bytes": byte_count, "sha256": sha256})
+
+    if records != sorted(records, key=lambda item: item["name"]):
+        raise DistributionContractError("manifest feature records are not canonically sorted")
+    if text_fabric.get("feature_count") != len(records):
+        raise DistributionContractError("manifest feature count does not match feature records")
+    if text_fabric.get("feature_set_sha256") != _feature_set_sha256(records):
+        raise DistributionContractError("manifest feature-set sha256 does not match feature records")
+    return records
+
+
+def validate_feature_directory(
+    manifest: Mapping[str, Any],
+    tf_directory: str | Path,
+) -> None:
+    """Fail closed unless extracted top-level .tf bytes match the manifest exactly."""
+
+    manifest = _require_mapping(manifest, "dataset manifest")
+    _manifest_publication_identity(manifest)
+    expected = _manifest_feature_records(manifest)
+    actual = _directory_feature_records(Path(tf_directory))
+    if actual != expected:
+        raise DistributionContractError(
+            "extracted Text-Fabric feature set does not match dataset manifest"
+        )
 
 
 def validate_distribution(
