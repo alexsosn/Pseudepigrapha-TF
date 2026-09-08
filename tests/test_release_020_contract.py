@@ -7,9 +7,12 @@ from pathlib import Path
 
 import pseudepigrapha_tf
 from pseudepigrapha_tf import cli
+from pseudepigrapha_tf.graph import build_tf_data
+from pseudepigrapha_tf.parser import parse_file
 
 
 ROOT = Path(__file__).resolve().parents[1]
+FIXTURES = ROOT / "tests" / "fixtures"
 EXPECTED_PACKAGE_VERSION = "0.2.0"
 EXPECTED_DATA_VERSION = "0.2"
 EXPECTED_RELEASE_TAG = "v0.2.0"
@@ -39,6 +42,16 @@ def test_frozen_release_identity_is_consistent_across_owned_surfaces():
     assert cli_args.output == Path(f"tf/{EXPECTED_DATA_VERSION}")
     assert f"v{project['project']['version']}" == EXPECTED_RELEASE_TAG
     assert f"tf-{_app_data_version()}.zip" == EXPECTED_TF_ASSET
+
+
+def test_serialized_tf_data_version_matches_frozen_release_identity():
+    data = build_tf_data(
+        [parse_file(FIXTURES / "sample.xml")],
+        converter_version=EXPECTED_PACKAGE_VERSION,
+    )
+
+    assert data.metadata[""]["version"] == EXPECTED_DATA_VERSION
+    assert data.metadata[""]["converterVersion"] == EXPECTED_PACKAGE_VERSION
 
 
 def test_release_publisher_is_explicit_delegated_and_no_clobber():
