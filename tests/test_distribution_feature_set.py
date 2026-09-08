@@ -30,6 +30,8 @@ def _report_path(tmp_path: Path) -> Path:
         json.dumps(
             {
                 "status": "ok",
+                "failed_checks": [],
+                "semantic_checks": {"probe": True},
                 "provenance": {
                     "upstream_repository": UPSTREAM_REPOSITORY,
                     "upstream_commit": UPSTREAM_COMMIT,
