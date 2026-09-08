@@ -6,7 +6,7 @@ from pathlib import Path
 
 from pseudepigrapha_tf import build_tf_data
 import pseudepigrapha_tf.feature_docs as feature_docs
-from pseudepigrapha_tf.feature_contract import documentation_category
+from pseudepigrapha_tf.feature_contract import documentation_category, with_documentation_category
 from pseudepigrapha_tf.feature_docs import edge_feature_contracts, serialized_feature_contract
 from pseudepigrapha_tf.parser import parse_file
 from pseudepigrapha_tf.writer import (
@@ -69,6 +69,17 @@ def test_serialization_metadata_owns_documentation_categories():
         assert metadata[name]["documentationCategory"] == documentation_category(name, kind="node")
     for name in edge_features:
         assert metadata[name]["documentationCategory"] == documentation_category(name, kind="edge")
+
+
+def test_canonical_documentation_category_overrides_stale_emitter_metadata():
+    metadata = with_documentation_category(
+        "source_ref",
+        kind="node",
+        metadata={"documentationCategory": "stale category", "description": "probe"},
+    )
+
+    assert metadata["documentationCategory"] == "Source/version identity and provenance"
+    assert metadata["description"] == "probe"
 
 
 def test_feature_renderer_has_no_private_semantic_registry_or_duplicated_emitter_descriptions():
