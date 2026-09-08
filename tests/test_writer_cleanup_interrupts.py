@@ -1,8 +1,6 @@
 from __future__ import annotations
 
-import shutil
 from pathlib import Path
-from tempfile import mkdtemp
 
 import pytest
 
@@ -29,17 +27,27 @@ class CompleteStageFabric:
         return True
 
 
-class CleanupFailingTemporaryDirectory:
-    def __init__(self, cleanup_error: BaseException, *args, **kwargs):
-        self.cleanup_error = cleanup_error
-        self.path = Path(mkdtemp(prefix=kwargs.get("prefix"), dir=kwargs.get("dir")))
+class FalseStageFabric:
+    def __init__(self, *args, **kwargs):
+        pass
 
-    def __enter__(self):
-        return str(self.path)
+    def save(self, **kwargs):
+        stage = Path(kwargs["location"])
+        (stage / "partial.tf").write_text("partial stage\n", encoding="utf-8")
+        return False
 
-    def __exit__(self, exc_type, exc, tb):
-        shutil.rmtree(self.path, ignore_errors=True)
-        raise self.cleanup_error
+
+class RaisingStageFabric:
+    error: BaseException | None = None
+
+    def __init__(self, *args, **kwargs):
+        pass
+
+    def save(self, **kwargs):
+        stage = Path(kwargs["location"])
+        (stage / "partial.tf").write_text("partial stage\n", encoding="utf-8")
+        assert self.__class__.error is not None
+        raise self.__class__.error
 
 
 def _seed_transaction(tmp_path: Path) -> tuple[Path, Path, dict[str, bytes]]:
@@ -64,9 +72,7 @@ def _seed_transaction(tmp_path: Path) -> tuple[Path, Path, dict[str, bytes]]:
     return stage, output, before
 
 
-def _standard_write_with_stage_cleanup_failure(monkeypatch, tmp_path: Path, cleanup_error: BaseException):
-    import tf.fabric
-
+def _seed_writer_output(tmp_path: Path) -> tuple[Path, dict[str, bytes]]:
     output = tmp_path / "tf"
     output.mkdir()
     for name, text in (
@@ -76,21 +82,41 @@ def _standard_write_with_stage_cleanup_failure(monkeypatch, tmp_path: Path, clea
         ("conversion-report.json", '{"old": true}\n'),
     ):
         (output / name).write_text(text, encoding="utf-8")
+    return output, {path.name: path.read_bytes() for path in output.iterdir()}
 
+
+def _inject_stage_cleanup_failure(monkeypatch, tmp_path: Path, cleanup_error: BaseException) -> None:
+    original_rmtree = writer.shutil.rmtree
+
+    def fail_stage_cleanup(path, *args, **kwargs):
+        candidate = Path(path)
+        is_stage = (
+            candidate.parent == tmp_path
+            and candidate.name.startswith(".pseudepigrapha-tf-")
+            and not candidate.name.startswith(".pseudepigrapha-tf-backup-")
+        )
+        if is_stage:
+            raise cleanup_error
+        return original_rmtree(path, *args, **kwargs)
+
+    monkeypatch.setattr(writer.shutil, "rmtree", fail_stage_cleanup)
+
+
+def _standard_write_with_stage_cleanup_failure(monkeypatch, tmp_path: Path, cleanup_error: BaseException):
+    import tf.fabric
+
+    output, _ = _seed_writer_output(tmp_path)
     monkeypatch.setattr(tf.fabric, "Fabric", CompleteStageFabric)
-    monkeypatch.setattr(
-        writer,
-        "TemporaryDirectory",
-        lambda *args, **kwargs: CleanupFailingTemporaryDirectory(cleanup_error, *args, **kwargs),
-    )
+    _inject_stage_cleanup_failure(monkeypatch, tmp_path, cleanup_error)
 
     data = build_tf_data([parse_file(FIXTURE)])
-    try:
-        result = writer.write_tf(data, output)
-    except BaseException as exc:
-        pytest.fail(
-            f"post-commit stage cleanup {type(exc).__name__} escaped write_tf: {exc}"
-        )
+    with pytest.warns(RuntimeWarning, match="staging directory cleanup failed"):
+        try:
+            result = writer.write_tf(data, output)
+        except BaseException as exc:
+            pytest.fail(
+                f"post-commit stage cleanup {type(exc).__name__} escaped write_tf: {exc}"
+            )
 
     assert result is True
     assert (output / "otype.tf").read_bytes() == b"new otype\n"
@@ -114,6 +140,42 @@ def test_stage_cleanup_interrupt_after_commit_cannot_turn_write_into_failure(mon
         tmp_path,
         KeyboardInterrupt("stage cleanup interrupted"),
     )
+
+
+def test_stage_cleanup_failure_cannot_turn_false_serializer_result_into_exception(monkeypatch, tmp_path):
+    import tf.fabric
+
+    output, before = _seed_writer_output(tmp_path)
+    monkeypatch.setattr(tf.fabric, "Fabric", FalseStageFabric)
+    _inject_stage_cleanup_failure(monkeypatch, tmp_path, OSError("stage cleanup failed"))
+
+    data = build_tf_data([parse_file(FIXTURE)])
+    with pytest.warns(RuntimeWarning, match="staging directory cleanup failed"):
+        assert writer.write_tf(data, output) is False
+
+    assert {path.name: path.read_bytes() for path in output.iterdir()} == before
+
+
+def test_stage_cleanup_failure_cannot_replace_serializer_exception(monkeypatch, tmp_path):
+    import tf.fabric
+
+    output, before = _seed_writer_output(tmp_path)
+    serializer_error = OSError("serializer boom")
+    RaisingStageFabric.error = serializer_error
+    monkeypatch.setattr(tf.fabric, "Fabric", RaisingStageFabric)
+    _inject_stage_cleanup_failure(
+        monkeypatch,
+        tmp_path,
+        KeyboardInterrupt("stage cleanup interrupted"),
+    )
+
+    data = build_tf_data([parse_file(FIXTURE)])
+    with pytest.warns(RuntimeWarning, match="staging directory cleanup failed"):
+        with pytest.raises(OSError) as caught:
+            writer.write_tf(data, output)
+
+    assert caught.value is serializer_error
+    assert {path.name: path.read_bytes() for path in output.iterdir()} == before
 
 
 def test_cleanup_interrupt_after_successful_rollback_preserves_original_error(monkeypatch, tmp_path):
