@@ -38,6 +38,8 @@ def _fixture(tmp_path: Path):
         json.dumps(
             {
                 "status": "ok",
+                "failed_checks": [],
+                "semantic_checks": {"probe": True},
                 "provenance": {
                     "upstream_repository": UPSTREAM_REPOSITORY,
                     "upstream_commit": UPSTREAM_COMMIT,
@@ -86,4 +88,14 @@ def test_directory_verifier_rejects_missing_mutated_and_extra_features(tmp_path)
     source, manifest = _fixture(tmp_path / "extra")
     (source / "extra.tf").write_bytes(b"@node\n")
     with pytest.raises(DistributionContractError, match="feature"):
+        validate_feature_directory(manifest, source)
+
+
+def test_directory_verifier_rejects_nested_feature_files(tmp_path):
+    source, manifest = _fixture(tmp_path)
+    nested = source / "nested"
+    nested.mkdir()
+    (nested / "shadow.tf").write_bytes(b"@node\n")
+
+    with pytest.raises(DistributionContractError, match="nested.*feature"):
         validate_feature_directory(manifest, source)
