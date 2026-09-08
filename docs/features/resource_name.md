@@ -7,3 +7,5 @@
 **Category:** Remaining source-preserved XML attributes/content
 
 literal upstream resource name
+
+**Observed node types in render graph:** `resource`

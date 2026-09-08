@@ -7,3 +7,5 @@
 **Category:** Remaining source-preserved XML attributes/content
 
 literal upstream div/@number identifier
+
+**Observed node types in render graph:** `div`

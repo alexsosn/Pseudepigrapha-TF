@@ -8,6 +8,10 @@
 
 published OCP docs.id from the historical 2017 classification snapshot
 
+**Observed node types in render graph:** none in this render graph
+
+**Supported node types:** `document_metadata`
+
 **Supported by converter:** yes
 
 Availability is corpus-dependent; this reference does not infer absence from the documentation fixture.

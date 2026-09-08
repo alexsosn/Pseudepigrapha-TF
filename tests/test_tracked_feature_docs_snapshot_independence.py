@@ -31,13 +31,20 @@ def test_tracked_reference_does_not_publish_fixture_local_absence_as_corpus_fact
     assert "Serialized in this corpus:" not in tracked
 
 
-def test_global_feature_page_is_identical_whether_optional_feature_occurs_in_fixture():
+def test_global_feature_page_scopes_observation_without_changing_support_claim():
     absent = _fixture_data()
     present = deepcopy(absent)
-    present.node_features["intro_title_json"] = {1: '["probe"]'}
+    node = max(present.node_features["otype"]) + 1
+    present.node_features["otype"][node] = "document_metadata"
+    present.node_features["intro_title_json"] = {node: '["probe"]'}
+    present.edge_features["oslots"][node] = {1}
 
     absent_page = render_feature_docs(absent)["intro_title_json.md"]
     present_page = render_feature_docs(present)["intro_title_json.md"]
 
-    assert absent_page == present_page
-    assert "**Supported by converter:** yes" in present_page
+    for page in (absent_page, present_page):
+        assert "Serialized in this corpus:" not in page
+        assert "**Supported by converter:** yes" in page
+        assert "**Supported node types:** `document_metadata`" in page
+    assert "**Observed node types in render graph:** none in this render graph" in absent_page
+    assert "**Observed node types in render graph:** `document_metadata`" in present_page

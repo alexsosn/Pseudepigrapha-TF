@@ -53,7 +53,7 @@ def test_node_page_exposes_observed_node_applicability():
 
     page = feature_docs.render_feature_docs(data)["source_ref.md"]
     expected = ", ".join(f"`{node_type}`" for node_type in observed)
-    assert f"**Observed node types:** {expected}" in page
+    assert f"**Observed node types in render graph:** {expected}" in page
 
 
 def test_optional_metadata_page_exposes_canonical_supported_node_applicability():
@@ -66,7 +66,7 @@ def test_optional_metadata_page_exposes_canonical_supported_node_applicability()
     assert contract["supportedNodeTypes"] == ("document_metadata",)
 
     page = feature_docs.render_feature_docs(data)["intro_title_json.md"]
-    assert "**Observed node types:** none in this graph" in page
+    assert "**Observed node types in render graph:** none in this render graph" in page
     assert "**Supported node types:** `document_metadata`" in page
 
 

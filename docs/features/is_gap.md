@@ -7,3 +7,5 @@
 **Category:** Preserved anomalies / technical anchors
 
 1 for an anchor slot created for an empty primary reading
+
+**Observed node types in render graph:** `word`

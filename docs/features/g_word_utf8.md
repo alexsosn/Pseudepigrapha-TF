@@ -7,3 +7,5 @@
 **Category:** Text-Fabric warp and section/text features
 
 Unicode surface form, following the BHSA feature name
+
+**Observed node types in render graph:** `variant_word`, `word`

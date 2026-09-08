@@ -7,3 +7,5 @@
 **Category:** Source/version identity and provenance
 
 upstream OCP work title
+
+**Observed node types in render graph:** `book`

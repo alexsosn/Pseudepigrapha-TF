@@ -7,3 +7,5 @@
 **Category:** Source/version identity and provenance
 
 stable converter identifier for the exact upstream version owning this node
+
+**Observed node types in render graph:** `book`, `chapter`, `div`, `manuscript`, `reading`, `resource`, `unit`, `variant_word`, `verse`

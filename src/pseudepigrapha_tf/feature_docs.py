@@ -24,7 +24,32 @@ from .writer import (
 )
 
 
-def _public_metadata_from_emitter() -> dict[str, dict[str, str]]:
+def _supported_node_descriptors_from_probe(
+    data: TFData,
+    names: tuple[str, ...],
+) -> dict[str, dict[str, Any]]:
+    """Derive canonical supported node types from the real emitter probe."""
+
+    otype = data.node_features.get("otype", {})
+    layer_node_types = tuple(sorted({str(kind) for kind in otype.values() if kind != "word"}))
+    if not layer_node_types:
+        raise ValueError("feature documentation emitter probe produced no non-slot node type")
+
+    result: dict[str, dict[str, Any]] = {}
+    for name in names:
+        observed = _observed_node_types(data, data.node_features.get(name, {}))
+        result[name] = {
+            "metadata": with_documentation_category(
+                name,
+                kind="node",
+                metadata=data.metadata[name],
+            ),
+            "supportedNodeTypes": observed or layer_node_types,
+        }
+    return result
+
+
+def _public_metadata_from_emitter() -> dict[str, dict[str, Any]]:
     """Obtain supported public-metadata descriptors from the real emitter."""
 
     data = TFData(
@@ -48,17 +73,10 @@ def _public_metadata_from_emitter() -> dict[str, dict[str, str]]:
     )
     attach_public_metadata(data, metadata)
     names = (*ALL_INTRO_FEATURES, "intro_label")
-    return {
-        name: with_documentation_category(
-            name,
-            kind="node",
-            metadata=data.metadata[name],
-        )
-        for name in names
-    }
+    return _supported_node_descriptors_from_probe(data, tuple(names))
 
 
-def _historical_metadata_from_emitter() -> dict[str, dict[str, str]]:
+def _historical_metadata_from_emitter() -> dict[str, dict[str, Any]]:
     """Obtain supported historical-classification descriptors from the real emitter."""
 
     classifications = load_historical_classifications()
@@ -79,18 +97,11 @@ def _historical_metadata_from_emitter() -> dict[str, dict[str, str]]:
     names = tuple(
         name for name in HistoricalClassifications.REQUIRED_FEATURES if name != "ocp_book"
     )
-    return {
-        name: with_documentation_category(
-            name,
-            kind="node",
-            metadata=data.metadata[name],
-        )
-        for name in names
-    }
+    return _supported_node_descriptors_from_probe(data, tuple(names))
 
 
-def _supported_node_metadata() -> dict[str, dict[str, str]]:
-    """Return canonical emitter metadata for supported optional metadata layers."""
+def _supported_node_descriptors() -> dict[str, dict[str, Any]]:
+    """Return canonical emitter descriptors for supported optional metadata layers."""
 
     result = _public_metadata_from_emitter()
     result.update(_historical_metadata_from_emitter())
@@ -144,20 +155,21 @@ def serialized_feature_contract(
     node_features = _node_features_with_format_dependencies(data, isolate=True)
     edge_features = _edge_features_with_api_dependencies(data, isolate=True)
     metadata = _metadata_with_serialized_features(data, node_features, edge_features)
-    supported_node_metadata = _supported_node_metadata() if include_supported else {}
+    supported_node_descriptors = _supported_node_descriptors() if include_supported else {}
     edges = edge_feature_contracts()
 
     node_names = set(node_features)
     edge_names = set(edge_features)
     if include_supported:
         node_names.update(FEATURE_DESCRIPTIONS)
-        node_names.update(supported_node_metadata)
+        node_names.update(supported_node_descriptors)
         edge_names.update(edges)
 
     node_contract: dict[str, dict[str, Any]] = {}
     for name in sorted(node_names):
         meta = dict(metadata.get(name, {}))
-        supported_meta = supported_node_metadata.get(name)
+        supported_descriptor = supported_node_descriptors.get(name)
+        supported_meta = supported_descriptor.get("metadata") if supported_descriptor else None
         if supported_meta:
             # Global browser help describes the converter-supported semantic
             # contract, not whichever optional features happen to occur in the
@@ -174,9 +186,10 @@ def serialized_feature_contract(
             "description": meta["description"],
             "metadata": meta,
             "observedNodeTypes": _observed_node_types(data, values),
+            "supportedNodeTypes": tuple(supported_descriptor.get("supportedNodeTypes", ())) if supported_descriptor else (),
             "serialized": name in node_features,
             "supported": True,
-            "corpusDependent": name in supported_node_metadata,
+            "corpusDependent": name in supported_node_descriptors,
         }
 
     edge_contract: dict[str, dict[str, Any]] = {}
@@ -221,6 +234,19 @@ def _render_feature_page(item: dict[str, Any]) -> str:
         "",
         item["description"],
     ]
+    if item["kind"] == "node":
+        observed = tuple(item.get("observedNodeTypes", ()))
+        observed_text = (
+            ", ".join(f"`{node_type}`" for node_type in observed)
+            if observed
+            else "none in this render graph"
+        )
+        lines.extend(["", f"**Observed node types in render graph:** {observed_text}"])
+        supported_types = tuple(item.get("supportedNodeTypes", ()))
+        if supported_types:
+            supported_text = ", ".join(f"`{node_type}`" for node_type in supported_types)
+            lines.extend(["", f"**Supported node types:** {supported_text}"])
+
     if item["kind"] == "edge":
         lines.extend(
             [
@@ -261,7 +287,7 @@ def _render_feature_page(item: dict[str, Any]) -> str:
 
 
 def render_feature_docs(data: TFData) -> dict[str, str]:
-    """Render snapshot-independent Markdown documentation for the supported feature contract."""
+    """Render deterministic help; graph-local applicability is explicitly scoped."""
 
     contract = serialized_feature_contract(data, include_supported=True)
     items = {**contract["node"], **contract["edge"]}

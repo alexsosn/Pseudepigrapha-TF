@@ -7,3 +7,5 @@
 **Category:** Preserved anomalies / technical anchors
 
 1 for metadata attached to an upstream version with no textual units
+
+**Observed node types in render graph:** none in this render graph
