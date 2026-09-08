@@ -137,17 +137,33 @@ def test_stock_tf_browser_and_compare_route_coexist_on_one_flask_app(tmp_path):
     root = client.get("/")
     assert root.status_code == 200, root.get_data(as_text=True)
 
-    comparison = client.get("/compare?work=Sample&chapter=1&verse=Heading")
+    # Sample 1:2 is an unambiguous apparatus locus: A explicitly omits and B
+    # supplies a reading. The Heading fixture deliberately cites B on two
+    # competing readings and must remain a fail-closed error below.
+    comparison = client.get("/compare?work=Sample&chapter=1&verse=2")
     html = comparison.get_data(as_text=True)
     assert comparison.status_code == 200, html
     assert 'class="comparison-page"' in html
     assert 'class="source-version-card"' in html
+    assert 'class="state-omission"' in html
     assert "Sample" in html
 
     css = client.get("/data/static/comparison.css").get_data(as_text=True)
     assert ".version-grid" in css
     assert ".source-version-card" in css
     assert "@media" in css
+
+
+def test_real_tf_ambiguous_witness_assignment_fails_closed_in_comparison_route(tmp_path):
+    tf_app = _find_local_app(_materialize(tmp_path))
+    flask_app = web.create_comparison_web_app(tf_app, app_name="pseudepigrapha-test")
+
+    response = flask_app.test_client().get("/compare?work=Sample&chapter=1&verse=Heading")
+    html = response.get_data(as_text=True)
+
+    assert response.status_code == 400
+    assert "multiple readings at unit" in html
+    assert "manuscript 5" in html
 
 
 def test_local_loader_reuses_tracked_app_and_materialized_tf(tmp_path):
@@ -162,7 +178,7 @@ def test_local_loader_reuses_tracked_app_and_materialized_tf(tmp_path):
     root = client.get("/")
     assert root.status_code == 200, root.get_data(as_text=True)
 
-    response = client.get("/compare?work=Sample&chapter=1&verse=Heading")
+    response = client.get("/compare?work=Sample&chapter=1&verse=2")
     html = response.get_data(as_text=True)
     assert response.status_code == 200, html
     assert "Sample" in html
