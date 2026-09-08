@@ -80,3 +80,14 @@ def test_cleanup_interrupt_after_commit_cannot_turn_committed_install_into_failu
     assert (output / "new_feature.tf").read_bytes() == b"new only\n"
     assert not (output / "obsolete.tf").exists()
     assert (output / "conversion-report.json").read_bytes() == before["conversion-report.json"]
+
+
+def test_nonfatal_warning_hook_baseexception_cannot_escape(monkeypatch):
+    warning_interrupt = KeyboardInterrupt("warning hook interrupted")
+
+    def interrupting_showwarning(*args, **kwargs):
+        raise warning_interrupt
+
+    monkeypatch.setattr(writer.warnings, "showwarning", interrupting_showwarning)
+
+    assert writer._warn_nonfatal("cleanup diagnostic") is None
