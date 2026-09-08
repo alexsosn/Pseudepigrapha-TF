@@ -128,3 +128,10 @@ def test_text_fabric_feature_help_routing_targets_tracked_feature_pages():
     )
     assert landing_url.endswith("/docs/features/0_home.md")
     assert source_ref_url.endswith("/docs/features/source_ref.md")
+
+
+def test_tracked_feature_docs_cover_browser_help_without_drift():
+    feature_dir = ROOT / "docs" / "features"
+
+    assert feature_dir.is_dir(), "Text-Fabric feature-help target docs/features/ is missing"
+    assert feature_docs.validate_feature_docs(_data(), feature_dir) == []
