@@ -345,3 +345,27 @@ jobs:
               assert tjob['fields'][field].encode('utf-8') == value.encode('utf-8')
               assert '\r\n' in tjob['fields'][field]
           PY
+      - name: Load tracked advanced app against full local corpus
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          from tf.advanced.app import findApp
+
+          app = findApp(
+              f"app:{Path('app').resolve()}",
+              "",
+              None,
+              "github",
+              False,
+              version="0.1",
+              locations=["/tmp/pseudepigrapha-tf/0.1"],
+              modules=[""],
+              silent="deep",
+          )
+          assert app is not None
+          assert app.api is not None
+          assert app.__class__.__name__ == "TfApp"
+          assert app.api.F.otype.maxSlot == 922922
+          assert app.api.T.nodeFromSection(("1En__Ethiopic", "1", "1")) is not None
+          PY
