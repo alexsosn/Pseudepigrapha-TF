@@ -27,8 +27,6 @@ def test_serialized_feature_contract_includes_stable_empty_features_without_muta
     assert data.edge_features == before_edge
     assert data.metadata == before_meta
 
-    # These are part of the serialization/API contract even when this fixture
-    # has no values for them.
     assert contract["node"]["prefix_utf8"]["serialized"] is True
     assert contract["node"]["resource_name"]["serialized"] is True
     assert contract["node"]["undefined_manuscript"]["serialized"] is True
@@ -66,6 +64,28 @@ def test_every_supported_feature_has_a_researcher_facing_description():
     assert placeholders == []
 
 
+def test_supported_contract_includes_metadata_layers_even_when_fixture_does_not_attach_them():
+    contract = serialized_feature_contract(_data(), include_supported=True)["node"]
+
+    for name in (
+        "intro_label",
+        "intro_title_json",
+        "intro_version_json",
+        "intro_citation_json",
+        "intro_bibliography_json",
+        "intro_manuscripts_json",
+        "historical_ocp_doc_id",
+        "historical_genres_json",
+        "historical_biblical_figures_json",
+    ):
+        assert name in contract
+        assert contract[name]["supported"] is True
+        assert contract[name]["description"]
+
+    assert contract["intro_title_json"]["metadata"]["documentationCategory"] == "Public work metadata"
+    assert contract["historical_genres_json"]["metadata"]["documentationCategory"] == "Historical classifications"
+
+
 def test_edge_contracts_are_reusable_and_cover_translation_and_tf_support_semantics():
     contracts = edge_feature_contracts()
 
@@ -97,8 +117,6 @@ def test_edge_contracts_are_reusable_and_cover_translation_and_tf_support_semant
 
 def test_supported_optional_relation_is_documentable_even_when_not_serialized_here():
     data = _data()
-    # sample.xml exercises resources, while the exact pinned OCP snapshot does
-    # not. Remove the relation to model that real supported-but-not-emitted case.
     data.edge_features.pop("resource_of", None)
     contract = serialized_feature_contract(data, include_supported=True)
 
