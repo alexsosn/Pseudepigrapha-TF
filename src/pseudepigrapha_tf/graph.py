@@ -8,70 +8,192 @@ from .model import Book, Div, DivisionSpec, Reading, Token, Unit, Version
 from .provenance import corpus_license_metadata
 
 INT_FEATURES = {
-    "chapter_index", "div_index", "div_level", "is_empty_div", "is_gap", "is_omission", "is_primary",
+    "chapter_index", "div_index", "div_level", "historical_ocp_doc_id", "is_empty_div", "is_gap",
+    "is_metadata_only", "is_missing_unit_id", "is_omission", "is_primary", "is_source_anomaly",
     "manuscript_index", "reading_index", "reading_option", "resource_index", "section_occurrence",
-    "token_count", "undefined_manuscript", "unit_index", "variant_position", "verse_index", "w_annotated",
+    "source_child_index", "synthetic_witness", "token_count", "undefined_manuscript", "unit_index",
+    "variant_position", "verse_index", "w_annotated",
 }
 
 FEATURE_DESCRIPTIONS = {
+    "author": "upstream author or editor attribution for the OCP version",
+    "bibliography": "JSON array of plain-text bibliography entries declared for an OCP manuscript",
+    "bibliography_xml": "JSON array preserving the mixed-XML bibliography entries declared for an OCP manuscript",
     "book": "BHSA-compatible book section identifier; one OCP version is one TF book",
-    "chapter": "BHSA-compatible chapter label; compound parent path for deep OCP references",
-    "verse": "BHSA-compatible verse label; later duplicate upstream addresses receive a technical ~N suffix",
-    "section_occurrence": "1-based occurrence of the exact upstream section address within an OCP version",
-    "g_word_utf8": "Unicode surface form, following the BHSA feature name",
-    "trailer_utf8": "Unicode material following a word inside its OCP reading",
-    "prefix_utf8": "Unicode material preceding a word inside its OCP reading",
     "boundary_utf8": "deterministic separator inserted between OCP units",
-    "source_file": "stable source path relative to the supplied OCP docs directory",
-    "source_sha256": "SHA-256 digest of source XML bytes",
-    "source_ref": "full OCP reference using every division and declared delimiter",
-    "source_ref_parts": "JSON array of source division identifiers",
-    "reading_xml": "mixed XML content inside the OCP reading",
-    "reading_option_source": "literal OCP reading/@option before numeric normalization",
-    "w_lang": "literal OCP <w>/@lang when present",
+    "chapter": "BHSA-compatible chapter label; compound parent path for deep OCP references",
+    "chapter_index": "1-based chapter occurrence index within one OCP version",
+    "div_fragment": "literal upstream div/@fragment value",
+    "div_index": "1-based source-order index of a div among sibling divs",
+    "div_label": "upstream division-level label declared by the OCP version",
+    "div_level": "1-based nesting depth of the preserved upstream div",
+    "div_number": "literal upstream div/@number identifier",
+    "div_path": "slash-joined sequence of upstream div numbers for the preserved div",
+    "division_delimiters": "JSON array of upstream reference delimiters declared by the OCP version",
+    "division_labels": "JSON array of upstream division labels declared by the OCP version",
+    "division_texts": "JSON array of upstream division display texts declared by the OCP version",
+    "ellipsis_text": "text content of an upstream <elipsis> structural omission marker",
+    "g_word_utf8": "Unicode surface form, following the BHSA feature name",
+    "generated_language": "target language of an upstream generated translation",
+    "generation_marker": "explicit upstream generated-translation provenance marker",
+    "generation_method": "upstream generation method recorded for this translation",
+    "generation_model": "upstream model recorded for the pinned generated translation layer",
+    "group": "literal upstream unit/@group value",
+    "indent": "literal upstream reading indentation attribute",
     "is_empty_div": "1 for an empty source div preserved inside a textual OCP version; oslots is a technical anchor only",
     "is_gap": "1 for an anchor slot created for an empty primary reading",
+    "is_metadata_only": "1 for metadata attached to an upstream version with no textual units",
+    "is_missing_unit_id": "1 when the upstream unit explicitly has an empty id and no id is inferred",
     "is_omission": "1 when an OCP reading has no textual content",
+    "is_primary": "1 for the reading selected as the primary text of its OCP unit",
+    "is_source_anomaly": "1 for a preserved upstream structure or identity anomaly",
+    "language": "effective language of the OCP version or token",
+    "lex": "literal upstream lexical annotation on an OCP word when present",
+    "linebreak": "literal upstream reading linebreak attribute",
+    "manuscript_index": "1-based source-order index of a declared manuscript within an OCP version",
+    "morph": "literal upstream morphological annotation on an OCP word when present",
+    "ms_abbrev": "literal upstream manuscript abbreviation or preserved undeclared witness token",
+    "ms_language": "literal upstream manuscript language value",
+    "ms_name": "plain-text manuscript name derived from the upstream manuscript element",
+    "ms_name_xml": "mixed XML content preserving the upstream manuscript name",
+    "ms_show": "literal upstream manuscript show/display attribute",
+    "mss": "literal upstream reading witness-list string",
+    "ocp_book": "stable OCP work identifier derived from the source filename",
+    "otype": "Text-Fabric node type (word slots and non-slot structural/metadata node types)",
+    "parallel": "literal upstream unit/@parallel value",
+    "prefix_utf8": "Unicode material preceding a word inside its OCP reading",
+    "reading_index": "1-based source-order index of a reading within an OCP unit",
+    "reading_option": "numeric reading option used by the converter for ordering and query ergonomics",
+    "reading_option_source": "literal OCP reading/@option before numeric normalization",
+    "reading_text": "plain-text content of the preserved OCP reading",
+    "reading_xml": "mixed XML content inside the OCP reading",
+    "resource_index": "1-based source-order index of a resource within an OCP version",
+    "resource_info": "JSON array preserving upstream resource information strings",
+    "resource_name": "literal upstream resource name",
+    "resource_url": "literal upstream resource URL",
+    "section_occurrence": "1-based occurrence of the exact upstream section address within an OCP version",
+    "source_child_index": "1-based position of a preserved source child element within its parent",
+    "source_file": "stable source path relative to the supplied OCP docs directory",
+    "source_ref": "full OCP reference using every division and declared delimiter",
+    "source_ref_parts": "JSON array of source division identifiers",
+    "source_sha256": "SHA-256 digest of source XML bytes",
+    "source_tag": "literal upstream XML element name",
+    "style": "literal upstream style annotation on an OCP word when present",
+    "synthetic_witness": "1 for a source-declared synthetic provenance witness rather than a historical manuscript",
+    "text_structure": "literal upstream work text-structure declaration",
+    "title": "upstream OCP work title",
+    "token_count": "number of parsed word tokens in the preserved reading",
+    "trailer_utf8": "Unicode material following a word inside its OCP reading",
+    "undefined_manuscript": "1 for a citation-only manuscript node synthesized from an undeclared upstream witness abbreviation",
+    "unit_id": "literal upstream unit/@id identifier; may be empty only for explicitly validated source anomalies",
+    "unit_index": "1-based source-order index of a unit within an OCP version",
+    "unit_linebreak": "literal upstream unit linebreak attribute",
+    "variant_position": "1-based token position inside a non-primary reading",
+    "verse": "BHSA-compatible verse label; later duplicate upstream addresses receive a technical ~N suffix",
+    "verse_index": "1-based verse occurrence index within one OCP version",
+    "version_fragment": "literal upstream version/@fragment value",
+    "version_id": "stable converter identifier for the exact upstream version owning this node",
+    "version_kind": "source for critical/source versions; generated_translation for OCP machine translations",
+    "version_title": "literal upstream OCP version title",
+    "w_annotated": "1 when the upstream OCP word explicitly carries annotation markup",
+    "w_lang": "literal OCP <w>/@lang when present",
 }
 
 EDGE_DESCRIPTIONS = {
-    "oslots": "Text-Fabric warp edge to occupied/technical anchor word slots",
+    "oslots": "Text-Fabric support edge from each non-slot node to occupied or technical-anchor word slots; technical anchors are not scholarly containment claims",
     "parent": "OCP structural parent relation from div/unit/ellipsis/orphan_reading nodes to div",
     "reading_of": "reading node to its OCP unit",
     "variant_word_of": "variant_word node to its reading",
     "witness": "reading/orphan_reading node to cited manuscript nodes",
     "manuscript_of": "manuscript node to its TF book/version",
     "resource_of": "resource node to its TF book/version",
+    "translation_of": "generated translation TF book to its exact source-version TF book",
+    "translation_unit_of": "generated translation unit to its occurrence-aligned source unit",
+}
+
+EDGE_FEATURE_CONTRACTS = {
+    "oslots": {
+        "sourceTypes": frozenset(),
+        "targetTypes": frozenset({"word"}),
+        "cardinality": "one or more",
+        "technicalSupport": True,
+        "corpusDependent": False,
+
+        "cardinalityRules": (),
+    },
+    "parent": {
+        "sourceTypes": frozenset({"div", "unit", "ellipsis", "orphan_reading"}),
+        "targetTypes": frozenset({"div"}),
+        "cardinality": "type-dependent",
+        "technicalSupport": False,
+        "corpusDependent": True,
+
+        "cardinalityRules": (
+            (frozenset({"unit", "ellipsis", "orphan_reading"}), 1, 1, "exactly 1"),
+            (frozenset({"div"}), 0, 1, "at most 1"),
+        ),
+    },
+    "reading_of": {
+        "sourceTypes": frozenset({"reading"}), "targetTypes": frozenset({"unit"}),
+        "cardinality": "exactly 1", "technicalSupport": False,
+        "corpusDependent": True,
+
+        "cardinalityRules": ((frozenset({"reading"}), 1, 1, "exactly 1"),),
+    },
+    "variant_word_of": {
+        "sourceTypes": frozenset({"variant_word"}), "targetTypes": frozenset({"reading"}),
+        "cardinality": "exactly 1", "technicalSupport": False,
+        "corpusDependent": True,
+
+        "cardinalityRules": ((frozenset({"variant_word"}), 1, 1, "exactly 1"),),
+    },
+    "witness": {
+        "sourceTypes": frozenset({"reading", "orphan_reading"}), "targetTypes": frozenset({"manuscript"}),
+        "cardinality": "zero or more", "technicalSupport": False,
+        "corpusDependent": False,
+ "cardinalityRules": (),
+    },
+    "manuscript_of": {
+        "sourceTypes": frozenset({"manuscript"}), "targetTypes": frozenset({"book", "version_metadata"}),
+        "cardinality": "exactly 1", "technicalSupport": False,
+        "corpusDependent": False,
+
+        "cardinalityRules": ((frozenset({"manuscript"}), 1, 1, "exactly 1"),),
+    },
+    "resource_of": {
+        "sourceTypes": frozenset({"resource"}), "targetTypes": frozenset({"book", "version_metadata"}),
+        "cardinality": "exactly 1", "technicalSupport": False,
+        "corpusDependent": True,
+
+        "cardinalityRules": ((frozenset({"resource"}), 1, 1, "exactly 1"),),
+    },
+    "translation_of": {
+        "sourceTypes": frozenset({"book"}), "targetTypes": frozenset({"book"}),
+        "cardinality": "exactly 1", "technicalSupport": False,
+        "corpusDependent": True,
+
+        "sourceQualifier": "version_kind=generated_translation", "minTargets": 1, "maxTargets": 1,
+        "cardinalityRules": (),
+    },
+    "translation_unit_of": {
+        "sourceTypes": frozenset({"unit"}), "targetTypes": frozenset({"unit"}),
+        "cardinality": "exactly 1", "technicalSupport": False,
+        "corpusDependent": True,
+
+        "sourceQualifier": "version_kind=generated_translation", "minTargets": 1, "maxTargets": 1,
+        "cardinalityRules": (),
+    },
 }
 
 _EDGE_TYPE_CONTRACTS = {
-    "parent": (
-        frozenset({"div", "unit", "ellipsis", "orphan_reading"}),
-        frozenset({"div"}),
-    ),
-    "reading_of": (frozenset({"reading"}), frozenset({"unit"})),
-    "variant_word_of": (frozenset({"variant_word"}), frozenset({"reading"})),
-    "witness": (
-        frozenset({"reading", "orphan_reading"}),
-        frozenset({"manuscript"}),
-    ),
-    "manuscript_of": (
-        frozenset({"manuscript"}),
-        frozenset({"book", "version_metadata"}),
-    ),
-    "resource_of": (
-        frozenset({"resource"}),
-        frozenset({"book", "version_metadata"}),
-    ),
+    name: (contract["sourceTypes"], contract["targetTypes"])
+    for name, contract in EDGE_FEATURE_CONTRACTS.items()
+    if name != "oslots"
 }
-
-_EDGE_CARDINALITY_CONTRACTS = (
-    ("reading_of", frozenset({"reading"}), 1, 1, "exactly 1"),
-    ("variant_word_of", frozenset({"variant_word"}), 1, 1, "exactly 1"),
-    ("manuscript_of", frozenset({"manuscript"}), 1, 1, "exactly 1"),
-    ("resource_of", frozenset({"resource"}), 1, 1, "exactly 1"),
-    ("parent", frozenset({"unit", "ellipsis", "orphan_reading"}), 1, 1, "exactly 1"),
-    ("parent", frozenset({"div"}), 0, 1, "at most 1"),
+_EDGE_CARDINALITY_CONTRACTS = tuple(
+    (name, source_types, minimum, maximum, expected)
+    for name, contract in EDGE_FEATURE_CONTRACTS.items()
+    for source_types, minimum, maximum, expected in contract["cardinalityRules"]
 )
 
 
