@@ -384,7 +384,7 @@ def _metadata(node_features, edge_features, repo: str, commit: str, converter_ve
         "source": "Online Critical Pseudepigrapha",
         "sourceUrl": repo,
         "upstreamRepository": repo,
-        "version": "0.1",
+        "version": "0.2",
         "converterVersion": converter_version,
         "writtenBy": "Pseudepigrapha-TF converter",
     }
