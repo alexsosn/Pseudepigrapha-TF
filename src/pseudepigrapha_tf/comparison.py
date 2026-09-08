@@ -4,6 +4,7 @@ from collections import defaultdict
 from collections.abc import Iterable, Mapping
 from html import escape
 from typing import Any
+from urllib.parse import urlencode
 
 from .apparatus import Apparatus
 from .translations import Translations
@@ -22,6 +23,132 @@ def _unique_strings(values: Iterable[object]) -> tuple[str, ...]:
         seen.add(text)
         result.append(text)
     return tuple(result)
+
+
+def comparison_href(
+    work: object,
+    chapter: object,
+    verse: object,
+    *,
+    selected_versions: Iterable[object] = (),
+    selected_witnesses: Mapping[str, Iterable[object]] | None = None,
+) -> str:
+    """Build a deterministic comparison URL while preserving selection state."""
+
+    work_text = str(work).strip()
+    chapter_text = str(chapter).strip()
+    verse_text = str(verse).strip()
+    if not (work_text and chapter_text and verse_text):
+        raise ValueError("work, chapter, and verse are required for comparison navigation")
+
+    versions = _unique_strings(selected_versions)
+    pairs: list[tuple[str, str]] = [
+        ("work", work_text),
+        ("chapter", chapter_text),
+        ("verse", verse_text),
+    ]
+    pairs.extend(("version", version_id) for version_id in versions)
+
+    if selected_witnesses:
+        for version_id in versions:
+            for witness in _unique_strings(selected_witnesses.get(version_id, ())):
+                pairs.append((f"witness.{version_id}", witness))
+
+    return f"/compare?{urlencode(pairs)}"
+
+
+def passage_neighbors(
+    api: Any,
+    work: object,
+    chapter: object,
+    verse: object,
+    *,
+    preferred_versions: Iterable[object] = (),
+) -> dict[str, object]:
+    """Resolve previous/next passage from one real source-version section topology.
+
+    Generated translations never participate. Preferred source versions are tried
+    first, but a preferred version that lacks the current passage is skipped in
+    favor of another source version of the same OCP work that actually contains it.
+    """
+
+    work_text = str(work)
+    chapter_text = str(chapter)
+    verse_text = str(verse)
+
+    otype = getattr(api.F, "otype", None)
+    books_for_type = getattr(otype, "s", None) if otype is not None else None
+    ocp_book = getattr(api.F, "ocp_book", None)
+    if books_for_type is None or ocp_book is None:
+        raise ValueError("otype and ocp_book features must be loaded for passage navigation")
+
+    version_kind = getattr(api.F, "version_kind", None)
+    source_books: dict[str, int] = {}
+    for book_node in books_for_type("book"):
+        if str(ocp_book.v(book_node) or "") != work_text:
+            continue
+        if version_kind is not None and version_kind.v(book_node) == "generated_translation":
+            continue
+        section = api.T.sectionFromNode(book_node)
+        if not section or not section[0]:
+            raise ValueError(f"cannot resolve TF source-version section id for book node {book_node}")
+        version_id = str(section[0])
+        if version_id in source_books:
+            raise ValueError(f"duplicate source-version section id for navigation: {version_id!r}")
+        source_books[version_id] = book_node
+
+    if not source_books:
+        raise KeyError(f"OCP work has no source versions in loaded Text-Fabric data: {work_text!r}")
+
+    preferred = tuple(
+        version_id
+        for version_id in _unique_strings(preferred_versions)
+        if version_id in source_books
+    )
+    candidates = preferred + tuple(
+        version_id for version_id in source_books if version_id not in preferred
+    )
+
+    for version_id in candidates:
+        book_node = source_books[version_id]
+        verse_nodes = tuple(api.L.d(book_node, otype="verse"))
+        verse_index = getattr(api.F, "verse_index", None)
+        if verse_index is not None:
+            verse_nodes = tuple(
+                sorted(verse_nodes, key=lambda node: (verse_index.v(node) or 0, node))
+            )
+
+        sections: list[tuple[str, str]] = []
+        current_positions: list[int] = []
+        for index, verse_node in enumerate(verse_nodes):
+            section = api.T.sectionFromNode(verse_node)
+            if not section or len(section) < 3:
+                raise ValueError(f"cannot resolve TF passage section for verse node {verse_node}")
+            if str(section[0]) != version_id:
+                raise ValueError(
+                    f"verse node {verse_node} belongs to section {section[0]!r}, expected {version_id!r}"
+                )
+            section_pair = (str(section[1]), str(section[2]))
+            sections.append(section_pair)
+            if section_pair == (chapter_text, verse_text):
+                current_positions.append(index)
+
+        if not current_positions:
+            continue
+        if len(current_positions) != 1:
+            raise ValueError(
+                f"source version {version_id!r} has duplicate TF passage address "
+                f"{(chapter_text, verse_text)!r}"
+            )
+
+        current = current_positions[0]
+        return {
+            "context_version": version_id,
+            "previous": sections[current - 1] if current > 0 else None,
+            "next": sections[current + 1] if current + 1 < len(sections) else None,
+        }
+
+    return {"context_version": None, "previous": None, "next": None}
 
 
 def _showable_witness(record: Mapping[str, object]) -> bool:
@@ -68,7 +195,11 @@ def _joined_reading_text(segments: Iterable[Mapping[str, object]]) -> str:
 
 
 def _witness_view(record: Mapping[str, object]) -> dict[str, object]:
-    segments = tuple(dict(segment) for segment in record.get("segments", ()) if isinstance(segment, Mapping))
+    segments = tuple(
+        dict(segment)
+        for segment in record.get("segments", ())
+        if isinstance(segment, Mapping)
+    )
     for segment in segments:
         segment["unit"] = str(segment.get("unit", ""))
         segment["status"] = str(segment.get("status", ""))
@@ -149,7 +280,9 @@ def _translation_view(
             f"{source_book_node}, expected {expected_source_node}"
         )
 
-    units = tuple(dict(unit) for unit in passage.get("units", ()) if isinstance(unit, Mapping))
+    units = tuple(
+        dict(unit) for unit in passage.get("units", ()) if isinstance(unit, Mapping)
+    )
     text = " ".join(
         chunk
         for unit in units
@@ -199,11 +332,15 @@ def build_passage_comparison(
             if isinstance(source_versions[version_id], Mapping)
             and source_versions[version_id].get("status") == "available"
         )
-        unavailable = tuple(version_id for version_id in source_ids if version_id not in available)
+        unavailable = tuple(
+            version_id for version_id in source_ids if version_id not in available
+        )
         selected_ids = (available + unavailable)[:DEFAULT_VERSION_LIMIT]
     else:
         selected_ids = _unique_strings(selected_versions)
-        unknown = tuple(version_id for version_id in selected_ids if version_id not in source_versions)
+        unknown = tuple(
+            version_id for version_id in selected_ids if version_id not in source_versions
+        )
         if unknown:
             raise ValueError(f"unknown source version: {', '.join(unknown)}")
 
@@ -254,7 +391,9 @@ def build_passage_comparison(
             raise ValueError(f"source version {version_id!r} is not a mapping")
         status = str(source_record.get("status", ""))
         if status not in {"available", "not_present"}:
-            raise ValueError(f"unknown source passage status for {version_id!r}: {status!r}")
+            raise ValueError(
+                f"unknown source passage status for {version_id!r}: {status!r}"
+            )
 
         passage = source_record.get("passage")
         primary_segments: tuple[dict[str, object], ...] = ()
@@ -264,13 +403,17 @@ def build_passage_comparison(
 
         if status == "available":
             if not isinstance(passage, Mapping):
-                raise ValueError(f"available source version {version_id!r} has no passage mapping")
+                raise ValueError(
+                    f"available source version {version_id!r} has no passage mapping"
+                )
             primary_segments = _primary_segments(passage)
             primary_text = _joined_reading_text(primary_segments)
 
             raw_witnesses = passage.get("witnesses", {})
             if not isinstance(raw_witnesses, Mapping):
-                raise ValueError(f"source version {version_id!r} has invalid witness mapping")
+                raise ValueError(
+                    f"source version {version_id!r} has invalid witness mapping"
+                )
             witness_map: dict[str, Mapping[str, object]] = {
                 str(siglum): record
                 for siglum, record in raw_witnesses.items()
@@ -292,7 +435,9 @@ def build_passage_comparison(
                 }
                 for siglum in witness_map
             )
-            witness_rows = tuple(_witness_view(witness_map[siglum]) for siglum in selected_sigla)
+            witness_rows = tuple(
+                _witness_view(witness_map[siglum]) for siglum in selected_sigla
+            )
 
         translation_rows = tuple(
             _translation_view(translations, record, chapter, verse)
@@ -317,7 +462,9 @@ def build_passage_comparison(
 
     metadata_only = work_passage.get("metadata_only_versions", {})
     if not isinstance(metadata_only, Mapping):
-        raise ValueError("Apparatus.work_passage() returned invalid metadata-only versions mapping")
+        raise ValueError(
+            "Apparatus.work_passage() returned invalid metadata-only versions mapping"
+        )
     metadata_records = tuple(
         {
             "node": record.get("node"),
@@ -363,7 +510,9 @@ def _render_text_segments(segments: Iterable[Mapping[str, object]]) -> str:
     return " ".join(chunks)
 
 
-def _render_translation(record: Mapping[str, object], *, open_by_default: bool) -> str:
+def _render_translation(
+    record: Mapping[str, object], *, open_by_default: bool
+) -> str:
     language = str(record.get("language", ""))
     title = str(record.get("title", ""))
     model = str(record.get("generation_model", ""))
@@ -384,7 +533,9 @@ def _render_translation(record: Mapping[str, object], *, open_by_default: bool) 
         if part
     )
     provenance_html = (
-        f'<div class="translation-provenance">{_h(provenance)}</div>' if provenance else ""
+        f'<div class="translation-provenance">{_h(provenance)}</div>'
+        if provenance
+        else ""
     )
     return (
         f'<details class="translation-block" data-translation-id="{_h(record.get("id", ""))}"{open_attr}>'
@@ -442,13 +593,15 @@ def _render_version_card(record: Mapping[str, object]) -> str:
 
     witness_choices = tuple(record.get("witness_choices", ()))
     if witness_choices:
-        parts.append('<details class="witness-selector"><summary>Choose witnesses</summary>')
+        parts.append(
+            '<details class="witness-selector"><summary>Choose witnesses</summary>'
+        )
         for choice in witness_choices:
             checked = " checked" if choice.get("selected") else ""
             siglum = str(choice.get("abbrev", ""))
             parts.append(
                 f'<label><input type="checkbox" name="witness.{_h(version_id)}" '
-                f'value="{_h(siglum)}"{checked}> {_h(siglum)}</label>'
+                f'value="{_h(siglum)}"{checked} form="comparison-controls"> {_h(siglum)}</label>'
             )
         parts.append("</details>")
 
@@ -462,6 +615,29 @@ def _render_version_card(record: Mapping[str, object]) -> str:
     return "".join(parts)
 
 
+def _selected_render_state(
+    model: Mapping[str, object],
+) -> tuple[tuple[str, ...], dict[str, tuple[str, ...]]]:
+    selected_versions = tuple(
+        str(choice.get("id", ""))
+        for choice in model.get("version_choices", ())
+        if isinstance(choice, Mapping) and choice.get("selected")
+    )
+    selected_witnesses: dict[str, tuple[str, ...]] = {}
+    for version in model.get("versions", ()):
+        if not isinstance(version, Mapping):
+            continue
+        version_id = str(version.get("id", ""))
+        selected = tuple(
+            str(choice.get("abbrev", ""))
+            for choice in version.get("witness_choices", ())
+            if isinstance(choice, Mapping) and choice.get("selected")
+        )
+        if selected:
+            selected_witnesses[version_id] = selected
+    return selected_versions, selected_witnesses
+
+
 def render_passage_comparison(model: Mapping[str, object]) -> str:
     """Render a passage-comparison model as deterministic escaped HTML."""
 
@@ -469,40 +645,85 @@ def render_passage_comparison(model: Mapping[str, object]) -> str:
     chapter = str(model.get("chapter", ""))
     verse = str(model.get("verse", ""))
     title = str(model.get("title", "")) or work
+    selected_versions, selected_witnesses = _selected_render_state(model)
 
     parts = [
         '<!doctype html><html><head><meta charset="utf-8">',
         '<meta name="viewport" content="width=device-width, initial-scale=1">',
-        f'<title>{_h(title)} { _h(chapter) }:{ _h(verse) }</title>',
+        f'<title>{_h(title)} {_h(chapter)}:{_h(verse)}</title>',
         '<link rel="stylesheet" href="/data/static/comparison.css">',
         '</head><body><main class="comparison-page">',
         '<nav class="comparison-nav"><a href="/">Text-Fabric browser</a></nav>',
         f'<header><h1>{_h(title)}</h1><div class="passage-reference">{_h(chapter)}:{_h(verse)}</div></header>',
-        '<form class="comparison-controls" action="/compare" method="get">',
-        f'<input type="hidden" name="work" value="{_h(work)}">',
-        f'<input type="hidden" name="chapter" value="{_h(chapter)}">',
-        f'<input type="hidden" name="verse" value="{_h(verse)}">',
-        '<fieldset><legend>Source versions</legend>',
     ]
+
+    navigation = model.get("navigation")
+    if isinstance(navigation, Mapping):
+        previous = navigation.get("previous")
+        following = navigation.get("next")
+        if previous is not None or following is not None:
+            parts.append('<nav class="passage-navigation">')
+            if previous is not None:
+                prev_chapter, prev_verse = previous
+                href = comparison_href(
+                    work,
+                    prev_chapter,
+                    prev_verse,
+                    selected_versions=selected_versions,
+                    selected_witnesses=selected_witnesses,
+                )
+                parts.append(f'<a rel="prev" href="{_h(href)}">Previous</a>')
+            if following is not None:
+                next_chapter, next_verse = following
+                href = comparison_href(
+                    work,
+                    next_chapter,
+                    next_verse,
+                    selected_versions=selected_versions,
+                    selected_witnesses=selected_witnesses,
+                )
+                parts.append(f'<a rel="next" href="{_h(href)}">Next</a>')
+            parts.append("</nav>")
+
+    parts.extend(
+        (
+            '<form id="comparison-controls" class="comparison-controls" action="/compare" method="get">',
+            f'<input type="hidden" name="work" value="{_h(work)}">',
+            f'<input type="hidden" name="chapter" value="{_h(chapter)}">',
+            f'<input type="hidden" name="verse" value="{_h(verse)}">',
+            '<fieldset><legend>Source versions</legend>',
+        )
+    )
 
     for choice in model.get("version_choices", ()):
         checked = " checked" if choice.get("selected") else ""
         choice_id = str(choice.get("id", ""))
         choice_title = str(choice.get("title", "")) or choice_id
         choice_language = str(choice.get("language", ""))
-        label = " — ".join(part for part in (choice_title, choice_language) if part)
+        label = " — ".join(
+            part for part in (choice_title, choice_language) if part
+        )
         parts.append(
             f'<label><input type="checkbox" name="version" value="{_h(choice_id)}"{checked}> '
             f'{_h(label)}</label>'
         )
-    parts.extend(('</fieldset><button type="submit">Compare</button></form>', '<div class="version-grid">'))
+    parts.extend(
+        (
+            '</fieldset><button type="submit">Compare</button></form>',
+            '<div class="version-grid">',
+        )
+    )
 
-    parts.extend(_render_version_card(version) for version in model.get("versions", ()))
+    parts.extend(
+        _render_version_card(version) for version in model.get("versions", ())
+    )
     parts.append("</div>")
 
     metadata_only = tuple(model.get("metadata_only_versions", ()))
     if metadata_only:
-        parts.append('<aside class="metadata-only-versions"><h2>Metadata-only versions</h2><ul>')
+        parts.append(
+            '<aside class="metadata-only-versions"><h2>Metadata-only versions</h2><ul>'
+        )
         for record in metadata_only:
             label = " — ".join(
                 part
