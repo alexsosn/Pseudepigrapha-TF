@@ -63,37 +63,26 @@ def test_app_routes_general_help_to_tracked_documentation():
     assert (ROOT / "docs" / "tf-app.md").is_file()
 
 
-def test_static_type_display_only_contains_universal_corpus_types():
+def test_yaml_is_single_source_for_all_technical_anchor_policies():
     cfg = _config()
-
-    assert set(cfg["typeDisplay"]) == {"book"}
-
-
-def test_dynamic_app_has_explicit_policies_for_all_technical_anchor_types():
+    type_display = cfg["typeDisplay"]
     module = _app_module()
-    policies = module.TYPE_POLICIES
 
-    assert set(policies) == TECHNICAL_TYPES
-    assert policies["div"].get("base") is not True
-    assert policies["unit"].get("base") is not True
+    assert set(module.TECHNICAL_TYPES) == TECHNICAL_TYPES
+    assert TECHNICAL_TYPES <= set(type_display)
     for node_type in TECHNICAL_TYPES:
-        assert policies[node_type].get("hidden") is True, node_type
+        assert type_display[node_type].get("hidden") is True, node_type
 
+    assert type_display["div"].get("base") is not True
+    assert type_display["unit"].get("base") is not True
     for node_type, template in OWN_CONTENT_TEMPLATES.items():
-        assert policies[node_type].get("base") is True, node_type
-        assert policies[node_type].get("template") == template, node_type
+        assert type_display[node_type].get("base") is True, node_type
+        assert type_display[node_type].get("template") == template, node_type
 
-    assert policies["manuscript"]["label"] == "{ms_abbrev}"
-    assert policies["resource"]["label"] == "{resource_name}"
-    assert policies["version_metadata"]["label"] == "{version_title}"
-    assert policies["document_metadata"]["label"] == "{intro_label}"
-
-
-def test_plain_custom_hook_matches_own_content_templates():
-    module = _app_module()
-
-    assert set(module.OWN_CONTENT_TYPES) == set(OWN_CONTENT_TEMPLATES)
-    assert not ({"div", "unit"} & set(module.OWN_CONTENT_TYPES))
+    assert type_display["manuscript"]["label"] == "{ms_abbrev}"
+    assert type_display["resource"]["label"] == "{resource_name}"
+    assert type_display["version_metadata"]["label"] == "{version_title}"
+    assert type_display["document_metadata"]["label"] == "{intro_label}"
 
 
 def test_app_surfaces_version_identity_on_book_nodes():
