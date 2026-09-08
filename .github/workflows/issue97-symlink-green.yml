@@ -1,0 +1,62 @@
+name: issue97-symlink-green
+
+on:
+  push:
+    branches:
+      - research/97-distribution-contract
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    if: ${{ !contains(github.event.head_commit.message, '[issue97-symlink-done]') }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: research/97-distribution-contract
+          fetch-depth: 1
+      - name: Apply minimal fail-closed symlink guard
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('src/pseudepigrapha_tf/distribution.py')
+          text = path.read_text(encoding='utf-8')
+          old = '''def _directory_feature_records(directory: Path) -> list[dict[str, Any]]:
+              if not directory.is_dir():
+                  raise DistributionContractError(f"missing extracted TF directory: {directory}")
+
+              nested = [
+          '''
+          new = '''def _directory_feature_records(directory: Path) -> list[dict[str, Any]]:
+              if not directory.is_dir():
+                  raise DistributionContractError(f"missing extracted TF directory: {directory}")
+              if directory.is_symlink():
+                  raise DistributionContractError(
+                      f"extracted TF directory must not itself be a symlink: {directory}"
+                  )
+
+              symlinks = sorted(path for path in directory.rglob("*") if path.is_symlink())
+              if symlinks:
+                  raise DistributionContractError(
+                      "extracted TF directory contains symlinked entries: "
+                      + ", ".join(str(path.relative_to(directory)) for path in symlinks)
+                  )
+
+              nested = [
+          '''
+          if text.count(old) != 1:
+              raise SystemExit(f'expected one directory validator target, found {text.count(old)}')
+          path.write_text(text.replace(old, new, 1), encoding='utf-8')
+          PY
+      - name: Remove one-shot workflow and commit
+        run: |
+          set -euo pipefail
+          rm .github/workflows/issue97-symlink-green.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/pseudepigrapha_tf/distribution.py .github/workflows/issue97-symlink-green.yml
+          git commit -m "fix: reject symlink-hidden TF generations [issue97-symlink-done]"
+          git push origin HEAD:research/97-distribution-contract
