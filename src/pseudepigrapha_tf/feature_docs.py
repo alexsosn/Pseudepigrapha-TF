@@ -48,7 +48,7 @@ def _supported_node_descriptors_from_probe(
         else:
             candidates = ", ".join(layer_node_types)
             raise ValueError(
-                f"cannot infer supported node type for {name!r}: "
+                f"cannot infer applicability for {name!r}: "
                 f"feature has no value in emitter probe and candidate node types are {candidates}"
             )
         result[name] = {
