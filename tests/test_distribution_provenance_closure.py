@@ -59,6 +59,7 @@ def _build_candidate(
     tmp_path: Path,
     *,
     extra_serialized_metadata: dict[str, str] | None = None,
+    extra_report_provenance: dict[str, str] | None = None,
 ):
     features = {
         "otype.tf": _otype_payload(extra_serialized_metadata),
@@ -83,6 +84,7 @@ def _build_candidate(
             "content_license": "CC-BY-4.0",
             "converter_software_license": "MIT",
             "upstream_software_license": "GPL-3.0",
+            **(extra_report_provenance or {}),
         },
     }
     report_path = tmp_path / "conversion-report.json"
@@ -121,6 +123,38 @@ def test_manifest_rejects_serialized_optional_provenance_omitted_from_report(tmp
             extra_serialized_metadata={
                 "contentLicenseUrl": "https://creativecommons.org/licenses/by/4.0/"
             },
+        )
+
+
+@pytest.mark.parametrize(
+    ("serialized_key", "report_key", "diagnostic"),
+    [
+        (
+            "sourceIdentityDiagnostic",
+            "source_identity_diagnostic",
+            "verified source identity cannot carry a failure diagnostic",
+        ),
+        (
+            "contentLicenseDiagnostic",
+            "content_license_diagnostic",
+            "verified content license cannot carry a failure diagnostic",
+        ),
+    ],
+)
+def test_manifest_rejects_matching_diagnostic_for_verified_provenance(
+    tmp_path,
+    serialized_key,
+    report_key,
+    diagnostic,
+):
+    with pytest.raises(
+        DistributionContractError,
+        match="diagnostic|verified|provenance",
+    ):
+        _build_candidate(
+            tmp_path,
+            extra_serialized_metadata={serialized_key: diagnostic},
+            extra_report_provenance={report_key: diagnostic},
         )
 
 
