@@ -2,9 +2,12 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 from pathlib import Path
+import shutil
+from tempfile import mkdtemp
 from typing import Any, Mapping
-from zipfile import BadZipFile, ZipFile
+from zipfile import BadZipFile, ZIP_DEFLATED, ZipFile
 
 
 SCHEMA_VERSION = 1
@@ -322,3 +325,87 @@ def validate_distribution(
         raise DistributionContractError(
             "dataset manifest does not match archive/report-derived release identity"
         )
+
+
+def stage_distribution_assets(
+    tf_directory: str | Path,
+    destination: str | Path,
+    *,
+    release_tag: str,
+    release_commit: str,
+    converter_version: str,
+    data_version: str,
+) -> dict[str, Path]:
+    """Atomically stage the native TF archive, report and validated manifest."""
+
+    source = Path(tf_directory)
+    destination = Path(destination)
+    if not source.is_dir():
+        raise DistributionContractError(f"missing materialized TF directory: {source}")
+    if destination.exists():
+        raise DistributionContractError(
+            f"release destination already exists; refusing to mix generations: {destination}"
+        )
+
+    report_source = source / REPORT_NAME
+    if not report_source.is_file():
+        raise DistributionContractError(f"missing conversion report: {report_source}")
+
+    # Reject an invalid report before creating release-visible output. This is
+    # intentionally the same provenance gate used by manifest construction.
+    report = _load_report(report_source)
+    _report_identity(report, converter_version=converter_version)
+
+    features = sorted(path for path in source.glob("*.tf") if path.is_file())
+    if not features:
+        raise DistributionContractError("materialized TF directory contains no feature files")
+
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    stage = Path(
+        mkdtemp(
+            prefix=".pseudepigrapha-tf-release-",
+            dir=str(destination.parent),
+        )
+    )
+    archive = stage / f"tf-{data_version}.zip"
+    staged_report = stage / REPORT_NAME
+    staged_manifest = stage / MANIFEST_NAME
+
+    try:
+        # Text-Fabric 13.1 tf-zip writes sorted top-level .tf files with
+        # ZIP_DEFLATED and excludes non-feature files such as the report.
+        with ZipFile(archive, "w", compression=ZIP_DEFLATED) as zf:
+            for feature in features:
+                zf.write(feature, arcname=feature.name)
+        shutil.copyfile(report_source, staged_report)
+
+        manifest = build_distribution_manifest(
+            archive,
+            staged_report,
+            release_tag=release_tag,
+            release_commit=release_commit,
+            converter_version=converter_version,
+            data_version=data_version,
+        )
+        staged_manifest.write_bytes(canonical_manifest_bytes(manifest))
+        validate_distribution(
+            manifest,
+            archive,
+            staged_report,
+            expected_release_tag=release_tag,
+            expected_release_commit=release_commit,
+            expected_converter_version=converter_version,
+            expected_data_version=data_version,
+        )
+
+        os.replace(stage, destination)
+    except BaseException:
+        if stage.exists():
+            shutil.rmtree(stage, ignore_errors=True)
+        raise
+
+    return {
+        "tf": destination / archive.name,
+        "report": destination / REPORT_NAME,
+        "manifest": destination / MANIFEST_NAME,
+    }
