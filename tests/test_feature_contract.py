@@ -1,11 +1,19 @@
 from __future__ import annotations
 
 from copy import deepcopy
+import inspect
 from pathlib import Path
 
 from pseudepigrapha_tf import build_tf_data
+import pseudepigrapha_tf.feature_docs as feature_docs
+from pseudepigrapha_tf.feature_contract import documentation_category
 from pseudepigrapha_tf.feature_docs import edge_feature_contracts, serialized_feature_contract
 from pseudepigrapha_tf.parser import parse_file
+from pseudepigrapha_tf.writer import (
+    _edge_features_with_api_dependencies,
+    _metadata_with_serialized_features,
+    _node_features_with_format_dependencies,
+)
 
 
 FIXTURE = Path(__file__).parent / "fixtures" / "sample.xml"
@@ -49,6 +57,33 @@ def test_serialized_feature_contract_preserves_canonical_metadata():
     assert feature["description"] == "controlled test feature"
     assert feature["metadata"]["controlledVocabularyJson"] == '["alpha","beta"]'
     assert feature["observedNodeTypes"] == ("word",)
+
+
+def test_serialization_metadata_owns_documentation_categories():
+    data = _data()
+    node_features = _node_features_with_format_dependencies(data, isolate=True)
+    edge_features = _edge_features_with_api_dependencies(data, isolate=True)
+    metadata = _metadata_with_serialized_features(data, node_features, edge_features)
+
+    for name in node_features:
+        assert metadata[name]["documentationCategory"] == documentation_category(name, kind="node")
+    for name in edge_features:
+        assert metadata[name]["documentationCategory"] == documentation_category(name, kind="edge")
+
+
+def test_feature_renderer_has_no_private_semantic_registry_or_duplicated_emitter_descriptions():
+    source = inspect.getsource(feature_docs)
+
+    for registry in (
+        "_SECTION_FEATURES",
+        "_IDENTITY_FEATURES",
+        "_APPARATUS_FEATURES",
+        "_GENERATED_FEATURES",
+        "_ANOMALY_FEATURES",
+    ):
+        assert registry not in source
+    assert "published OCP docs.id from the historical 2017 classification snapshot" not in source
+    assert "JSON array of exact public OCP genre labels from the historical 2017 catalogue" not in source
 
 
 def test_every_supported_feature_has_a_researcher_facing_description():
