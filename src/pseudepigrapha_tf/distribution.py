@@ -117,6 +117,14 @@ def _report_identity(report: Mapping[str, Any], *, converter_version: str) -> di
         raise DistributionContractError(
             "report content license status must be 'verified'"
         )
+    if "source_identity_diagnostic" in provenance:
+        raise DistributionContractError(
+            "verified report source identity must not carry a diagnostic"
+        )
+    if "content_license_diagnostic" in provenance:
+        raise DistributionContractError(
+            "verified report content license must not carry a diagnostic"
+        )
 
     report_converter = _require_nonempty_string(
         provenance.get("converter_version"), "report converter version"
@@ -279,6 +287,15 @@ def _validate_serialized_identity(
             raise DistributionContractError(
                 f"serialized Text-Fabric {label} mismatch: {actual!r} != {expected_value!r}"
             )
+
+    unexpected_provenance = sorted(
+        set(serialized_provenance) - set(expected_provenance)
+    )
+    if unexpected_provenance:
+        raise DistributionContractError(
+            "serialized Text-Fabric identity contains provenance absent from the "
+            "conversion report: " + ", ".join(unexpected_provenance)
+        )
 
     actual_data_version = metadata.get("version")
     if actual_data_version is None:
