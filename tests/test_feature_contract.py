@@ -96,7 +96,11 @@ def test_edge_contracts_are_reusable_and_cover_translation_and_tf_support_semant
 
 
 def test_supported_optional_relation_is_documentable_even_when_not_serialized_here():
-    contract = serialized_feature_contract(_data(), include_supported=True)
+    data = _data()
+    # sample.xml exercises resources, while the exact pinned OCP snapshot does
+    # not. Remove the relation to model that real supported-but-not-emitted case.
+    data.edge_features.pop("resource_of", None)
+    contract = serialized_feature_contract(data, include_supported=True)
 
     resource_of = contract["edge"]["resource_of"]
     assert resource_of["serialized"] is False
