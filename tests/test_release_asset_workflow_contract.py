@@ -26,6 +26,15 @@ def test_release_candidate_workflow_is_reusable_and_immutable():
     assert "upstream HEAD" not in text
 
 
+def test_release_identity_verification_binds_real_tag_ref_to_requested_commit():
+    text = _text()
+
+    assert "refs/tags/$RELEASE_TAG" in text
+    assert "^{commit}" in text
+    assert 'TAG_COMMIT=' in text
+    assert 'test "$TAG_COMMIT" = "$RELEASE_COMMIT"' in text
+
+
 def test_release_candidate_workflow_builds_and_installs_wheel_not_editable_source():
     text = _text()
 
