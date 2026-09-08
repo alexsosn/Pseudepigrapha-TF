@@ -107,6 +107,23 @@ def test_release_stays_draft_until_canonical_asset_set_is_verified():
     assert "--draft=false" in text[promote:]
 
 
+def test_draft_release_bytes_are_revalidated_before_public_promotion():
+    text = PUBLISH_WORKFLOW.read_text(encoding="utf-8")
+
+    create = text.index('gh release create "$RELEASE_TAG"')
+    draft_validation = text.index("Download and validate draft release bytes")
+    promote = text.index('gh release edit "$RELEASE_TAG"')
+    validation_block = text[draft_validation:promote]
+
+    assert create < draft_validation < promote
+    assert 'gh release download "$RELEASE_TAG"' in validation_block
+    assert "validate_distribution" in validation_block
+    assert "expected_release_tag=os.environ['RELEASE_TAG']" in validation_block
+    assert "expected_release_commit=os.environ['RELEASE_COMMIT']" in validation_block
+    assert "expected_converter_version='0.2.0'" in validation_block
+    assert "expected_data_version='0.2'" in validation_block
+
+
 def test_release_publisher_exports_exact_canonical_asset_generation():
     text = PUBLISH_WORKFLOW.read_text(encoding="utf-8")
 
