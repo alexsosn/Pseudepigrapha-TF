@@ -24,12 +24,7 @@ def _distribution():
     return importlib.import_module("pseudepigrapha_tf.distribution")
 
 
-def _files(tmp_path: Path):
-    archive = tmp_path / "tf-0.1.zip"
-    with ZipFile(archive, "w", compression=ZIP_DEFLATED) as zf:
-        for name, payload in FEATURES.items():
-            zf.writestr(name, payload)
-
+def _report_path(tmp_path: Path) -> Path:
     report_path = tmp_path / "conversion-report.json"
     report_path.write_text(
         json.dumps(
@@ -52,19 +47,30 @@ def _files(tmp_path: Path):
         + "\n",
         encoding="utf-8",
     )
-    return archive, report_path
+    return report_path
+
+
+def _archive(path: Path, *, comment: bytes = b"", reverse: bool = False) -> Path:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    items = sorted(FEATURES.items(), reverse=reverse)
+    with ZipFile(path, "w", compression=ZIP_DEFLATED) as zf:
+        zf.comment = comment
+        for name, payload in items:
+            zf.writestr(name, payload)
+    return path
 
 
 def _manifest(tmp_path: Path):
     distribution = _distribution()
-    archive, report_path = _files(tmp_path)
-    manifest = distribution.build_dataset_manifest(
+    archive = _archive(tmp_path / "tf-0.1.zip")
+    report_path = _report_path(tmp_path)
+    manifest = distribution.build_distribution_manifest(
         archive,
         report_path,
-        release_tag="v0.1.0",
+        release_tag="v0.1.1-test",
         release_commit=RELEASE_COMMIT,
         converter_version="0.1.0",
-        tf_data_version="0.1",
+        data_version="0.1",
     )
     return distribution, archive, report_path, manifest
 
@@ -96,22 +102,18 @@ def test_manifest_binds_extracted_tf_feature_bytes_independently_of_zip_containe
 def test_feature_identity_is_stable_when_zip_container_metadata_changes(tmp_path):
     distribution, archive, report_path, first = _manifest(tmp_path)
 
-    # Repack the exact feature bytes with a different archive comment. The ZIP
-    # checksum may change, but extracted Text-Fabric identity must not.
-    repacked = tmp_path / "repacked" / "tf-0.1.zip"
-    repacked.parent.mkdir()
-    with ZipFile(repacked, "w", compression=ZIP_DEFLATED) as zf:
-        zf.comment = b"different container metadata"
-        for name, payload in reversed(list(sorted(FEATURES.items()))):
-            zf.writestr(name, payload)
-
-    second = distribution.build_dataset_manifest(
+    repacked = _archive(
+        tmp_path / "repacked" / "tf-0.1.zip",
+        comment=b"different container metadata",
+        reverse=True,
+    )
+    second = distribution.build_distribution_manifest(
         repacked,
         report_path,
-        release_tag="v0.1.0",
+        release_tag="v0.1.1-test",
         release_commit=RELEASE_COMMIT,
         converter_version="0.1.0",
-        tf_data_version="0.1",
+        data_version="0.1",
     )
 
     assert first["assets"]["tf"]["sha256"] != second["assets"]["tf"]["sha256"]
@@ -125,15 +127,12 @@ def test_validator_rejects_manifest_feature_record_tampering(tmp_path):
     manifest["text_fabric"]["features"][0]["sha256"] = "0" * 64
 
     with pytest.raises(distribution.DistributionContractError, match="feature"):
-        distribution.validate_dataset_manifest(manifest, archive, report_path)
+        distribution.validate_distribution(manifest, archive, report_path)
 
 
-def test_builder_rejects_non_feature_or_nested_entries_in_native_tf_archive(tmp_path):
+def test_builder_rejects_non_feature_entry_in_native_tf_archive(tmp_path):
     distribution = _distribution()
-    report_path = tmp_path / "conversion-report.json"
-    _, source_report = _files(tmp_path)
-    report_path.write_bytes(source_report.read_bytes())
-
+    report_path = _report_path(tmp_path)
     bad = tmp_path / "bad" / "tf-0.1.zip"
     bad.parent.mkdir()
     with ZipFile(bad, "w", compression=ZIP_DEFLATED) as zf:
@@ -141,11 +140,11 @@ def test_builder_rejects_non_feature_or_nested_entries_in_native_tf_archive(tmp_
         zf.writestr("conversion-report.json", b"must remain separate")
 
     with pytest.raises(distribution.DistributionContractError, match="feature"):
-        distribution.build_dataset_manifest(
+        distribution.build_distribution_manifest(
             bad,
             report_path,
-            release_tag="v0.1.0",
+            release_tag="v0.1.1-test",
             release_commit=RELEASE_COMMIT,
             converter_version="0.1.0",
-            tf_data_version="0.1",
+            data_version="0.1",
         )
