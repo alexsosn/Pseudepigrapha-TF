@@ -35,6 +35,16 @@ def test_release_identity_verification_binds_real_tag_ref_to_requested_commit():
     assert 'test "$TAG_COMMIT" = "$RELEASE_COMMIT"' in text
 
 
+def test_release_identity_preflight_has_no_undeclared_python_dependencies():
+    text = _text()
+    preflight = text.split("- name: Build release wheel", 1)[0]
+
+    # This runs before the release wheel or its dependencies are installed.
+    # It must therefore remain executable in the clean setup-python interpreter.
+    assert "import yaml" not in preflight
+    assert "from yaml" not in preflight
+
+
 def test_release_candidate_workflow_builds_and_installs_wheel_not_editable_source():
     text = _text()
 
