@@ -1,0 +1,46 @@
+name: issue104-conversion-version-fix
+
+on:
+  push:
+    branches:
+      - release/104-canonical-v0.2.0
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: release/104-canonical-v0.2.0
+      - name: Bind public conversion builder default to release identity
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+          path = Path('src/pseudepigrapha_tf/conversion.py')
+          text = path.read_text(encoding='utf-8')
+          anchor = 'from .model import (\n'
+          if 'from .release_identity import CONVERTER_VERSION\n' not in text:
+              if text.count(anchor) != 1:
+                  raise SystemExit(f'expected one model import anchor, found {text.count(anchor)}')
+              text = text.replace(anchor, 'from .release_identity import CONVERTER_VERSION\n\n' + anchor)
+          old = '    converter_version: str = "0.1.0",\n'
+          new = '    converter_version: str = CONVERTER_VERSION,\n'
+          count = text.count(old)
+          if count != 1:
+              raise SystemExit(f'expected one stale public builder default, found {count}')
+          path.write_text(text.replace(old, new), encoding='utf-8')
+          PY
+          git diff --check
+          git diff -- src/pseudepigrapha_tf/conversion.py
+      - name: Commit fix
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add src/pseudepigrapha_tf/conversion.py
+          git commit -m 'fix: bind conversion builder to release version'
+          git push origin HEAD:release/104-canonical-v0.2.0
