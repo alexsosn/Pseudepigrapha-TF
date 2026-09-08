@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from pseudepigrapha_tf import cli
+from pseudepigrapha_tf.release_identity import TF_DATA_VERSION
 
 
 def test_cli_parser_exposes_browse_on_same_command_surface():
@@ -26,6 +27,13 @@ def test_cli_parser_exposes_browse_on_same_command_surface():
     assert args.version == "0.1"
     assert args.port == 8123
     assert args.debug is True
+
+
+def test_cli_browse_default_version_tracks_release_identity():
+    args = cli._parser().parse_args(["browse", "/tmp/tf"])
+
+    assert args.version == TF_DATA_VERSION
+    assert args.app == Path("app")
 
 
 def test_cli_browse_delegates_to_stock_tf_comparison_runner(monkeypatch):
