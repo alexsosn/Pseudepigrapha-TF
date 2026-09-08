@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from copy import deepcopy
 from pathlib import Path
 
 from pseudepigrapha_tf import build_tf_data
@@ -28,3 +29,15 @@ def test_tracked_reference_does_not_publish_fixture_local_absence_as_corpus_fact
 
     tracked = (ROOT / "docs" / "features" / "intro_title_json.md").read_text(encoding="utf-8")
     assert "Serialized in this corpus:" not in tracked
+
+
+def test_global_feature_page_is_identical_whether_optional_feature_occurs_in_fixture():
+    absent = _fixture_data()
+    present = deepcopy(absent)
+    present.node_features["intro_title_json"] = {1: '["probe"]'}
+
+    absent_page = render_feature_docs(absent)["intro_title_json.md"]
+    present_page = render_feature_docs(present)["intro_title_json.md"]
+
+    assert absent_page == present_page
+    assert "**Supported by converter:** yes" in present_page
