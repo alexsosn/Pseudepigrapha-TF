@@ -30,10 +30,10 @@ def patch_graph() -> None:
         wanted = f'        "corpusDependent": {dependent},\n'
         if "corpusDependent" in block:
             continue
-        marker = '        "technicalSupport": '
-        line_start = block.index(marker)
-        line_end = block.index("\n", line_start) + 1
-        block = block[:line_end] + wanted + block[line_end:]
+        marker = '"technicalSupport": '
+        marker_start = block.index(marker)
+        comma = block.index(",", marker_start)
+        block = block[: comma + 1] + "\n" + wanted + block[comma + 1 :]
         text = text[:start] + block + text[end:]
     path.write_text(text, encoding="utf-8")
 
