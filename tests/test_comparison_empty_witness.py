@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+from inspect import signature
+
 from werkzeug.datastructures import MultiDict
 
 from pseudepigrapha_tf import comparison, web
+from pseudepigrapha_tf.release_identity import TF_DATA_VERSION
 
 
 def test_witness_query_distinguishes_explicit_empty_selection_from_no_selection():
@@ -70,3 +73,11 @@ def test_renderer_submits_empty_witness_sentinel_for_each_selectable_source_vers
     assert (
         'name="witness.Work__Greek" value="A" form="comparison-controls"'
     ) in html
+
+
+def test_programmatic_browser_defaults_track_authoritative_tf_data_version():
+    load_default = signature(web.load_local_comparison_web_app).parameters["version"].default
+    run_default = signature(web.run_local_comparison_browser).parameters["version"].default
+
+    assert load_default == TF_DATA_VERSION
+    assert run_default == TF_DATA_VERSION
