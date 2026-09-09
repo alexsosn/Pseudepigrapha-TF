@@ -12,7 +12,7 @@ from pseudepigrapha_tf.distribution import (
     stage_distribution_assets,
     validate_distribution,
 )
-from test_support.distribution import (
+from distribution_support import (
     canonical_otype_payload,
     canonical_report_provenance,
 )
