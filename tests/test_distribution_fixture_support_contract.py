@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
 from pseudepigrapha_tf.provenance import (
     OCP_PIN,
     OCP_REPOSITORY,
@@ -66,6 +68,13 @@ def test_shared_report_fixture_keeps_hostile_omission_explicit_and_isolated():
         key: value for key, value in baseline.items() if key != "content_attribution"
     } == omitted
     assert "content_attribution" in canonical_report_provenance()
+
+
+def test_shared_report_fixture_rejects_unknown_omission_key():
+    """A hostile omission must fail if it no longer names a real baseline field."""
+
+    with pytest.raises(KeyError, match="not_a_real_provenance_key"):
+        canonical_report_provenance(omit=("not_a_real_provenance_key",))
 
 
 def test_shared_generic_fixture_returns_fresh_state_for_each_test():
