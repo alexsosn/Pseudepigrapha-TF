@@ -23,6 +23,7 @@ from .provenance import attest_corpus_license_source_identity
 from .release_identity import TF_DATA_VERSION
 from .semantic_audit import build_conversion_report, write_conversion_report
 from .source import detect_git_commit, git_source_is_clean, load_source_directory
+from .web import run_local_comparison_browser
 from .writer import _write_prevalidated_tf
 
 UPSTREAM_REPOSITORY = "https://github.com/OnlineCriticalPseudepigrapha/Online-Critical-Pseudepigrapha"
@@ -53,6 +54,25 @@ def _parser() -> argparse.ArgumentParser:
         default=None,
         help="conversion report path (default: OUTPUT/conversion-report.json)",
     )
+
+    browse = sub.add_parser(
+        "browse",
+        help="run the Text-Fabric browser with verse-level comparison",
+    )
+    browse.add_argument("data", type=Path, help="materialized Text-Fabric feature directory")
+    browse.add_argument(
+        "--app",
+        type=Path,
+        default=Path("app"),
+        help="Text-Fabric app directory (default: ./app)",
+    )
+    browse.add_argument(
+        "--version",
+        default=TF_DATA_VERSION,
+        help=f"Text-Fabric data version (default: {TF_DATA_VERSION})",
+    )
+    browse.add_argument("--port", type=int, default=8000, help="browser port (default: 8000)")
+    browse.add_argument("--debug", action="store_true", help="enable Text-Fabric/Flask debug mode")
     return parser
 
 
@@ -64,6 +84,14 @@ def _stage(name: str, started: float) -> float:
 
 def main(argv: list[str] | None = None) -> int:
     args = _parser().parse_args(argv)
+    if args.command == "browse":
+        return run_local_comparison_browser(
+            args.data,
+            args.app,
+            version=args.version,
+            port=args.port,
+            debug=args.debug,
+        )
     if args.command != "convert":
         return 2
 
