@@ -82,6 +82,50 @@ def _stage(name: str, started: float) -> float:
     return now
 
 
+def _is_tf_path_within(candidate: Path, root: Path) -> bool:
+    """Return whether a .tf path occupies the canonical output tree."""
+
+    return candidate.suffix == ".tf" and (
+        candidate == root or root in candidate.parents
+    )
+
+
+def _same_inode_as_tf_feature(candidate: Path, root: Path) -> bool:
+    """Detect an existing pathname that aliases a TF feature via a hard link."""
+
+    try:
+        candidate_stat = candidate.stat()
+    except FileNotFoundError:
+        return False
+    if not root.is_dir():
+        return False
+
+    candidate_identity = (candidate_stat.st_dev, candidate_stat.st_ino)
+    for feature in root.rglob("*.tf"):
+        try:
+            feature_stat = feature.stat()
+        except FileNotFoundError:
+            continue
+        if (feature_stat.st_dev, feature_stat.st_ino) == candidate_identity:
+            return True
+    return False
+
+
+def _validate_report_path(report_path: Path, output: Path) -> Path:
+    """Resolve report publication while keeping it outside the TF feature namespace."""
+
+    resolved_output = output.resolve(strict=False)
+    report_entry = report_path.parent.resolve(strict=False) / report_path.name
+    publication_path = report_path.resolve(strict=False)
+    if _is_tf_path_within(report_entry, resolved_output) or _is_tf_path_within(
+        publication_path, resolved_output
+    ) or _same_inode_as_tf_feature(report_path, resolved_output):
+        raise ValueError(
+            f"conversion report path {report_path} collides with Text-Fabric output {output}"
+        )
+    return publication_path
+
+
 def main(argv: list[str] | None = None) -> int:
     args = _parser().parse_args(argv)
     if args.command == "browse":
@@ -94,6 +138,11 @@ def main(argv: list[str] | None = None) -> int:
         )
     if args.command != "convert":
         return 2
+
+    if args.output.is_symlink():
+        raise ValueError(
+            f"Text-Fabric output directory must not be a symlink: {args.output}"
+        )
 
     total_started = stage_started = perf_counter()
     books, source_warnings = load_source_directory(args.source)
@@ -137,6 +186,7 @@ def main(argv: list[str] | None = None) -> int:
         print(f"warning: {warning}")
 
     report_path = args.report or (args.output / "conversion-report.json")
+    publication_path = _validate_report_path(report_path, args.output)
     report = build_conversion_report(args.source, books, data)
     if public_metadata is not None:
         report = augment_conversion_report_with_public_metadata(report, args.source, data)
@@ -163,7 +213,6 @@ def main(argv: list[str] | None = None) -> int:
     # so deterministic report-path errors cannot leave a newer corpus paired
     # with an older report.
     report_path.parent.mkdir(parents=True, exist_ok=True)
-    publication_path = report_path.resolve(strict=False)
     if publication_path.is_dir():
         raise IsADirectoryError(str(report_path))
 

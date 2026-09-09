@@ -11,7 +11,7 @@ from pseudepigrapha_tf.distribution import (
     DistributionContractError,
     build_distribution_manifest,
 )
-
+from pseudepigrapha_tf.provenance import corpus_license_metadata, report_provenance
 
 UPSTREAM_REPOSITORY = (
     "https://github.com/OnlineCriticalPseudepigrapha/Online-Critical-Pseudepigrapha"
@@ -19,21 +19,29 @@ UPSTREAM_REPOSITORY = (
 UPSTREAM_COMMIT = "c939dcbacad78c5d18d2c4282cad23c47e19ac07"
 RELEASE_COMMIT = "d" * 40
 
+def _canonical_generic() -> dict[str, str]:
+    return {
+        "upstreamRepository": UPSTREAM_REPOSITORY,
+        "upstreamCommit": UPSTREAM_COMMIT,
+        "converterVersion": "0.1.0",
+        **corpus_license_metadata(
+            UPSTREAM_REPOSITORY,
+            UPSTREAM_COMMIT,
+            source_identity_verified=True,
+        ),
+    }
+
+
+def _canonical_otype_payload() -> bytes:
+    metadata = {**_canonical_generic(), "valueType": "str", "version": "0.1"}
+    lines = ["@node", *(f"@{key}={value}" for key, value in sorted(metadata.items())), ""]
+    return ("\n".join(lines) + "\n1\tword\n").encode("utf-8")
+
+
 
 def _otype_payload(extra_metadata: dict[str, str] | None = None) -> bytes:
-    metadata = {
-        "contentLicense": "CC-BY-4.0",
-        "contentLicenseStatus": "verified",
-        "converterSoftwareLicense": "MIT",
-        "converterVersion": "0.1.0",
-        "sourceIdentityStatus": "verified",
-        "upstreamCommit": UPSTREAM_COMMIT,
-        "upstreamRepository": UPSTREAM_REPOSITORY,
-        "upstreamSoftwareLicense": "GPL-3.0",
-        "valueType": "str",
-        "version": "0.1",
-        **(extra_metadata or {}),
-    }
+    metadata = {**_canonical_generic(), **(extra_metadata or {})}
+    metadata.update({"valueType": "str", "version": "0.1"})
     lines = ["@node", *(f"@{key}={value}" for key, value in sorted(metadata.items())), ""]
     return ("\n".join(lines) + "\n1\tword\n").encode("utf-8")
 
@@ -60,6 +68,7 @@ def _build_candidate(
     *,
     extra_serialized_metadata: dict[str, str] | None = None,
     extra_report_provenance: dict[str, str] | None = None,
+    omit_report_provenance: tuple[str, ...] = (),
 ):
     features = {
         "otype.tf": _otype_payload(extra_serialized_metadata),
@@ -76,17 +85,12 @@ def _build_candidate(
         "semantic_checks": {"probe": True},
         "text_fabric": _feature_identity(features),
         "provenance": {
-            "upstream_repository": UPSTREAM_REPOSITORY,
-            "upstream_commit": UPSTREAM_COMMIT,
-            "converter_version": "0.1.0",
-            "source_identity_status": "verified",
-            "content_license_status": "verified",
-            "content_license": "CC-BY-4.0",
-            "converter_software_license": "MIT",
-            "upstream_software_license": "GPL-3.0",
+            **report_provenance(_canonical_generic()),
             **(extra_report_provenance or {}),
         },
     }
+    for key in omit_report_provenance:
+        report["provenance"].pop(key, None)
     report_path = tmp_path / "conversion-report.json"
     report_path.write_text(json.dumps(report, sort_keys=True) + "\n", encoding="utf-8")
 
@@ -123,6 +127,7 @@ def test_manifest_rejects_serialized_optional_provenance_omitted_from_report(tmp
             extra_serialized_metadata={
                 "contentLicenseUrl": "https://creativecommons.org/licenses/by/4.0/"
             },
+            omit_report_provenance=("content_license_url",),
         )
 
 
