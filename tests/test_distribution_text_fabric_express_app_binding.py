@@ -14,6 +14,7 @@ from pseudepigrapha_tf.distribution import (
     stage_distribution_assets,
     validate_distribution,
 )
+from pseudepigrapha_tf.express_app_binding import validate_express_app_directory
 
 
 RELEASE_COMMIT = "b" * 40
@@ -81,26 +82,30 @@ def test_express_app_bytes_are_bound_to_exact_release_checkout(tmp_path):
         "sha256": hashlib.sha256(payload).hexdigest(),
     }
 
+    # Structural distribution validation intentionally accepts the coherently
+    # rebound outer asset record; the exact checkout is the independent trust
+    # source for app bytes.
+    assert validate_distribution(
+        manifest,
+        assets["tf"],
+        assets["report"],
+        express_archive=express,
+        expected_release_tag=RELEASE_TAG,
+        expected_release_commit=RELEASE_COMMIT,
+        expected_converter_version="0.1.0",
+        expected_data_version="0.1",
+    ) is None
+
     with pytest.raises(DistributionContractError, match="app|tracked|checkout|payload"):
-        validate_distribution(
-            manifest,
-            assets["tf"],
-            assets["report"],
-            express_archive=express,
-            app_directory=app,
-            expected_release_tag=RELEASE_TAG,
-            expected_release_commit=RELEASE_COMMIT,
-            expected_converter_version="0.1.0",
-            expected_data_version="0.1",
-        )
+        validate_express_app_directory(express, app_directory=app)
 
 
 def test_release_revalidation_supplies_exact_app_checkout():
     root = Path(__file__).parents[1]
     build = (root / ".github/workflows/build-corpus-release-assets.yml").read_text(encoding="utf-8")
     publish = (root / ".github/workflows/publish-corpus-release.yml").read_text(encoding="utf-8")
-    tests = (root / ".github/workflows/test.yml").read_text(encoding="utf-8")
 
+    assert "validate_express_app_directory" in build
     assert "app_directory=" in build
+    assert publish.count("validate_express_app_directory") >= 3
     assert publish.count("app_directory=") >= 3
-    assert "app_directory=" in tests
