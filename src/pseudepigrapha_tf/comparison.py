@@ -278,9 +278,9 @@ def _translation_view(
         }
 
     if not source_passage_present:
-    raise ValueError(
-        f"generated translation {generated_id!r} has a passage but source passage is not present"
-    )
+        raise ValueError(
+            f"generated translation {generated_id!r} has a passage but source passage is not present"
+        )
 
     source_book_node = passage.get("source_book_node")
     expected_source_node = record.get("source_node")
