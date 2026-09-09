@@ -27,22 +27,15 @@ jobs:
 
           path = Path('src/pseudepigrapha_tf/cli.py')
           text = path.read_text(encoding='utf-8')
-          old = '''    if args.command != "convert":
-              return 2
-
-          total_started = stage_started = perf_counter()
-          '''
-          new = '''    if args.command != "convert":
-              return 2
-          if args.output.is_symlink():
+          anchor = '    total_started = stage_started = perf_counter()'
+          assert text.count(anchor) == 1, text.count(anchor)
+          replacement = '''    if args.output.is_symlink():
               raise ValueError(
                   f"Text-Fabric output directory must not be a symlink: {args.output}"
               )
 
-          total_started = stage_started = perf_counter()
-          '''
-          assert text.count(old) == 1, text.count(old)
-          path.write_text(text.replace(old, new), encoding='utf-8')
+          ''' + anchor
+          path.write_text(text.replace(anchor, replacement), encoding='utf-8')
           PY
           git diff --check
           git diff -- src/pseudepigrapha_tf/cli.py
