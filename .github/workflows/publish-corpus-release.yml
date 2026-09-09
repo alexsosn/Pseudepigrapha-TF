@@ -83,8 +83,9 @@ jobs:
           manifest = json.loads(manifest_path.read_text(encoding='utf-8'))
           data_version = manifest['text_fabric']['data_version']
           archive = root / f'tf-{data_version}.zip'
+          express = root / 'complete.zip'
           report = root / 'conversion-report.json'
-          expected = {archive.name, report.name, manifest_path.name}
+          expected = {archive.name, express.name, report.name, manifest_path.name}
           actual = {path.name for path in root.iterdir() if path.is_file()}
           if actual != expected:
               raise SystemExit(f'candidate asset set mismatch: {sorted(actual)} != {sorted(expected)}')
@@ -92,6 +93,7 @@ jobs:
               manifest,
               archive,
               report,
+              express_archive=express,
               expected_release_tag=os.environ['RELEASE_TAG'],
               expected_release_commit=os.environ['RELEASE_COMMIT'],
               expected_converter_version='0.2.0',
@@ -139,6 +141,7 @@ jobs:
           set -euo pipefail
           gh release create "$RELEASE_TAG" \
             "/tmp/release-assets/tf-${DATA_VERSION}.zip" \
+            /tmp/release-assets/complete.zip \
             /tmp/release-assets/conversion-report.json \
             /tmp/release-assets/dataset-manifest.json \
             --repo "$GITHUB_REPOSITORY" \
@@ -167,6 +170,7 @@ jobs:
           actual = {asset['name'] for asset in release['assets']}
           expected = {
               f"tf-{os.environ['DATA_VERSION']}.zip",
+              'complete.zip',
               'conversion-report.json',
               'dataset-manifest.json',
           }
@@ -187,6 +191,7 @@ jobs:
             --repo "$GITHUB_REPOSITORY" \
             --dir /tmp/draft-release-assets \
             --pattern 'tf-*.zip' \
+            --pattern complete.zip \
             --pattern conversion-report.json \
             --pattern dataset-manifest.json
           python - <<'PY'
@@ -202,6 +207,7 @@ jobs:
           data_version = manifest['text_fabric']['data_version']
           expected = {
               f'tf-{data_version}.zip',
+              'complete.zip',
               'conversion-report.json',
               'dataset-manifest.json',
           }
@@ -212,6 +218,7 @@ jobs:
               manifest,
               root / f'tf-{data_version}.zip',
               root / 'conversion-report.json',
+              express_archive=root / 'complete.zip',
               expected_release_tag=os.environ['RELEASE_TAG'],
               expected_release_commit=os.environ['RELEASE_COMMIT'],
               expected_converter_version='0.2.0',
@@ -258,6 +265,7 @@ jobs:
             --repo "$GITHUB_REPOSITORY" \
             --dir /tmp/published-assets \
             --pattern 'tf-*.zip' \
+            --pattern complete.zip \
             --pattern conversion-report.json \
             --pattern dataset-manifest.json
           python - <<'PY'
@@ -270,10 +278,20 @@ jobs:
           root = Path('/tmp/published-assets')
           manifest = json.loads((root / 'dataset-manifest.json').read_text(encoding='utf-8'))
           data_version = manifest['text_fabric']['data_version']
+          expected = {
+              f'tf-{data_version}.zip',
+              'complete.zip',
+              'conversion-report.json',
+              'dataset-manifest.json',
+          }
+          actual = {path.name for path in root.iterdir() if path.is_file()}
+          if actual != expected:
+              raise SystemExit(f'public release asset set mismatch: {sorted(actual)} != {sorted(expected)}')
           validate_distribution(
               manifest,
               root / f'tf-{data_version}.zip',
               root / 'conversion-report.json',
+              express_archive=root / 'complete.zip',
               expected_release_tag=os.environ['RELEASE_TAG'],
               expected_release_commit=os.environ['RELEASE_COMMIT'],
               expected_converter_version='0.2.0',
