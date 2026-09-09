@@ -12,7 +12,7 @@ from pseudepigrapha_tf.distribution import (
     build_distribution_manifest,
 )
 from pseudepigrapha_tf.provenance import OCP_PIN
-from test_support.distribution import (
+from distribution_support import (
     canonical_otype_payload,
     canonical_report_provenance,
 )
