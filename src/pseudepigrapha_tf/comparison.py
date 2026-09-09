@@ -49,10 +49,16 @@ def comparison_href(
     ]
     pairs.extend(("version", version_id) for version_id in versions)
 
-    if selected_witnesses:
+    if selected_witnesses is not None:
         for version_id in versions:
-            for witness in _unique_strings(selected_witnesses.get(version_id, ())):
-                pairs.append((f"witness.{version_id}", witness))
+            if version_id not in selected_witnesses:
+                continue
+            key = f"witness.{version_id}"
+            witnesses = _unique_strings(selected_witnesses[version_id])
+            if witnesses:
+                pairs.extend((key, witness) for witness in witnesses)
+            else:
+                pairs.append((key, ""))
 
     return f"/compare?{urlencode(pairs)}"
 
@@ -632,13 +638,18 @@ def _selected_render_state(
         if not isinstance(version, Mapping):
             continue
         version_id = str(version.get("id", ""))
-        selected = tuple(
-            str(choice.get("abbrev", ""))
+        choices = tuple(
+            choice
             for choice in version.get("witness_choices", ())
-            if isinstance(choice, Mapping) and choice.get("selected")
+            if isinstance(choice, Mapping)
         )
-        if selected:
-            selected_witnesses[version_id] = selected
+        if not choices:
+            continue
+        selected_witnesses[version_id] = tuple(
+            str(choice.get("abbrev", ""))
+            for choice in choices
+            if choice.get("selected")
+        )
     return selected_versions, selected_witnesses
 
 
