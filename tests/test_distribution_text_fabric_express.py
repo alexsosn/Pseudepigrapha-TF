@@ -11,6 +11,7 @@ import pytest
 
 from pseudepigrapha_tf.distribution import (
     DistributionContractError,
+    build_distribution_manifest,
     feature_directory_identity,
     stage_distribution_assets,
     validate_distribution,
@@ -273,6 +274,41 @@ def test_complete_zip_app_divergence_fails_even_when_manifest_hash_matches(tmp_p
             expected_release_commit=RELEASE_COMMIT,
             expected_converter_version="0.1.0",
             expected_data_version="0.1",
+        )
+
+
+def test_complete_zip_manifest_builder_requires_exact_app_directory(tmp_path):
+    _, _, assets = _stage(tmp_path)
+
+    with pytest.raises(DistributionContractError, match="app.*directory|app.*identity|express.*app"):
+        build_distribution_manifest(
+            assets["tf"],
+            assets["report"],
+            release_tag=RELEASE_TAG,
+            release_commit=RELEASE_COMMIT,
+            converter_version="0.1.0",
+            data_version="0.1",
+            express_archive=assets["express"],
+        )
+
+
+def test_complete_zip_manifest_builder_rejects_rehashed_app_substitution(tmp_path):
+    _, app, assets = _stage(tmp_path)
+    _rewrite_express(
+        assets,
+        replace={f"{REPO_ROOT}/app/app.py": b"VALUE = 'tampered'\n"},
+    )
+
+    with pytest.raises(DistributionContractError, match="app|express|Text-Fabric"):
+        build_distribution_manifest(
+            assets["tf"],
+            assets["report"],
+            release_tag=RELEASE_TAG,
+            release_commit=RELEASE_COMMIT,
+            converter_version="0.1.0",
+            data_version="0.1",
+            express_archive=assets["express"],
+            app_directory=app,
         )
 
 
