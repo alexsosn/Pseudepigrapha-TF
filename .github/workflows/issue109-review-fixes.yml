@@ -155,7 +155,7 @@ jobs:
       - name: Focused GREEN gate
         run: |
           pip install -e '.[dev]'
-          pytest tests/test_comparison_translation_occurrence.py tests/test_comparison_not_present_witness_state.py tests/test_comparison.py tests/test_comparison_integration.py
+          pytest tests/test_comparison_translation_occurrence.py tests/test_comparison_not_present_witness_state.py
       - name: Full unit gate
         run: pytest
       - name: Commit implementation
