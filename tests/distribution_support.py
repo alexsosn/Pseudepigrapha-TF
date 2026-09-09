@@ -46,7 +46,7 @@ def canonical_report_provenance(
     if overrides:
         provenance.update(overrides)
     for key in omit:
-        provenance.pop(key, None)
+        provenance.pop(key)
     return provenance
 
 
