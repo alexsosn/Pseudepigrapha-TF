@@ -1,0 +1,210 @@
+name: issue109-review-fixes
+
+on:
+  push:
+    branches:
+      - issue-109-passage-comparison
+
+permissions:
+  contents: write
+
+jobs:
+  implement:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: issue-109-passage-comparison
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+      - name: Apply review-blocker fixes
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('src/pseudepigrapha_tf/comparison.py')
+          text = path.read_text(encoding='utf-8')
+
+          old = '''def _translation_view(
+              translations: Translations,
+              record: Mapping[str, object],
+              chapter: str,
+              verse: str,
+          ) -> dict[str, object]:
+          '''
+          new = '''def _translation_view(
+              translations: Translations,
+              record: Mapping[str, object],
+              chapter: str,
+              verse: str,
+              *,
+              expected_source_units: frozenset[object] | None = None,
+          ) -> dict[str, object]:
+          '''
+          assert text.count(old) == 1, text.count(old)
+          text = text.replace(old, new)
+
+          old = '''    units = tuple(
+              dict(unit) for unit in passage.get("units", ()) if isinstance(unit, Mapping)
+          )
+              text = " ".join(
+          '''
+          new = '''    units = tuple(
+              dict(unit) for unit in passage.get("units", ()) if isinstance(unit, Mapping)
+          )
+              if expected_source_units is not None:
+                  for unit in units:
+                      source_unit = unit.get("source_unit")
+                      if source_unit not in expected_source_units:
+                          raise ValueError(
+                              f"generated translation {generated_id!r} source unit {source_unit!r} "
+                              "is outside requested source passage"
+                          )
+              text = " ".join(
+          '''
+          assert text.count(old) == 1, text.count(old)
+          text = text.replace(old, new)
+
+          old = '''        passage = source_record.get("passage")
+                  primary_segments: tuple[dict[str, object], ...] = ()
+                  primary_text = ""
+                  witness_choices: tuple[dict[str, object], ...] = ()
+                  witness_rows: tuple[dict[str, object], ...] = ()
+
+                  if status == "available":
+          '''
+          new = '''        passage = source_record.get("passage")
+                  primary_segments: tuple[dict[str, object], ...] = ()
+                  primary_text = ""
+                  witness_rows: tuple[dict[str, object], ...] = ()
+                  expected_source_units: frozenset[object] | None = None
+
+                  raw_version_witnesses = source_record.get("witnesses", {})
+                  if not isinstance(raw_version_witnesses, Mapping):
+                      raise ValueError(
+                          f"source version {version_id!r} has invalid version-level witness mapping"
+                      )
+                  witness_inventory: dict[str, Mapping[str, object]] = {
+                      str(siglum): record
+                      for siglum, record in raw_version_witnesses.items()
+                      if isinstance(record, Mapping)
+                  }
+                  selected_sigla = _selected_witness_ids(
+                      version_id,
+                      witness_inventory,
+                      selected_witnesses,
+                  )
+                  witness_choices = tuple(
+                      {
+                          "abbrev": siglum,
+                          "name": str(witness_inventory[siglum].get("name", "")),
+                          "language": str(witness_inventory[siglum].get("language", "")),
+                          "declared": bool(witness_inventory[siglum].get("declared", True)),
+                          "show": str(witness_inventory[siglum].get("show", "")),
+                          "selected": siglum in selected_sigla,
+                      }
+                      for siglum in witness_inventory
+                  )
+
+                  if status == "available":
+          '''
+          assert text.count(old) == 1, text.count(old)
+          text = text.replace(old, new)
+
+          old = '''            raw_witnesses = passage.get("witnesses", {})
+                      if not isinstance(raw_witnesses, Mapping):
+                          raise ValueError(
+                              f"source version {version_id!r} has invalid witness mapping"
+                          )
+                      witness_map: dict[str, Mapping[str, object]] = {
+                          str(siglum): record
+                          for siglum, record in raw_witnesses.items()
+                          if isinstance(record, Mapping)
+                      }
+                      selected_sigla = _selected_witness_ids(
+                          version_id,
+                          witness_map,
+                          selected_witnesses,
+                      )
+                      witness_choices = tuple(
+                          {
+                              "abbrev": siglum,
+                              "name": str(witness_map[siglum].get("name", "")),
+                              "language": str(witness_map[siglum].get("language", "")),
+                              "declared": bool(witness_map[siglum].get("declared", True)),
+                              "show": str(witness_map[siglum].get("show", "")),
+                              "selected": siglum in selected_sigla,
+                          }
+                          for siglum in witness_map
+                      )
+                      witness_rows = tuple(
+                          _witness_view(witness_map[siglum]) for siglum in selected_sigla
+                      )
+
+                  translation_rows = tuple(
+                      _translation_view(translations, record, chapter, verse)
+                      for record in generated_by_source.get(version_id, ())
+                  )
+          '''
+          new = '''            source_units = tuple(
+                          unit for unit in passage.get("units", ()) if isinstance(unit, Mapping)
+                      )
+                      expected_source_units = frozenset(
+                          unit.get("node") for unit in source_units if unit.get("node") is not None
+                      )
+
+                      raw_witnesses = passage.get("witnesses", {})
+                      if not isinstance(raw_witnesses, Mapping):
+                          raise ValueError(
+                              f"source version {version_id!r} has invalid witness mapping"
+                          )
+                      witness_map: dict[str, Mapping[str, object]] = {
+                          str(siglum): record
+                          for siglum, record in raw_witnesses.items()
+                          if isinstance(record, Mapping)
+                      }
+                      missing_selected = tuple(
+                          siglum for siglum in selected_sigla if siglum not in witness_map
+                      )
+                      if missing_selected:
+                          raise ValueError(
+                              f"source version {version_id!r} passage omitted selected witnesses: "
+                              + ", ".join(missing_selected)
+                          )
+                      witness_rows = tuple(
+                          _witness_view(witness_map[siglum]) for siglum in selected_sigla
+                      )
+
+                  translation_rows = tuple(
+                      _translation_view(
+                          translations,
+                          record,
+                          chapter,
+                          verse,
+                          expected_source_units=expected_source_units,
+                      )
+                      for record in generated_by_source.get(version_id, ())
+                  )
+          '''
+          assert text.count(old) == 1, text.count(old)
+          text = text.replace(old, new)
+
+          path.write_text(text, encoding='utf-8')
+          PY
+          git diff --check
+      - name: Focused GREEN gate
+        run: |
+          pip install -e '.[dev]'
+          pytest tests/test_comparison_translation_occurrence.py tests/test_comparison_not_present_witness_state.py tests/test_comparison.py tests/test_comparison_integration.py
+      - name: Full unit gate
+        run: pytest
+      - name: Commit implementation
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add src/pseudepigrapha_tf/comparison.py
+          git commit -m 'fix: close passage comparison review blockers'
+          git push origin HEAD:issue-109-passage-comparison
