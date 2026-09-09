@@ -14,30 +14,15 @@ from pseudepigrapha_tf.distribution import (
     canonical_manifest_bytes,
     validate_distribution,
 )
-from pseudepigrapha_tf.provenance import corpus_license_metadata, report_provenance
+from pseudepigrapha_tf.provenance import OCP_PIN, OCP_REPOSITORY
+from test_support.distribution import (
+    canonical_otype_payload,
+    canonical_report_provenance,
+)
 
-UPSTREAM_REPOSITORY = "https://github.com/OnlineCriticalPseudepigrapha/Online-Critical-Pseudepigrapha"
-UPSTREAM_COMMIT = "c939dcbacad78c5d18d2c4282cad23c47e19ac07"
+UPSTREAM_REPOSITORY = OCP_REPOSITORY
+UPSTREAM_COMMIT = OCP_PIN
 RELEASE_COMMIT = "0123456789abcdef0123456789abcdef01234567"
-
-def _canonical_generic() -> dict[str, str]:
-    return {
-        "upstreamRepository": UPSTREAM_REPOSITORY,
-        "upstreamCommit": UPSTREAM_COMMIT,
-        "converterVersion": "0.1.0",
-        **corpus_license_metadata(
-            UPSTREAM_REPOSITORY,
-            UPSTREAM_COMMIT,
-            source_identity_verified=True,
-        ),
-    }
-
-
-def _canonical_otype_payload() -> bytes:
-    metadata = {**_canonical_generic(), "valueType": "str", "version": "0.1"}
-    lines = ["@node", *(f"@{key}={value}" for key, value in sorted(metadata.items())), ""]
-    return ("\n".join(lines) + "\n1\tword\n").encode("utf-8")
-
 
 
 def _report(*, status: str = "ok", source_status: str = "verified", license_status: str = "verified") -> dict:
@@ -45,11 +30,12 @@ def _report(*, status: str = "ok", source_status: str = "verified", license_stat
         "status": status,
         "failed_checks": [] if status == "ok" else ["probe"],
         "semantic_checks": {"probe": status == "ok"},
-        "provenance": {
-            **report_provenance(_canonical_generic()),
-            "source_identity_status": source_status,
-            "content_license_status": license_status,
-        },
+        "provenance": canonical_report_provenance(
+            overrides={
+                "source_identity_status": source_status,
+                "content_license_status": license_status,
+            }
+        ),
     }
 
 
@@ -78,7 +64,7 @@ def _assets(tmp_path: Path, *, report: dict | None = None) -> tuple[Path, Path]:
     with ZipFile(archive, "w", compression=ZIP_DEFLATED) as zf:
         # Deliberately write in non-lexical order: manifest feature identity must
         # normalize archive container ordering rather than inherit it.
-        zf.writestr("otype.tf", _canonical_otype_payload())
+        zf.writestr("otype.tf", canonical_otype_payload())
         zf.writestr("book.tf", "@node\n@valueType=str\n2\t1En__Ethiopic\n")
         zf.writestr("oslots.tf", "@edge\n2\t1\n")
     if report is None:
