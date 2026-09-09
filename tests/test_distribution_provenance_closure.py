@@ -11,39 +11,14 @@ from pseudepigrapha_tf.distribution import (
     DistributionContractError,
     build_distribution_manifest,
 )
-from pseudepigrapha_tf.provenance import corpus_license_metadata, report_provenance
-
-UPSTREAM_REPOSITORY = (
-    "https://github.com/OnlineCriticalPseudepigrapha/Online-Critical-Pseudepigrapha"
+from pseudepigrapha_tf.provenance import OCP_PIN
+from distribution_support import (
+    canonical_otype_payload,
+    canonical_report_provenance,
 )
-UPSTREAM_COMMIT = "c939dcbacad78c5d18d2c4282cad23c47e19ac07"
+
+UPSTREAM_COMMIT = OCP_PIN
 RELEASE_COMMIT = "d" * 40
-
-def _canonical_generic() -> dict[str, str]:
-    return {
-        "upstreamRepository": UPSTREAM_REPOSITORY,
-        "upstreamCommit": UPSTREAM_COMMIT,
-        "converterVersion": "0.1.0",
-        **corpus_license_metadata(
-            UPSTREAM_REPOSITORY,
-            UPSTREAM_COMMIT,
-            source_identity_verified=True,
-        ),
-    }
-
-
-def _canonical_otype_payload() -> bytes:
-    metadata = {**_canonical_generic(), "valueType": "str", "version": "0.1"}
-    lines = ["@node", *(f"@{key}={value}" for key, value in sorted(metadata.items())), ""]
-    return ("\n".join(lines) + "\n1\tword\n").encode("utf-8")
-
-
-
-def _otype_payload(extra_metadata: dict[str, str] | None = None) -> bytes:
-    metadata = {**_canonical_generic(), **(extra_metadata or {})}
-    metadata.update({"valueType": "str", "version": "0.1"})
-    lines = ["@node", *(f"@{key}={value}" for key, value in sorted(metadata.items())), ""]
-    return ("\n".join(lines) + "\n1\tword\n").encode("utf-8")
 
 
 def _feature_identity(features: dict[str, bytes]) -> dict[str, object]:
@@ -71,7 +46,7 @@ def _build_candidate(
     omit_report_provenance: tuple[str, ...] = (),
 ):
     features = {
-        "otype.tf": _otype_payload(extra_serialized_metadata),
+        "otype.tf": canonical_otype_payload(extra_metadata=extra_serialized_metadata),
         "oslots.tf": b"@edge\n@valueType=str\n\n2\t1\n",
     }
     archive = tmp_path / "tf-0.1.zip"
@@ -84,13 +59,11 @@ def _build_candidate(
         "failed_checks": [],
         "semantic_checks": {"probe": True},
         "text_fabric": _feature_identity(features),
-        "provenance": {
-            **report_provenance(_canonical_generic()),
-            **(extra_report_provenance or {}),
-        },
+        "provenance": canonical_report_provenance(
+            overrides=extra_report_provenance,
+            omit=omit_report_provenance,
+        ),
     }
-    for key in omit_report_provenance:
-        report["provenance"].pop(key, None)
     report_path = tmp_path / "conversion-report.json"
     report_path.write_text(json.dumps(report, sort_keys=True) + "\n", encoding="utf-8")
 

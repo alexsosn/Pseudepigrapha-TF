@@ -13,33 +13,15 @@ from pseudepigrapha_tf.distribution import (
     feature_directory_identity,
     validate_feature_directory,
 )
-from pseudepigrapha_tf.provenance import corpus_license_metadata, report_provenance
-
-UPSTREAM_REPOSITORY = "https://github.com/OnlineCriticalPseudepigrapha/Online-Critical-Pseudepigrapha"
-UPSTREAM_COMMIT = "c939dcbacad78c5d18d2c4282cad23c47e19ac07"
-
-def _canonical_generic() -> dict[str, str]:
-    return {
-        "upstreamRepository": UPSTREAM_REPOSITORY,
-        "upstreamCommit": UPSTREAM_COMMIT,
-        "converterVersion": "0.1.0",
-        **corpus_license_metadata(
-            UPSTREAM_REPOSITORY,
-            UPSTREAM_COMMIT,
-            source_identity_verified=True,
-        ),
-    }
-
-
-def _canonical_otype_payload() -> bytes:
-    metadata = {**_canonical_generic(), "valueType": "str", "version": "0.1"}
-    lines = ["@node", *(f"@{key}={value}" for key, value in sorted(metadata.items())), ""]
-    return ("\n".join(lines) + "\n1\tword\n").encode("utf-8")
+from distribution_support import (
+    canonical_otype_payload,
+    canonical_report_provenance,
+)
 
 
 FEATURES = {
     "book.tf": b"@node\n1\t1En__Ethiopic\n",
-    "otype.tf": _canonical_otype_payload(),
+    "otype.tf": canonical_otype_payload(),
     "oslots.tf": b"@edge\n2\t1\n",
 }
 
@@ -63,7 +45,7 @@ def _fixture(tmp_path: Path):
                 "failed_checks": [],
                 "semantic_checks": {"probe": True},
                 "text_fabric": feature_directory_identity(source),
-                "provenance": report_provenance(_canonical_generic()),
+                "provenance": canonical_report_provenance(),
             },
             sort_keys=True,
         )
