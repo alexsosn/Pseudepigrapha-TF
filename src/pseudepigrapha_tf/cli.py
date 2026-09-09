@@ -111,6 +111,11 @@ def main(argv: list[str] | None = None) -> int:
     if args.command != "convert":
         return 2
 
+    if args.output.is_symlink():
+        raise ValueError(
+            f"Text-Fabric output directory must not be a symlink: {args.output}"
+        )
+
     total_started = stage_started = perf_counter()
     books, source_warnings = load_source_directory(args.source)
     public_metadata = (
