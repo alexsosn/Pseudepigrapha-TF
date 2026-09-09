@@ -1,0 +1,71 @@
+name: issue109-review-fix
+
+on:
+  push:
+    branches:
+      - issue-109-passage-comparison
+
+permissions:
+  contents: write
+
+jobs:
+  implement:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: issue-109-passage-comparison
+      - name: Fail closed when generated passage has no source passage
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('src/pseudepigrapha_tf/comparison.py')
+          text = path.read_text(encoding='utf-8')
+
+          old = '''    *,
+              expected_source_units: frozenset[object] | None = None,
+          ) -> dict[str, object]:
+          '''
+          new = '''    *,
+              expected_source_units: frozenset[object] | None = None,
+              source_passage_present: bool = True,
+          ) -> dict[str, object]:
+          '''
+          assert text.count(old) == 1, text.count(old)
+          text = text.replace(old, new)
+
+          anchor = '''    source_book_node = passage.get("source_book_node")
+          '''
+          replacement = '''    if not source_passage_present:
+              raise ValueError(
+                  f"generated translation {generated_id!r} has a passage but source passage is not present"
+              )
+
+              source_book_node = passage.get("source_book_node")
+          '''
+          assert text.count(anchor) == 1, text.count(anchor)
+          text = text.replace(anchor, replacement)
+
+          old = '''                expected_source_units=expected_source_units,
+              )
+          '''
+          new = '''                expected_source_units=expected_source_units,
+                  source_passage_present=status == "available",
+              )
+          '''
+          assert text.count(old) == 1, text.count(old)
+          text = text.replace(old, new)
+
+          path.write_text(text, encoding='utf-8')
+          PY
+          git diff --check
+          git diff -- src/pseudepigrapha_tf/comparison.py
+      - name: Commit fix
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add src/pseudepigrapha_tf/comparison.py
+          git commit -m 'fix: reject translation without source passage'
+          git push origin HEAD:issue-109-passage-comparison
