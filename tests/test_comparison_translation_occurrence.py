@@ -52,6 +52,15 @@ class FakeApparatus:
         }
 
 
+class NotPresentApparatus(FakeApparatus):
+    def work_passage(self, work, chapter, verse):
+        result = super().work_passage(work, chapter, verse)
+        record = result["versions"]["Work__Greek"]
+        record["status"] = "not_present"
+        record["passage"] = None
+        return result
+
+
 class FakeTranslations:
     def __init__(self, api):
         self.api = api
@@ -98,6 +107,20 @@ def test_comparison_rejects_translation_unit_from_another_source_occurrence(monk
     monkeypatch.setattr(comparison, "Translations", FakeTranslations)
 
     with pytest.raises(ValueError, match="outside requested source passage"):
+        comparison.build_passage_comparison(
+            object(),
+            "Work",
+            "1",
+            "2",
+            selected_versions=("Work__Greek",),
+        )
+
+
+def test_comparison_rejects_available_translation_when_source_passage_is_not_present(monkeypatch):
+    monkeypatch.setattr(comparison, "Apparatus", NotPresentApparatus)
+    monkeypatch.setattr(comparison, "Translations", FakeTranslations)
+
+    with pytest.raises(ValueError, match="source passage is not present"):
         comparison.build_passage_comparison(
             object(),
             "Work",
