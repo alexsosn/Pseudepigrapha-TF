@@ -70,6 +70,9 @@ def _stage(tmp_path: Path):
         data_version="0.1",
         app_directory=app,
     )
+    # Test-only trust source used by the common validation helper. The release
+    # contract itself still returns exactly the four canonical asset paths.
+    assets["_app"] = app
     return source, app, assets
 
 
@@ -113,6 +116,7 @@ def _validate(assets: dict[str, Path], manifest: dict) -> None:
         assets["tf"],
         assets["report"],
         express_archive=assets["express"],
+        app_directory=assets["_app"],
         expected_release_tag=RELEASE_TAG,
         expected_release_commit=RELEASE_COMMIT,
         expected_converter_version="0.1.0",
@@ -239,7 +243,16 @@ def test_complete_zip_validation_requires_exact_app_directory(tmp_path):
     manifest = json.loads(assets["manifest"].read_text(encoding="utf-8"))
 
     with pytest.raises(DistributionContractError, match="app.*directory|app.*identity|express.*app"):
-        _validate(assets, manifest)
+        validate_distribution(
+            manifest,
+            assets["tf"],
+            assets["report"],
+            express_archive=assets["express"],
+            expected_release_tag=RELEASE_TAG,
+            expected_release_commit=RELEASE_COMMIT,
+            expected_converter_version="0.1.0",
+            expected_data_version="0.1",
+        )
 
 
 def test_complete_zip_app_divergence_fails_even_when_manifest_hash_matches(tmp_path):
