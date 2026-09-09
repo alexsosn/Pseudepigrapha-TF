@@ -24,17 +24,17 @@ jobs:
           path = Path('src/pseudepigrapha_tf/comparison.py')
           text = path.read_text(encoding='utf-8')
 
-          old = '''    *,
+          signature = '''    *,
               expected_source_units: frozenset[object] | None = None,
           ) -> dict[str, object]:
           '''
-          new = '''    *,
+          updated_signature = '''    *,
               expected_source_units: frozenset[object] | None = None,
               source_passage_present: bool = True,
           ) -> dict[str, object]:
           '''
-          assert text.count(old) == 1, text.count(old)
-          text = text.replace(old, new)
+          assert text.count(signature) == 1, text.count(signature)
+          text = text.replace(signature, updated_signature)
 
           anchor = '''    source_book_node = passage.get("source_book_node")
           '''
@@ -48,15 +48,25 @@ jobs:
           assert text.count(anchor) == 1, text.count(anchor)
           text = text.replace(anchor, replacement)
 
-          old = '''                expected_source_units=expected_source_units,
-              )
+          call = '''            _translation_view(
+                          translations,
+                          record,
+                          chapter,
+                          verse,
+                          expected_source_units=expected_source_units,
+                      )
           '''
-          new = '''                expected_source_units=expected_source_units,
-                  source_passage_present=status == "available",
-              )
+          updated_call = '''            _translation_view(
+                          translations,
+                          record,
+                          chapter,
+                          verse,
+                          expected_source_units=expected_source_units,
+                          source_passage_present=status == "available",
+                      )
           '''
-          assert text.count(old) == 1, text.count(old)
-          text = text.replace(old, new)
+          assert text.count(call) == 1, text.count(call)
+          text = text.replace(call, updated_call)
 
           path.write_text(text, encoding='utf-8')
           PY
