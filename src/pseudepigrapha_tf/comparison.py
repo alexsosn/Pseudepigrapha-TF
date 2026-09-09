@@ -251,6 +251,8 @@ def _translation_view(
     record: Mapping[str, object],
     chapter: str,
     verse: str,
+    *,
+    expected_source_units: frozenset[object] | None = None,
 ) -> dict[str, object]:
     generated_id = str(record.get("id", ""))
     base = {
@@ -289,6 +291,14 @@ def _translation_view(
     units = tuple(
         dict(unit) for unit in passage.get("units", ()) if isinstance(unit, Mapping)
     )
+    if expected_source_units is not None:
+        for unit in units:
+            source_unit = unit.get("source_unit")
+            if source_unit not in expected_source_units:
+                raise ValueError(
+                    f"generated translation {generated_id!r} source unit {source_unit!r} "
+                    "is outside requested source passage"
+                )
     text = " ".join(
         chunk
         for unit in units
@@ -406,6 +416,7 @@ def build_passage_comparison(
         primary_text = ""
         witness_choices: tuple[dict[str, object], ...] = ()
         witness_rows: tuple[dict[str, object], ...] = ()
+        expected_source_units: frozenset[object] | None = None
 
         if status == "available":
             if not isinstance(passage, Mapping):
@@ -414,6 +425,12 @@ def build_passage_comparison(
                 )
             primary_segments = _primary_segments(passage)
             primary_text = _joined_reading_text(primary_segments)
+            source_units = tuple(
+                unit for unit in passage.get("units", ()) if isinstance(unit, Mapping)
+            )
+            expected_source_units = frozenset(
+                unit.get("node") for unit in source_units if unit.get("node") is not None
+            )
 
             raw_witnesses = passage.get("witnesses", {})
             if not isinstance(raw_witnesses, Mapping):
@@ -444,9 +461,42 @@ def build_passage_comparison(
             witness_rows = tuple(
                 _witness_view(witness_map[siglum]) for siglum in selected_sigla
             )
+        else:
+            raw_witnesses = source_record.get("witnesses", {})
+            if not isinstance(raw_witnesses, Mapping):
+                raise ValueError(
+                    f"source version {version_id!r} has invalid witness mapping"
+                )
+            witness_map = {
+                str(siglum): record
+                for siglum, record in raw_witnesses.items()
+                if isinstance(record, Mapping)
+            }
+            selected_sigla = _selected_witness_ids(
+                version_id,
+                witness_map,
+                selected_witnesses,
+            )
+            witness_choices = tuple(
+                {
+                    "abbrev": siglum,
+                    "name": str(witness_map[siglum].get("name", "")),
+                    "language": str(witness_map[siglum].get("language", "")),
+                    "declared": bool(witness_map[siglum].get("declared", True)),
+                    "show": str(witness_map[siglum].get("show", "")),
+                    "selected": siglum in selected_sigla,
+                }
+                for siglum in witness_map
+            )
 
         translation_rows = tuple(
-            _translation_view(translations, record, chapter, verse)
+            _translation_view(
+                translations,
+                record,
+                chapter,
+                verse,
+                expected_source_units=expected_source_units,
+            )
             for record in generated_by_source.get(version_id, ())
         )
 
