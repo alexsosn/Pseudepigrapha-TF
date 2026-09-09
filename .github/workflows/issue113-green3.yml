@@ -1,0 +1,38 @@
+name: issue113-green3
+
+on:
+  push:
+    branches:
+      - fix/113-release-provenance-authenticity
+
+permissions:
+  contents: write
+
+jobs:
+  apply-and-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/113-release-provenance-authenticity
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+      - name: Install
+        run: pip install -e '.[dev]'
+      - name: Apply repair
+        run: python .github/issue113_green3.py
+      - name: Full unit and Text-Fabric suite
+        run: pytest
+      - name: Commit only after GREEN
+        run: |
+          set -euo pipefail
+          rm .github/issue113_green3.py .github/workflows/issue113-green3.yml
+          git config user.name 'Oleksandr (Alex) Sosnovshchenko'
+          git config user.email 'alex.sosn88@gmail.com'
+          git add src/pseudepigrapha_tf/distribution.py tests/test_distribution_directory_validation.py tests/test_distribution_feature_set.py tests/test_distribution_manifest.py tests/test_distribution_provenance_closure.py tests/test_distribution_staging.py .github/issue113_green3.py .github/workflows/issue113-green3.yml
+          git commit -m 'fix: validate canonical provenance after representation integrity'
+          git push origin HEAD:fix/113-release-provenance-authenticity
