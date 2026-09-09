@@ -181,6 +181,40 @@ def test_cli_rejects_tf_report_through_symlinked_output_alias_before_write(monke
     _assert_existing_generation(real_output, original)
 
 
+def test_cli_rejects_failed_audit_report_collision_before_touching_existing_tf(monkeypatch, tmp_path):
+    source_dir = _copy_source_fixture(tmp_path)
+    output = tmp_path / "tf"
+    original = _existing_stub_tf(output)
+    failed_report = {
+        "status": "failed",
+        "failed_checks": ["forced_failure"],
+        "diagnostics": {"duplicate_section_addresses": []},
+    }
+
+    monkeypatch.setattr(cli, "build_conversion_report", lambda source, books, data: failed_report)
+
+    def writer_must_not_run(data, output_dir):
+        raise AssertionError("writer must not run for a report-path collision")
+
+    monkeypatch.setattr(cli, "_write_prevalidated_tf", writer_must_not_run)
+
+    with pytest.raises(ValueError, match="report.*Text-Fabric|Text-Fabric.*report"):
+        cli.main(
+            [
+                "convert",
+                str(source_dir),
+                "--output",
+                str(output),
+                "--report",
+                str(output / "otype.tf"),
+                "--upstream-commit",
+                "test-commit",
+            ]
+        )
+
+    _assert_existing_generation(output, original)
+
+
 def test_cli_allows_tf_suffixed_report_outside_output(monkeypatch, tmp_path):
     source_dir = _copy_source_fixture(tmp_path)
     output = tmp_path / "tf"
