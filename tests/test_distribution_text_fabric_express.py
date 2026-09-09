@@ -3,7 +3,9 @@ from __future__ import annotations
 import hashlib
 import json
 from pathlib import Path
-from zipfile import ZipFile
+import stat
+import warnings
+from zipfile import ZIP_DEFLATED, ZipFile, ZipInfo
 
 import pytest
 
@@ -71,6 +73,53 @@ def _stage(tmp_path: Path):
     return source, app, assets
 
 
+def _rewrite_express(
+    assets: dict[str, Path],
+    *,
+    replace: dict[str, bytes] | None = None,
+    remove: tuple[str, ...] = (),
+    add: tuple[tuple[str | ZipInfo, bytes], ...] = (),
+) -> dict:
+    """Rewrite complete.zip and rebind its manifest record for structural attacks."""
+
+    replace = replace or {}
+    express = assets["express"]
+    with ZipFile(express) as zf:
+        members = [(info, zf.read(info)) for info in zf.infolist()]
+
+    with ZipFile(express, "w", compression=ZIP_DEFLATED) as zf:
+        for info, payload in members:
+            if info.filename in remove:
+                continue
+            zf.writestr(info, replace.get(info.filename, payload))
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", UserWarning)
+            for name, payload in add:
+                zf.writestr(name, payload)
+
+    manifest = json.loads(assets["manifest"].read_text(encoding="utf-8"))
+    payload = express.read_bytes()
+    manifest["assets"]["express"] = {
+        "name": "complete.zip",
+        "bytes": len(payload),
+        "sha256": hashlib.sha256(payload).hexdigest(),
+    }
+    return manifest
+
+
+def _validate(assets: dict[str, Path], manifest: dict) -> None:
+    validate_distribution(
+        manifest,
+        assets["tf"],
+        assets["report"],
+        express_archive=assets["express"],
+        expected_release_tag=RELEASE_TAG,
+        expected_release_commit=RELEASE_COMMIT,
+        expected_converter_version="0.1.0",
+        expected_data_version="0.1",
+    )
+
+
 def test_release_staging_builds_manifest_bound_text_fabric_complete_zip(tmp_path):
     source, app, assets = _stage(tmp_path)
     destination = tmp_path / "release-assets"
@@ -110,16 +159,7 @@ def test_release_staging_builds_manifest_bound_text_fabric_complete_zip(tmp_path
         "bytes": len(express),
         "sha256": hashlib.sha256(express).hexdigest(),
     }
-    assert validate_distribution(
-        manifest,
-        assets["tf"],
-        assets["report"],
-        express_archive=assets["express"],
-        expected_release_tag=RELEASE_TAG,
-        expected_release_commit=RELEASE_COMMIT,
-        expected_converter_version="0.1.0",
-        expected_data_version="0.1",
-    ) is None
+    assert _validate(assets, manifest) is None
 
 
 def test_complete_zip_is_deterministic_for_same_inputs(tmp_path):
@@ -156,16 +196,79 @@ def test_complete_zip_tamper_is_rejected_by_distribution_validation(tmp_path):
     assets["express"].write_bytes(assets["express"].read_bytes() + b"tamper")
 
     with pytest.raises(DistributionContractError, match="express|complete"):
-        validate_distribution(
-            manifest,
-            assets["tf"],
-            assets["report"],
-            express_archive=assets["express"],
-            expected_release_tag=RELEASE_TAG,
-            expected_release_commit=RELEASE_COMMIT,
-            expected_converter_version="0.1.0",
-            expected_data_version="0.1",
-        )
+        _validate(assets, manifest)
+
+
+def test_complete_zip_wrong_checkout_marker_fails_even_when_manifest_hash_matches(tmp_path):
+    _, _, assets = _stage(tmp_path)
+    marker_name = f"{REPO_ROOT}/app/__checkout__.txt"
+    manifest = _rewrite_express(
+        assets,
+        replace={marker_name: f"v9.9.9\n{'c' * 40}\n".encode("utf-8")},
+    )
+
+    with pytest.raises(DistributionContractError, match="checkout|marker|release|commit"):
+        _validate(assets, manifest)
+
+
+def test_complete_zip_missing_checkout_marker_fails_even_when_manifest_hash_matches(tmp_path):
+    _, _, assets = _stage(tmp_path)
+    manifest = _rewrite_express(
+        assets,
+        remove=(f"{REPO_ROOT}/tf/0.1/__checkout__.txt",),
+    )
+
+    with pytest.raises(DistributionContractError, match="checkout|marker|missing"):
+        _validate(assets, manifest)
+
+
+def test_complete_zip_feature_divergence_fails_even_when_manifest_hash_matches(tmp_path):
+    _, _, assets = _stage(tmp_path)
+    feature_name = f"{REPO_ROOT}/tf/0.1/book.tf"
+    manifest = _rewrite_express(
+        assets,
+        replace={feature_name: b"@node\n1\tDIFFERENT\n"},
+    )
+
+    with pytest.raises(DistributionContractError, match="feature|native|express|Text-Fabric"):
+        _validate(assets, manifest)
+
+
+@pytest.mark.parametrize(
+    "extra_name",
+    [
+        "../escape",
+        "other/repository/app/rogue.py",
+        f"{REPO_ROOT}/tf/0.1/nested/rogue.tf",
+    ],
+    ids=["traversal", "wrong-root", "nested-data-garbage"],
+)
+def test_complete_zip_rejects_unsafe_or_unexpected_member_roots(tmp_path, extra_name):
+    _, _, assets = _stage(tmp_path)
+    manifest = _rewrite_express(assets, add=((extra_name, b"rogue"),))
+
+    with pytest.raises(DistributionContractError, match="path|root|member|express|nested|traversal"):
+        _validate(assets, manifest)
+
+
+def test_complete_zip_rejects_duplicate_members(tmp_path):
+    _, _, assets = _stage(tmp_path)
+    duplicate = f"{REPO_ROOT}/app/app.py"
+    manifest = _rewrite_express(assets, add=((duplicate, b"second copy"),))
+
+    with pytest.raises(DistributionContractError, match="duplicate|member|express"):
+        _validate(assets, manifest)
+
+
+def test_complete_zip_rejects_symlink_members(tmp_path):
+    _, _, assets = _stage(tmp_path)
+    link = ZipInfo(f"{REPO_ROOT}/app/link")
+    link.create_system = 3
+    link.external_attr = (stat.S_IFLNK | 0o777) << 16
+    manifest = _rewrite_express(assets, add=((link, b"config.yaml"),))
+
+    with pytest.raises(DistributionContractError, match="symlink|member|express"):
+        _validate(assets, manifest)
 
 
 def test_release_workflows_require_complete_zip_transport():
