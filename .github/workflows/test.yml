@@ -190,6 +190,7 @@ jobs:
               assets['tf'],
               assets['report'],
               express_archive=assets['express'],
+              app_directory=Path('app'),
               expected_release_tag=os.environ['CANDIDATE_RELEASE_TAG'],
               expected_release_commit=os.environ['GITHUB_SHA'],
               expected_converter_version='0.2.0',
