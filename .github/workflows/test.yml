@@ -447,3 +447,5 @@ jobs:
           assert app.api.F.otype.maxSlot == 922922
           assert app.api.T.nodeFromSection(("1En__Ethiopic", "1", "1")) is not None
           PY
+      - name: Verify 1 Enoch comparison workflow
+        run: python tests/pinned_comparison_acceptance.py /tmp/pseudepigrapha-tf/0.2
