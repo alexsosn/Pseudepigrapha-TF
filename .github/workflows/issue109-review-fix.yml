@@ -16,66 +16,38 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: issue-109-passage-comparison
-      - name: Fail closed when generated passage has no source passage
+      - name: Repair reviewed fail-closed guard indentation
         run: |
           python - <<'PY'
           from pathlib import Path
 
           path = Path('src/pseudepigrapha_tf/comparison.py')
           text = path.read_text(encoding='utf-8')
-
-          signature = '''    *,
-              expected_source_units: frozenset[object] | None = None,
-          ) -> dict[str, object]:
-          '''
-          updated_signature = '''    *,
-              expected_source_units: frozenset[object] | None = None,
-              source_passage_present: bool = True,
-          ) -> dict[str, object]:
-          '''
-          assert text.count(signature) == 1, text.count(signature)
-          text = text.replace(signature, updated_signature)
-
-          anchor = '''    source_book_node = passage.get("source_book_node")
-          '''
-          replacement = '''    if not source_passage_present:
+          malformed = '''    if not source_passage_present:
               raise ValueError(
                   f"generated translation {generated_id!r} has a passage but source passage is not present"
               )
-
-              source_book_node = passage.get("source_book_node")
           '''
-          assert text.count(anchor) == 1, text.count(anchor)
-          text = text.replace(anchor, replacement)
-
-          call = '''            _translation_view(
-                          translations,
-                          record,
-                          chapter,
-                          verse,
-                          expected_source_units=expected_source_units,
-                      )
+          corrected = '''    if not source_passage_present:
+              raise ValueError(
+                  f"generated translation {generated_id!r} has a passage but source passage is not present"
+              )
           '''
-          updated_call = '''            _translation_view(
-                          translations,
-                          record,
-                          chapter,
-                          verse,
-                          expected_source_units=expected_source_units,
-                          source_passage_present=status == "available",
-                      )
-          '''
-          assert text.count(call) == 1, text.count(call)
-          text = text.replace(call, updated_call)
-
+          # YAML block indentation strips ten spaces from every line; express
+          # the actual file text explicitly instead of relying on visual indent.
+          malformed = "    if not source_passage_present:\n    raise ValueError(\n        f\"generated translation {generated_id!r} has a passage but source passage is not present\"\n    )\n"
+          corrected = "    if not source_passage_present:\n        raise ValueError(\n            f\"generated translation {generated_id!r} has a passage but source passage is not present\"\n        )\n"
+          assert text.count(malformed) == 1, text.count(malformed)
+          text = text.replace(malformed, corrected)
           path.write_text(text, encoding='utf-8')
           PY
+          python -m py_compile src/pseudepigrapha_tf/comparison.py
           git diff --check
           git diff -- src/pseudepigrapha_tf/comparison.py
-      - name: Commit fix
+      - name: Commit repair
         run: |
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add src/pseudepigrapha_tf/comparison.py
-          git commit -m 'fix: reject translation without source passage'
+          git commit -m 'fix: repair translation guard indentation'
           git push origin HEAD:issue-109-passage-comparison
