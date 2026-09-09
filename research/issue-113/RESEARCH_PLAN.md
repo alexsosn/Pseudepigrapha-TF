@@ -54,11 +54,27 @@ At the report publication boundary:
 1. use `REPORT_PROVENANCE_FIELDS` in reverse to reconstruct the canonical generic provenance projection from the report;
 2. call `corpus_license_provenance_is_consistent()` on that projection;
 3. reject inconsistent/unknown verified profiles before manifest construction;
-4. keep #110 report ↔ serialized equality as a separate later invariant;
+4. keep #110 report ↔ serialized equality as a separate invariant;
 5. do not copy OCP license constants or profile logic into `distribution.py`;
 6. do not inspect arbitrary non-canonical Text-Fabric metadata.
 
 This preserves one source of truth: `provenance.py` owns profile semantics; `distribution.py` merely revalidates them at a hostile release boundary.
+
+### Validation-order amendment from GREEN CI
+
+The first GREEN implementation put canonical profile authenticity inside `_report_identity()`. Full CI showed that this was too early: malformed archive and report↔serialized mismatch tests were rejected by the generic profile error before the distribution layer could diagnose the actual representation defect. The pinned real-OCP job was green, but 28 unit tests exposed this diagnostic/validation-order regression.
+
+The corrected order is therefore:
+
+1. validate report status, syntax, and basic publication requirements;
+2. validate archive feature identity and report feature binding;
+3. validate report ↔ serialized Text-Fabric provenance/data identity;
+4. only after those representations agree, validate the agreed canonical provenance profile independently;
+5. construct/publish the manifest only after all four layers pass.
+
+This does not weaken authenticity: forged-but-mutually-agreeing profiles still reach and fail the final canonical check. It preserves more specific fail-closed diagnostics for malformed or asymmetric representations and ensures `stage_distribution_assets()` cannot publish before authenticity succeeds.
+
+Synthetic fixtures that claim to represent a valid verified release unit now derive the complete profile from `corpus_license_metadata()` / `report_provenance()` instead of maintaining partial hand-written copies.
 
 ## TDD sequence
 
@@ -83,7 +99,7 @@ Minimal implementation in `distribution.py`:
 
 - import `corpus_license_provenance_is_consistent` alongside the shared mapping;
 - reconstruct generic provenance from report provenance using the existing mapping;
-- fail closed with a specific profile-consistency diagnostic if the canonical validator rejects it;
+- after representation integrity has been established, fail closed with a specific profile-consistency diagnostic if the canonical validator rejects it;
 - make no serializer/header/parser changes.
 
 ## Full gates
@@ -107,6 +123,7 @@ Review the exact final green head without relying on this plan. Challenge:
 - attempts to bypass by setting the report semantic-check boolean true;
 - future profile/mapping additions;
 - whether distribution duplicates profile policy instead of consuming it;
+- validation ordering and whether a more specific representation defect is masked;
 - whether normal non-canonical TF metadata is affected;
 - whether legitimate converter-generated pinned OCP still stages/reloads exactly.
 
