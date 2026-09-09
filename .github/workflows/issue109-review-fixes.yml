@@ -52,15 +52,16 @@ jobs:
           block = text[start:end]
           anchor = '    text = " ".join(\n'
           assert block.count(anchor) == 1, block.count(anchor)
-          membership = '''    if expected_source_units is not None:
-              for unit in units:
-                  source_unit = unit.get("source_unit")
-                  if source_unit not in expected_source_units:
-                      raise ValueError(
-                          f"generated translation {generated_id!r} source unit {source_unit!r} "
-                          "is outside requested source passage"
-                      )
-          '''
+          membership = ''.join((
+              '    if expected_source_units is not None:\n',
+              '        for unit in units:\n',
+              '            source_unit = unit.get("source_unit")\n',
+              '            if source_unit not in expected_source_units:\n',
+              '                raise ValueError(\n',
+              '                    f"generated translation {generated_id!r} source unit {source_unit!r} "\n',
+              '                    "is outside requested source passage"\n',
+              '                )\n',
+          ))
           block = block.replace(anchor, membership + anchor, 1)
           text = text[:start] + block + text[end:]
 
