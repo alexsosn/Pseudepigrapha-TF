@@ -62,6 +62,29 @@ def _stage(name: str, started: float) -> float:
     return now
 
 
+def _is_tf_path_within(candidate: Path, root: Path) -> bool:
+    """Return whether a .tf path occupies the canonical output tree."""
+
+    return candidate.suffix == ".tf" and (
+        candidate == root or root in candidate.parents
+    )
+
+
+def _validate_report_path(report_path: Path, output: Path) -> Path:
+    """Resolve report publication while keeping it outside the TF feature namespace."""
+
+    resolved_output = output.resolve(strict=False)
+    report_entry = report_path.parent.resolve(strict=False) / report_path.name
+    publication_path = report_path.resolve(strict=False)
+    if _is_tf_path_within(report_entry, resolved_output) or _is_tf_path_within(
+        publication_path, resolved_output
+    ):
+        raise ValueError(
+            f"conversion report path {report_path} collides with Text-Fabric output {output}"
+        )
+    return publication_path
+
+
 def main(argv: list[str] | None = None) -> int:
     args = _parser().parse_args(argv)
     if args.command != "convert":
@@ -109,6 +132,7 @@ def main(argv: list[str] | None = None) -> int:
         print(f"warning: {warning}")
 
     report_path = args.report or (args.output / "conversion-report.json")
+    publication_path = _validate_report_path(report_path, args.output)
     report = build_conversion_report(args.source, books, data)
     if public_metadata is not None:
         report = augment_conversion_report_with_public_metadata(report, args.source, data)
@@ -135,7 +159,6 @@ def main(argv: list[str] | None = None) -> int:
     # so deterministic report-path errors cannot leave a newer corpus paired
     # with an older report.
     report_path.parent.mkdir(parents=True, exist_ok=True)
-    publication_path = report_path.resolve(strict=False)
     if publication_path.is_dir():
         raise IsADirectoryError(str(report_path))
 
