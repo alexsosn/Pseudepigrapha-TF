@@ -175,6 +175,18 @@ def _report_identity(report: Mapping[str, Any], *, converter_version: str) -> di
                 value, f"report provenance {report_key}"
             )
 
+    return {
+        "upstream_repository": upstream_repository,
+        "upstream_commit": upstream_commit,
+        "provenance": manifest_provenance,
+        "serialized_provenance": serialized_provenance,
+    }
+
+
+def _validate_canonical_provenance_profile(identity: Mapping[str, Any]) -> None:
+    serialized_provenance = _require_mapping(
+        identity.get("serialized_provenance"), "report-derived serialized provenance"
+    )
     generic_provenance = {
         serialized_key: serialized_provenance[report_key]
         for serialized_key, report_key in REPORT_PROVENANCE_FIELDS
@@ -184,13 +196,6 @@ def _report_identity(report: Mapping[str, Any], *, converter_version: str) -> di
         raise DistributionContractError(
             "report provenance does not match a canonical verified source/license profile"
         )
-
-    return {
-        "upstream_repository": upstream_repository,
-        "upstream_commit": upstream_commit,
-        "provenance": manifest_provenance,
-        "serialized_provenance": serialized_provenance,
-    }
 
 
 def _feature_records(archive: Path) -> list[dict[str, Any]]:
@@ -478,6 +483,7 @@ def build_distribution_manifest(
         converter_version=converter_version,
         data_version=data_version,
     )
+    _validate_canonical_provenance_profile(identity)
 
     return {
         "schema_version": SCHEMA_VERSION,

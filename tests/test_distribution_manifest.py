@@ -14,11 +14,30 @@ from pseudepigrapha_tf.distribution import (
     canonical_manifest_bytes,
     validate_distribution,
 )
-
+from pseudepigrapha_tf.provenance import corpus_license_metadata, report_provenance
 
 UPSTREAM_REPOSITORY = "https://github.com/OnlineCriticalPseudepigrapha/Online-Critical-Pseudepigrapha"
 UPSTREAM_COMMIT = "c939dcbacad78c5d18d2c4282cad23c47e19ac07"
 RELEASE_COMMIT = "0123456789abcdef0123456789abcdef01234567"
+
+def _canonical_generic() -> dict[str, str]:
+    return {
+        "upstreamRepository": UPSTREAM_REPOSITORY,
+        "upstreamCommit": UPSTREAM_COMMIT,
+        "converterVersion": "0.1.0",
+        **corpus_license_metadata(
+            UPSTREAM_REPOSITORY,
+            UPSTREAM_COMMIT,
+            source_identity_verified=True,
+        ),
+    }
+
+
+def _canonical_otype_payload() -> bytes:
+    metadata = {**_canonical_generic(), "valueType": "str", "version": "0.1"}
+    lines = ["@node", *(f"@{key}={value}" for key, value in sorted(metadata.items())), ""]
+    return ("\n".join(lines) + "\n1\tword\n").encode("utf-8")
+
 
 
 def _report(*, status: str = "ok", source_status: str = "verified", license_status: str = "verified") -> dict:
@@ -27,16 +46,9 @@ def _report(*, status: str = "ok", source_status: str = "verified", license_stat
         "failed_checks": [] if status == "ok" else ["probe"],
         "semantic_checks": {"probe": status == "ok"},
         "provenance": {
-            "upstream_repository": UPSTREAM_REPOSITORY,
-            "upstream_commit": UPSTREAM_COMMIT,
-            "converter_version": "0.1.0",
+            **report_provenance(_canonical_generic()),
             "source_identity_status": source_status,
             "content_license_status": license_status,
-            "content_license": "CC-BY-4.0",
-            "converter_software_license": "MIT",
-            "upstream_software_license": "GPL-3.0",
-            "upstream_license_commit": "8c8c2c55a2c55ba4b23ac506956f98dcc25045b2",
-            "content_license_source": f"{UPSTREAM_REPOSITORY}/blob/{UPSTREAM_COMMIT}/LICENSE.CC-BY-4.0",
         },
     }
 
@@ -66,7 +78,7 @@ def _assets(tmp_path: Path, *, report: dict | None = None) -> tuple[Path, Path]:
     with ZipFile(archive, "w", compression=ZIP_DEFLATED) as zf:
         # Deliberately write in non-lexical order: manifest feature identity must
         # normalize archive container ordering rather than inherit it.
-        zf.writestr("otype.tf", '@node\n@contentLicense=CC-BY-4.0\n@contentLicenseSource=https://github.com/OnlineCriticalPseudepigrapha/Online-Critical-Pseudepigrapha/blob/c939dcbacad78c5d18d2c4282cad23c47e19ac07/LICENSE.CC-BY-4.0\n@contentLicenseStatus=verified\n@converterSoftwareLicense=MIT\n@converterVersion=0.1.0\n@sourceIdentityStatus=verified\n@upstreamCommit=c939dcbacad78c5d18d2c4282cad23c47e19ac07\n@upstreamLicenseCommit=8c8c2c55a2c55ba4b23ac506956f98dcc25045b2\n@upstreamRepository=https://github.com/OnlineCriticalPseudepigrapha/Online-Critical-Pseudepigrapha\n@upstreamSoftwareLicense=GPL-3.0\n@valueType=str\n@version=0.1\n\n1\tword\n')
+        zf.writestr("otype.tf", _canonical_otype_payload())
         zf.writestr("book.tf", "@node\n@valueType=str\n2\t1En__Ethiopic\n")
         zf.writestr("oslots.tf", "@edge\n2\t1\n")
     if report is None:
