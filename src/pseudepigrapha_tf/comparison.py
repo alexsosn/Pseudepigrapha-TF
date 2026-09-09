@@ -253,6 +253,7 @@ def _translation_view(
     verse: str,
     *,
     expected_source_units: frozenset[object] | None = None,
+    source_passage_present: bool = True,
 ) -> dict[str, object]:
     generated_id = str(record.get("id", ""))
     base = {
@@ -275,6 +276,11 @@ def _translation_view(
             "units": (),
             "text": "",
         }
+
+    if not source_passage_present:
+    raise ValueError(
+        f"generated translation {generated_id!r} has a passage but source passage is not present"
+    )
 
     source_book_node = passage.get("source_book_node")
     expected_source_node = record.get("source_node")
@@ -496,6 +502,7 @@ def build_passage_comparison(
                 chapter,
                 verse,
                 expected_source_units=expected_source_units,
+                source_passage_present=status == "available",
             )
             for record in generated_by_source.get(version_id, ())
         )
