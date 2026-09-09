@@ -8,7 +8,7 @@ from zipfile import ZIP_DEFLATED, ZipFile
 
 import pytest
 
-from test_support.distribution import (
+from distribution_support import (
     canonical_otype_payload,
     canonical_report_provenance,
 )
