@@ -13,7 +13,7 @@ from pseudepigrapha_tf.distribution import (
     feature_directory_identity,
     validate_feature_directory,
 )
-from test_support.distribution import (
+from distribution_support import (
     canonical_otype_payload,
     canonical_report_provenance,
 )
