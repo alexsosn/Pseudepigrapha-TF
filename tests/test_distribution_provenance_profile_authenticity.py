@@ -127,6 +127,18 @@ def _wrong_content_license_url(generic: dict[str, str]) -> None:
     generic["contentLicenseUrl"] = "https://example.invalid/license"
 
 
+def _wrong_content_license_source(generic: dict[str, str]) -> None:
+    generic["contentLicenseSource"] = "https://example.invalid/license-source"
+
+
+def _wrong_content_license_scope(generic: dict[str, str]) -> None:
+    generic["contentLicenseScope"] = "different corpus scope"
+
+
+def _wrong_converter_software_license(generic: dict[str, str]) -> None:
+    generic["converterSoftwareLicense"] = "OTHER"
+
+
 def _wrong_upstream_software_license(generic: dict[str, str]) -> None:
     generic["upstreamSoftwareLicense"] = "OTHER"
 
@@ -135,8 +147,28 @@ def _wrong_upstream_license_commit(generic: dict[str, str]) -> None:
     generic["upstreamLicenseCommit"] = "a" * 40
 
 
+def _wrong_content_attribution(generic: dict[str, str]) -> None:
+    generic["contentAttribution"] = "Incorrect attribution"
+
+
+def _wrong_content_citation(generic: dict[str, str]) -> None:
+    generic["contentCitation"] = "Incorrect citation"
+
+
 def _omit_required_attribution(generic: dict[str, str]) -> None:
     generic.pop("contentAttribution")
+
+
+def _omit_required_license_source(generic: dict[str, str]) -> None:
+    generic.pop("contentLicenseSource")
+
+
+def _omit_required_license_scope(generic: dict[str, str]) -> None:
+    generic.pop("contentLicenseScope")
+
+
+def _omit_required_citation(generic: dict[str, str]) -> None:
+    generic.pop("contentCitation")
 
 
 def _unknown_source_claiming_verified_profile(generic: dict[str, str]) -> None:
@@ -149,17 +181,33 @@ def _unknown_source_claiming_verified_profile(generic: dict[str, str]) -> None:
     [
         _wrong_content_license,
         _wrong_content_license_url,
+        _wrong_content_license_source,
+        _wrong_content_license_scope,
+        _wrong_converter_software_license,
         _wrong_upstream_software_license,
         _wrong_upstream_license_commit,
+        _wrong_content_attribution,
+        _wrong_content_citation,
         _omit_required_attribution,
+        _omit_required_license_source,
+        _omit_required_license_scope,
+        _omit_required_citation,
         _unknown_source_claiming_verified_profile,
     ],
     ids=[
         "wrong-content-license",
         "wrong-content-license-url",
+        "wrong-content-license-source",
+        "wrong-content-license-scope",
+        "wrong-converter-software-license",
         "wrong-upstream-software-license",
         "wrong-upstream-license-commit",
+        "wrong-content-attribution",
+        "wrong-content-citation",
         "missing-required-attribution",
+        "missing-required-license-source",
+        "missing-required-license-scope",
+        "missing-required-citation",
         "unknown-source-verified-profile",
     ],
 )
