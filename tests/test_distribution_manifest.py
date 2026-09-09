@@ -15,7 +15,7 @@ from pseudepigrapha_tf.distribution import (
     validate_distribution,
 )
 from pseudepigrapha_tf.provenance import OCP_PIN, OCP_REPOSITORY
-from test_support.distribution import (
+from distribution_support import (
     canonical_otype_payload,
     canonical_report_provenance,
 )
