@@ -162,7 +162,7 @@ def _validate_express_archive(
     data_version: str,
     repository_owner: str,
     repository_name: str,
-) -> None:
+) -> dict[str, bytes]:
     express_archive = Path(express_archive)
     native_archive = Path(native_archive)
     if express_archive.name != EXPRESS_NAME:
@@ -244,6 +244,28 @@ def _validate_express_archive(
             raise DistributionContractError(
                 f"Text-Fabric express feature {name!r} differs from native archive bytes"
             )
+    return app_payloads
+
+
+def _validate_express_app_identity(
+    app_payloads: Mapping[str, bytes],
+    app_directory: str | Path,
+) -> None:
+    expected = _collect_app_payloads(Path(app_directory))
+    actual_names = set(app_payloads)
+    expected_names = set(expected)
+    if actual_names != expected_names:
+        missing = sorted(expected_names - actual_names)
+        extra = sorted(actual_names - expected_names)
+        raise DistributionContractError(
+            "Text-Fabric express app member set differs from exact app directory; "
+            f"missing={missing}, extra={extra}"
+        )
+    for name, expected_payload in expected.items():
+        if app_payloads[name] != expected_payload:
+            raise DistributionContractError(
+                f"Text-Fabric express app payload {name!r} differs from exact app directory"
+            )
 
 
 def build_distribution_manifest(
@@ -288,6 +310,7 @@ def validate_distribution(
     report_path: str | Path,
     *,
     express_archive: str | Path | None = None,
+    app_directory: str | Path | None = None,
     repository_owner: str = DEFAULT_REPOSITORY_OWNER,
     repository_name: str = DEFAULT_REPOSITORY_NAME,
     expected_release_tag: str | None = None,
@@ -295,7 +318,7 @@ def validate_distribution(
     expected_converter_version: str | None = None,
     expected_data_version: str | None = None,
 ) -> None:
-    """Validate native distribution closure plus optional complete.zip transport."""
+    """Validate native closure plus complete.zip against its exact app checkout."""
 
     manifest = _native._require_mapping(manifest, "dataset manifest")
     release_tag, release_commit, converter_version, data_version = _native._manifest_publication_identity(manifest)
@@ -324,7 +347,7 @@ def validate_distribution(
     if express_archive is None:
         return
 
-    _validate_express_archive(
+    app_payloads = _validate_express_archive(
         express_archive,
         tf_archive,
         release_tag=release_tag,
@@ -333,6 +356,12 @@ def validate_distribution(
         repository_owner=repository_owner,
         repository_name=repository_name,
     )
+    if app_directory is None:
+        raise DistributionContractError(
+            "Text-Fabric express app validation requires an exact app directory identity"
+        )
+    _validate_express_app_identity(app_payloads, app_directory)
+
     actual = _native._file_record(Path(express_archive))
     expected = dict(_native._require_mapping(assets.get("express"), "manifest express asset"))
     if expected != actual:
@@ -420,6 +449,7 @@ def stage_distribution_assets(
             native_assets["tf"],
             native_assets["report"],
             express_archive=express,
+            app_directory=app_directory,
             repository_owner=repository_owner,
             repository_name=repository_name,
             expected_release_tag=release_tag,
