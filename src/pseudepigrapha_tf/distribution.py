@@ -277,10 +277,11 @@ def build_distribution_manifest(
     converter_version: str,
     data_version: str,
     express_archive: str | Path | None = None,
+    app_directory: str | Path | None = None,
     repository_owner: str = DEFAULT_REPOSITORY_OWNER,
     repository_name: str = DEFAULT_REPOSITORY_NAME,
 ) -> dict[str, Any]:
-    """Build the native manifest, optionally binding stock Text-Fabric express transport."""
+    """Build the native manifest and bind optional express bytes to exact app identity."""
 
     manifest = _native.build_distribution_manifest(
         tf_archive,
@@ -291,7 +292,7 @@ def build_distribution_manifest(
         data_version=data_version,
     )
     if express_archive is not None:
-        _validate_express_archive(
+        app_payloads = _validate_express_archive(
             express_archive,
             tf_archive,
             release_tag=release_tag,
@@ -300,6 +301,11 @@ def build_distribution_manifest(
             repository_owner=repository_owner,
             repository_name=repository_name,
         )
+        if app_directory is None:
+            raise DistributionContractError(
+                "Text-Fabric express app manifest binding requires an exact app directory identity"
+            )
+        _validate_express_app_identity(app_payloads, app_directory)
         manifest["assets"]["express"] = _native._file_record(Path(express_archive))
     return manifest
 
@@ -440,6 +446,7 @@ def stage_distribution_assets(
             converter_version=converter_version,
             data_version=data_version,
             express_archive=express,
+            app_directory=app_directory,
             repository_owner=repository_owner,
             repository_name=repository_name,
         )
