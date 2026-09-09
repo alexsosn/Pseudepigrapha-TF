@@ -133,7 +133,6 @@ jobs:
               stage_distribution_assets,
               validate_distribution,
           )
-          from pseudepigrapha_tf.express_app_binding import validate_express_app_directory
 
           app_directory = Path(os.environ['GITHUB_WORKSPACE']) / 'app'
           assets = stage_distribution_assets(
@@ -151,14 +150,11 @@ jobs:
               assets['tf'],
               assets['report'],
               express_archive=assets['express'],
+              app_directory=app_directory,
               expected_release_tag=os.environ['RELEASE_TAG'],
               expected_release_commit=os.environ['RELEASE_COMMIT'],
               expected_converter_version=os.environ['CONVERTER_VERSION'],
               expected_data_version=os.environ['DATA_VERSION'],
-          )
-          validate_express_app_directory(
-              assets['express'],
-              app_directory=app_directory,
           )
           PY
 
