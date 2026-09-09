@@ -1,6 +1,7 @@
 from pathlib import Path
 
 import json
+import os
 import pytest
 
 from pseudepigrapha_tf import cli
@@ -66,6 +67,19 @@ def _invoke_with_counted_writer(monkeypatch, source_dir: Path, output: Path, rep
             ]
         )
     return writer_calls
+
+
+def _force_failed_audit(monkeypatch) -> None:
+    failed_report = {
+        "status": "failed",
+        "failed_checks": ["forced_failure"],
+        "diagnostics": {"duplicate_section_addresses": []},
+    }
+    monkeypatch.setattr(
+        cli,
+        "build_conversion_report",
+        lambda source, books, data: failed_report,
+    )
 
 
 def test_cli_rejects_direct_tf_report_inside_output_before_write(monkeypatch, tmp_path):
@@ -185,13 +199,7 @@ def test_cli_rejects_failed_audit_report_collision_before_touching_existing_tf(m
     source_dir = _copy_source_fixture(tmp_path)
     output = tmp_path / "tf"
     original = _existing_stub_tf(output)
-    failed_report = {
-        "status": "failed",
-        "failed_checks": ["forced_failure"],
-        "diagnostics": {"duplicate_section_addresses": []},
-    }
-
-    monkeypatch.setattr(cli, "build_conversion_report", lambda source, books, data: failed_report)
+    _force_failed_audit(monkeypatch)
 
     def writer_must_not_run(data, output_dir):
         raise AssertionError("writer must not run for a report-path collision")
@@ -213,6 +221,60 @@ def test_cli_rejects_failed_audit_report_collision_before_touching_existing_tf(m
         )
 
     _assert_existing_generation(output, original)
+
+
+def test_cli_rejects_external_hardlink_report_alias_to_tf_before_failed_audit_write(monkeypatch, tmp_path):
+    source_dir = _copy_source_fixture(tmp_path)
+    output = tmp_path / "tf"
+    original = _existing_stub_tf(output)
+    report_path = tmp_path / "report.json"
+    os.link(output / "otype.tf", report_path)
+    _force_failed_audit(monkeypatch)
+
+    with pytest.raises(ValueError, match="report.*Text-Fabric|Text-Fabric.*report"):
+        cli.main(
+            [
+                "convert",
+                str(source_dir),
+                "--output",
+                str(output),
+                "--report",
+                str(report_path),
+                "--upstream-commit",
+                "test-commit",
+            ]
+        )
+
+    _assert_existing_generation(output, original)
+    assert report_path.read_bytes() == original["otype.tf"]
+    assert report_path.samefile(output / "otype.tf")
+
+
+def test_cli_rejects_internal_json_hardlink_report_alias_to_tf_before_failed_audit_write(monkeypatch, tmp_path):
+    source_dir = _copy_source_fixture(tmp_path)
+    output = tmp_path / "tf"
+    original = _existing_stub_tf(output)
+    report_path = output / "report.json"
+    os.link(output / "otype.tf", report_path)
+    _force_failed_audit(monkeypatch)
+
+    with pytest.raises(ValueError, match="report.*Text-Fabric|Text-Fabric.*report"):
+        cli.main(
+            [
+                "convert",
+                str(source_dir),
+                "--output",
+                str(output),
+                "--report",
+                str(report_path),
+                "--upstream-commit",
+                "test-commit",
+            ]
+        )
+
+    _assert_existing_generation(output, original)
+    assert report_path.read_bytes() == original["otype.tf"]
+    assert report_path.samefile(output / "otype.tf")
 
 
 def test_cli_allows_tf_suffixed_report_outside_output(monkeypatch, tmp_path):
