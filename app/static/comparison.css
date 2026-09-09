@@ -1,0 +1,145 @@
+.comparison-page {
+  box-sizing: border-box;
+  max-width: 1600px;
+  margin: 0 auto;
+  padding: 1rem;
+  font-family: system-ui, sans-serif;
+  line-height: 1.45;
+}
+
+.comparison-page *,
+.comparison-page *::before,
+.comparison-page *::after {
+  box-sizing: inherit;
+}
+
+.comparison-nav {
+  margin-bottom: 1rem;
+}
+
+.passage-navigation {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin: 0.75rem 0 1rem;
+}
+
+.comparison-controls,
+.comparison-landing {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  align-items: end;
+  margin: 1rem 0;
+}
+
+.comparison-controls fieldset {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 1rem;
+  min-width: min(42rem, 100%);
+}
+
+.comparison-landing label {
+  display: grid;
+  gap: 0.25rem;
+}
+
+.version-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(32rem, 100%), 1fr));
+  gap: 1rem;
+  align-items: start;
+}
+
+.source-version-card {
+  min-width: 0;
+  padding: 1rem;
+  border: 1px solid currentColor;
+  border-radius: 0.4rem;
+}
+
+.source-version-card h2,
+.source-version-card h3,
+.source-version-card h4 {
+  margin-top: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.source-author,
+.translation-provenance,
+.witness-coverage {
+  font-size: 0.9em;
+  opacity: 0.8;
+}
+
+.source-text,
+.translation-text,
+.witness-text {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.translations,
+.witness-comparison {
+  margin-top: 1rem;
+}
+
+.translation-block {
+  margin: 0.5rem 0;
+  padding: 0.5rem 0;
+}
+
+.translation-block summary,
+.witness-selector summary {
+  cursor: pointer;
+}
+
+.witness-selector {
+  margin-top: 1rem;
+}
+
+.witness-selector label {
+  display: inline-block;
+  margin: 0.35rem 0.75rem 0.35rem 0;
+}
+
+.witness-row {
+  padding: 0.75rem 0;
+  border-top: 1px solid currentColor;
+}
+
+.state-omission,
+.state-unattested,
+.state-not-present,
+.comparison-error {
+  font-style: italic;
+}
+
+.metadata-only-versions {
+  margin-top: 1.5rem;
+}
+
+@media (max-width: 760px) {
+  .comparison-page {
+    padding: 0.75rem;
+  }
+
+  .version-grid {
+    display: block;
+  }
+
+  .source-version-card {
+    margin-bottom: 1rem;
+  }
+
+  .comparison-controls,
+  .comparison-landing {
+    display: grid;
+  }
+
+  .comparison-controls fieldset {
+    min-width: 0;
+  }
+}
