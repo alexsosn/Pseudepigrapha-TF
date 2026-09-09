@@ -12,17 +12,36 @@ from pseudepigrapha_tf.distribution import (
     stage_distribution_assets,
     validate_distribution,
 )
-
+from pseudepigrapha_tf.provenance import corpus_license_metadata, report_provenance
 
 UPSTREAM_REPOSITORY = "https://github.com/OnlineCriticalPseudepigrapha/Online-Critical-Pseudepigrapha"
 UPSTREAM_COMMIT = "c939dcbacad78c5d18d2c4282cad23c47e19ac07"
 RELEASE_COMMIT = "b" * 40
 
+def _canonical_generic() -> dict[str, str]:
+    return {
+        "upstreamRepository": UPSTREAM_REPOSITORY,
+        "upstreamCommit": UPSTREAM_COMMIT,
+        "converterVersion": "0.1.0",
+        **corpus_license_metadata(
+            UPSTREAM_REPOSITORY,
+            UPSTREAM_COMMIT,
+            source_identity_verified=True,
+        ),
+    }
+
+
+def _canonical_otype_payload() -> bytes:
+    metadata = {**_canonical_generic(), "valueType": "str", "version": "0.1"}
+    lines = ["@node", *(f"@{key}={value}" for key, value in sorted(metadata.items())), ""]
+    return ("\n".join(lines) + "\n1\tword\n").encode("utf-8")
+
+
 
 def _materialized(tmp_path: Path, *, status: str = "ok") -> Path:
     source = tmp_path / "tf" / "0.1"
     source.mkdir(parents=True)
-    (source / "otype.tf").write_bytes(b'@node\n@contentLicense=CC-BY-4.0\n@contentLicenseStatus=verified\n@converterSoftwareLicense=MIT\n@converterVersion=0.1.0\n@sourceIdentityStatus=verified\n@upstreamCommit=c939dcbacad78c5d18d2c4282cad23c47e19ac07\n@upstreamRepository=https://github.com/OnlineCriticalPseudepigrapha/Online-Critical-Pseudepigrapha\n@upstreamSoftwareLicense=GPL-3.0\n@valueType=str\n@version=0.1\n\n1\tword\n')
+    (source / "otype.tf").write_bytes(_canonical_otype_payload())
     (source / "book.tf").write_bytes(b"@node\n@valueType=str\n2\t1En__Ethiopic\n")
     (source / "oslots.tf").write_bytes(b"@edge\n2\t1\n")
     (source / "conversion-report.json").write_text(
@@ -32,16 +51,7 @@ def _materialized(tmp_path: Path, *, status: str = "ok") -> Path:
                 "failed_checks": [] if status == "ok" else ["probe"],
                 "semantic_checks": {"probe": status == "ok"},
                 "text_fabric": feature_directory_identity(source),
-                "provenance": {
-                    "upstream_repository": UPSTREAM_REPOSITORY,
-                    "upstream_commit": UPSTREAM_COMMIT,
-                    "converter_version": "0.1.0",
-                    "source_identity_status": "verified",
-                    "content_license_status": "verified",
-                    "content_license": "CC-BY-4.0",
-                    "converter_software_license": "MIT",
-                    "upstream_software_license": "GPL-3.0",
-                },
+                "provenance": report_provenance(_canonical_generic()),
             },
             sort_keys=True,
         )

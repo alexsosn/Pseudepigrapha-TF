@@ -9,7 +9,11 @@ from tempfile import mkdtemp
 from typing import Any, Mapping
 from zipfile import BadZipFile, ZIP_DEFLATED, ZipFile, ZipInfo
 
-from .provenance import REPORT_PROVENANCE_FIELDS, report_provenance
+from .provenance import (
+    REPORT_PROVENANCE_FIELDS,
+    corpus_license_provenance_is_consistent,
+    report_provenance,
+)
 
 
 SCHEMA_VERSION = 1
@@ -193,6 +197,21 @@ def _report_identity(report: Mapping[str, Any], *, converter_version: str) -> di
         "provenance": manifest_provenance,
         "serialized_provenance": serialized_provenance,
     }
+
+
+def _validate_canonical_provenance_profile(identity: Mapping[str, Any]) -> None:
+    serialized_provenance = _require_mapping(
+        identity.get("serialized_provenance"), "report-derived serialized provenance"
+    )
+    generic_provenance = {
+        serialized_key: serialized_provenance[report_key]
+        for serialized_key, report_key in REPORT_PROVENANCE_FIELDS
+        if report_key in serialized_provenance
+    }
+    if not corpus_license_provenance_is_consistent(generic_provenance):
+        raise DistributionContractError(
+            "report provenance does not match a canonical verified source/license profile"
+        )
 
 
 def _feature_records(archive: Path) -> list[dict[str, Any]]:
@@ -480,6 +499,7 @@ def build_distribution_manifest(
         converter_version=converter_version,
         data_version=data_version,
     )
+    _validate_canonical_provenance_profile(identity)
 
     return {
         "schema_version": SCHEMA_VERSION,
