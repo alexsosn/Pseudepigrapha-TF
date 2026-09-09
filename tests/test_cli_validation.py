@@ -46,6 +46,17 @@ def _write_stub_tf(data, output_dir):
     return True
 
 
+def _existing_stub_tf(output):
+    output.mkdir(parents=True, exist_ok=True)
+    payloads = {
+        "otype.tf": b"@node\n@valueType=str\n1\told-word\n",
+        "oslots.tf": b"@edge\n1\t1\n",
+    }
+    for name, payload in payloads.items():
+        (output / name).write_bytes(payload)
+    return payloads
+
+
 def test_cli_validates_generated_graph_once(monkeypatch, tmp_path):
     source_dir = _copy_source_fixture(tmp_path)
 
@@ -259,5 +270,152 @@ def test_cli_successful_explicit_report_preserves_symlink_target(monkeypatch, tm
 
     assert report_path.is_symlink()
     published = json.loads(target.read_text(encoding="utf-8"))
+    assert published["status"] == "ok"
+    assert published["text_fabric"] == feature_directory_identity(output)
+
+
+def test_cli_rejects_direct_report_collision_with_tf_feature_before_write(monkeypatch, tmp_path):
+    source_dir = _copy_source_fixture(tmp_path)
+    output = tmp_path / "tf"
+    original = _existing_stub_tf(output)
+    writer_calls = 0
+
+    def counted_writer(data, output_dir):
+        nonlocal writer_calls
+        writer_calls += 1
+        return True
+
+    monkeypatch.setattr(cli, "_write_prevalidated_tf", counted_writer)
+
+    with pytest.raises(ValueError, match="report.*Text-Fabric|Text-Fabric.*report"):
+        cli.main(
+            [
+                "convert",
+                str(source_dir),
+                "--output",
+                str(output),
+                "--report",
+                str(output / "otype.tf"),
+                "--upstream-commit",
+                "test-commit",
+            ]
+        )
+
+    assert writer_calls == 0
+    assert {name: (output / name).read_bytes() for name in original} == original
+
+
+def test_cli_rejects_symlinked_report_collision_with_tf_feature_before_write(monkeypatch, tmp_path):
+    source_dir = _copy_source_fixture(tmp_path)
+    output = tmp_path / "tf"
+    original = _existing_stub_tf(output)
+    report_path = tmp_path / "report.json"
+    report_path.symlink_to(output / "otype.tf")
+    writer_calls = 0
+
+    def counted_writer(data, output_dir):
+        nonlocal writer_calls
+        writer_calls += 1
+        return True
+
+    monkeypatch.setattr(cli, "_write_prevalidated_tf", counted_writer)
+
+    with pytest.raises(ValueError, match="report.*Text-Fabric|Text-Fabric.*report"):
+        cli.main(
+            [
+                "convert",
+                str(source_dir),
+                "--output",
+                str(output),
+                "--report",
+                str(report_path),
+                "--upstream-commit",
+                "test-commit",
+            ]
+        )
+
+    assert writer_calls == 0
+    assert report_path.is_symlink()
+    assert {name: (output / name).read_bytes() for name in original} == original
+
+
+def test_cli_rejects_dotdot_report_alias_to_tf_feature_before_write(monkeypatch, tmp_path):
+    source_dir = _copy_source_fixture(tmp_path)
+    output = tmp_path / "tf"
+    original = _existing_stub_tf(output)
+    alias_dir = output / "reports"
+    alias_dir.mkdir()
+    report_path = alias_dir / ".." / "oslots.tf"
+    writer_calls = 0
+
+    def counted_writer(data, output_dir):
+        nonlocal writer_calls
+        writer_calls += 1
+        return True
+
+    monkeypatch.setattr(cli, "_write_prevalidated_tf", counted_writer)
+
+    with pytest.raises(ValueError, match="report.*Text-Fabric|Text-Fabric.*report"):
+        cli.main(
+            [
+                "convert",
+                str(source_dir),
+                "--output",
+                str(output),
+                "--report",
+                str(report_path),
+                "--upstream-commit",
+                "test-commit",
+            ]
+        )
+
+    assert writer_calls == 0
+    assert {name: (output / name).read_bytes() for name in original} == original
+
+
+def test_cli_allows_tf_suffixed_report_outside_output(monkeypatch, tmp_path):
+    source_dir = _copy_source_fixture(tmp_path)
+    output = tmp_path / "tf"
+    report_path = tmp_path / "reports" / "audit.tf"
+    monkeypatch.setattr(cli, "_write_prevalidated_tf", _write_stub_tf)
+
+    assert cli.main(
+        [
+            "convert",
+            str(source_dir),
+            "--output",
+            str(output),
+            "--report",
+            str(report_path),
+            "--upstream-commit",
+            "test-commit",
+        ]
+    ) == 0
+
+    published = json.loads(report_path.read_text(encoding="utf-8"))
+    assert published["status"] == "ok"
+    assert published["text_fabric"] == feature_directory_identity(output)
+
+
+def test_cli_allows_nested_tf_suffixed_report_inside_output(monkeypatch, tmp_path):
+    source_dir = _copy_source_fixture(tmp_path)
+    output = tmp_path / "tf"
+    report_path = output / "reports" / "audit.tf"
+    monkeypatch.setattr(cli, "_write_prevalidated_tf", _write_stub_tf)
+
+    assert cli.main(
+        [
+            "convert",
+            str(source_dir),
+            "--output",
+            str(output),
+            "--report",
+            str(report_path),
+            "--upstream-commit",
+            "test-commit",
+        ]
+    ) == 0
+
+    published = json.loads(report_path.read_text(encoding="utf-8"))
     assert published["status"] == "ok"
     assert published["text_fabric"] == feature_directory_identity(output)
