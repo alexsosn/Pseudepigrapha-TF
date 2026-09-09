@@ -70,6 +70,27 @@ def _is_tf_path_within(candidate: Path, root: Path) -> bool:
     )
 
 
+def _same_inode_as_tf_feature(candidate: Path, root: Path) -> bool:
+    """Detect an existing pathname that aliases a TF feature via a hard link."""
+
+    try:
+        candidate_stat = candidate.stat()
+    except FileNotFoundError:
+        return False
+    if not root.is_dir():
+        return False
+
+    candidate_identity = (candidate_stat.st_dev, candidate_stat.st_ino)
+    for feature in root.rglob("*.tf"):
+        try:
+            feature_stat = feature.stat()
+        except FileNotFoundError:
+            continue
+        if (feature_stat.st_dev, feature_stat.st_ino) == candidate_identity:
+            return True
+    return False
+
+
 def _validate_report_path(report_path: Path, output: Path) -> Path:
     """Resolve report publication while keeping it outside the TF feature namespace."""
 
@@ -78,7 +99,7 @@ def _validate_report_path(report_path: Path, output: Path) -> Path:
     publication_path = report_path.resolve(strict=False)
     if _is_tf_path_within(report_entry, resolved_output) or _is_tf_path_within(
         publication_path, resolved_output
-    ):
+    ) or _same_inode_as_tf_feature(report_path, resolved_output):
         raise ValueError(
             f"conversion report path {report_path} collides with Text-Fabric output {output}"
         )
