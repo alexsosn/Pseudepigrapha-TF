@@ -7,7 +7,7 @@ from pathlib import Path
 import shutil
 from tempfile import mkdtemp
 from typing import Any, Mapping
-from zipfile import BadZipFile, ZIP_DEFLATED, ZipFile
+from zipfile import BadZipFile, ZIP_DEFLATED, ZipFile, ZipInfo
 
 from .provenance import REPORT_PROVENANCE_FIELDS, report_provenance
 
@@ -15,6 +15,22 @@ from .provenance import REPORT_PROVENANCE_FIELDS, report_provenance
 SCHEMA_VERSION = 1
 REPORT_NAME = "conversion-report.json"
 MANIFEST_NAME = "dataset-manifest.json"
+
+_CANONICAL_ZIP_DATETIME = (1980, 1, 1, 0, 0, 0)
+_CANONICAL_ZIP_CREATE_SYSTEM = 3  # Unix, fixed rather than host-derived.
+_CANONICAL_ZIP_EXTERNAL_ATTR = 0o100644 << 16
+
+
+def _canonical_zip_info(name: str) -> ZipInfo:
+    """Return host-independent metadata for one top-level TF archive member."""
+
+    info = ZipInfo(name, date_time=_CANONICAL_ZIP_DATETIME)
+    info.compress_type = ZIP_DEFLATED
+    info.create_system = _CANONICAL_ZIP_CREATE_SYSTEM
+    info.external_attr = _CANONICAL_ZIP_EXTERNAL_ATTR
+    info.extra = b""
+    info.comment = b""
+    return info
 
 
 class DistributionContractError(ValueError):
@@ -693,7 +709,7 @@ def stage_distribution_assets(
         # ZIP_DEFLATED and excludes non-feature files such as the report.
         with ZipFile(archive, "w", compression=ZIP_DEFLATED) as zf:
             for feature in features:
-                zf.write(feature, arcname=feature.name)
+                zf.writestr(_canonical_zip_info(feature.name), feature.read_bytes())
         shutil.copyfile(report_source, staged_report)
 
         manifest = build_distribution_manifest(
