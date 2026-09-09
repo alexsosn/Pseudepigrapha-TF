@@ -1,0 +1,59 @@
+name: issue122-implement
+
+on:
+  push:
+    branches:
+      - fix/122-output-symlink
+
+permissions:
+  contents: write
+
+jobs:
+  implement:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/122-output-symlink
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+      - name: Apply final-component output symlink guard
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('src/pseudepigrapha_tf/cli.py')
+          text = path.read_text(encoding='utf-8')
+          old = '''    if args.command != "convert":
+              return 2
+
+          total_started = stage_started = perf_counter()
+          '''
+          new = '''    if args.command != "convert":
+              return 2
+          if args.output.is_symlink():
+              raise ValueError(
+                  f"Text-Fabric output directory must not be a symlink: {args.output}"
+              )
+
+          total_started = stage_started = perf_counter()
+          '''
+          assert text.count(old) == 1, text.count(old)
+          path.write_text(text.replace(old, new), encoding='utf-8')
+          PY
+          git diff --check
+          git diff -- src/pseudepigrapha_tf/cli.py
+      - name: Verify focused GREEN before commit
+        run: |
+          pip install -e '.[dev]'
+          pytest -q tests/test_cli_output_path_symlink.py
+      - name: Commit implementation
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add src/pseudepigrapha_tf/cli.py
+          git commit -m 'fix: reject symlinked CLI output before mutation'
+          git push origin HEAD:fix/122-output-symlink
