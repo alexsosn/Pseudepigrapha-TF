@@ -109,3 +109,7 @@ Review the exact final GREEN head without relying on this plan. Challenge:
 - are there still duplicated complete canonical positive-profile builders elsewhere?
 
 Any blocker restarts RED → GREEN → full gates.
+
+## Gate checkpoint
+
+The historical RED unit job on commit `08258878da17e61cfe401ca849e34d7e5553fcc3` completed before its superseding run was cancelled: exactly the structural regression failed, reporting all five inventoried positive-baseline modules, while 484 unrelated tests passed. The implementation candidate remains test-only. This checkpoint commit exists to obtain fresh full GREEN gates for the completed refactor against the current `main` before independent adversarial review.
