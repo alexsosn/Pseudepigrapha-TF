@@ -77,7 +77,6 @@ jobs:
           from pathlib import Path
 
           from pseudepigrapha_tf.distribution import validate_distribution
-          from pseudepigrapha_tf.express_app_binding import validate_express_app_directory
 
           root = Path('/tmp/release-assets')
           manifest_path = root / 'dataset-manifest.json'
@@ -95,14 +94,11 @@ jobs:
               archive,
               report,
               express_archive=express,
+              app_directory=Path('app'),
               expected_release_tag=os.environ['RELEASE_TAG'],
               expected_release_commit=os.environ['RELEASE_COMMIT'],
               expected_converter_version='0.2.0',
               expected_data_version='0.2',
-          )
-          validate_express_app_directory(
-              express,
-              app_directory=Path('app'),
           )
           if data_version != '0.2':
               raise SystemExit(f'unexpected TF data version: {data_version!r}')
@@ -205,7 +201,6 @@ jobs:
           from pathlib import Path
 
           from pseudepigrapha_tf.distribution import validate_distribution
-          from pseudepigrapha_tf.express_app_binding import validate_express_app_directory
 
           root = Path('/tmp/draft-release-assets')
           manifest_path = root / 'dataset-manifest.json'
@@ -225,14 +220,11 @@ jobs:
               root / f'tf-{data_version}.zip',
               root / 'conversion-report.json',
               express_archive=root / 'complete.zip',
+              app_directory=Path('app'),
               expected_release_tag=os.environ['RELEASE_TAG'],
               expected_release_commit=os.environ['RELEASE_COMMIT'],
               expected_converter_version='0.2.0',
               expected_data_version='0.2',
-          )
-          validate_express_app_directory(
-              root / 'complete.zip',
-              app_directory=Path('app'),
           )
           PY
 
@@ -284,7 +276,6 @@ jobs:
           from pathlib import Path
 
           from pseudepigrapha_tf.distribution import validate_distribution
-          from pseudepigrapha_tf.express_app_binding import validate_express_app_directory
 
           root = Path('/tmp/published-assets')
           manifest = json.loads((root / 'dataset-manifest.json').read_text(encoding='utf-8'))
@@ -303,14 +294,11 @@ jobs:
               root / f'tf-{data_version}.zip',
               root / 'conversion-report.json',
               express_archive=root / 'complete.zip',
+              app_directory=Path('app'),
               expected_release_tag=os.environ['RELEASE_TAG'],
               expected_release_commit=os.environ['RELEASE_COMMIT'],
               expected_converter_version='0.2.0',
               expected_data_version='0.2',
-          )
-          validate_express_app_directory(
-              root / 'complete.zip',
-              app_directory=Path('app'),
           )
           PY
 
