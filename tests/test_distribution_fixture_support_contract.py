@@ -8,7 +8,7 @@ from pseudepigrapha_tf.provenance import (
     corpus_license_metadata,
     report_provenance,
 )
-from test_support.distribution import (
+from distribution_support import (
     canonical_generic,
     canonical_otype_payload,
     canonical_report_provenance,
