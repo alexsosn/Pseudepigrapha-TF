@@ -241,10 +241,14 @@ def test_cleanup_interrupt_after_commit_cannot_turn_committed_install_into_failu
 
 def test_nonfatal_warning_hook_baseexception_cannot_escape(monkeypatch):
     warning_interrupt = KeyboardInterrupt("warning hook interrupted")
+    hook_called = False
 
     def interrupting_showwarning(*args, **kwargs):
+        nonlocal hook_called
+        hook_called = True
         raise warning_interrupt
 
     monkeypatch.setattr(writer.warnings, "showwarning", interrupting_showwarning)
 
     assert writer._warn_nonfatal("cleanup diagnostic") is None
+    assert hook_called
