@@ -109,8 +109,8 @@ jobs:
           echo "TAG_STATE=$TAG_STATE" >> "$GITHUB_ENV"
 
           PRIOR_RUNS="$(gh api \
-            "repos/$GITHUB_REPOSITORY/actions/workflows/publish-corpus-release.yml/runs?event=workflow_dispatch&head_sha=$TARGET_SHA&per_page=20" \
-            --jq '.total_count')"
+            "repos/$GITHUB_REPOSITORY/actions/runs?event=workflow_dispatch&head_sha=$TARGET_SHA&per_page=100" \
+            --jq '[.workflow_runs[] | select(.path == ".github/workflows/publish-corpus-release.yml")] | length')"
           test "$PRIOR_RUNS" = "0"
 
       - name: Create immutable release tag if still absent
