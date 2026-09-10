@@ -111,3 +111,53 @@ def test_conversion_report_proves_generated_text_and_alignment_from_raw_xml(tmp_
     assert report["provenance"]["upstream_commit"] == "pinned-ocp"
     assert report["generated_translations"]["by_language"] == {"French": {"versions": 1, "units": 3}}
     assert report["diagnostics"]["generated_translation_mapping_failures"] == []
+
+
+def test_conversion_report_rejects_swapped_duplicate_translation_occurrences(tmp_path: Path) -> None:
+    books = _source(tmp_path)
+    data = build_tf_data(books, upstream_commit="pinned-ocp")
+
+    otype = data.node_features["otype"]
+    kind = data.node_features["version_kind"]
+    source_ref = data.node_features["source_ref"]
+    unit_id = data.node_features["unit_id"]
+    unit_index = data.node_features["unit_index"]
+
+    source_duplicates = sorted(
+        (
+            node
+            for node, node_type in otype.items()
+            if node_type == "unit"
+            and kind.get(node) == "source"
+            and source_ref.get(node) == "1:1"
+            and unit_id.get(node) == "7"
+        ),
+        key=lambda node: unit_index[node],
+    )
+    generated_duplicates = sorted(
+        (
+            node
+            for node, node_type in otype.items()
+            if node_type == "unit"
+            and kind.get(node) == "generated_translation"
+            and source_ref.get(node) == "1:1"
+            and unit_id.get(node) == "fr_7"
+        ),
+        key=lambda node: unit_index[node],
+    )
+    assert len(source_duplicates) == len(generated_duplicates) == 2
+
+    first_generated, second_generated = generated_duplicates
+    first_source, second_source = source_duplicates
+    assert data.edge_features["translation_unit_of"][first_generated] == {first_source}
+    assert data.edge_features["translation_unit_of"][second_generated] == {second_source}
+
+    # Simulate a converter regression/corrupted graph that preserves identity,
+    # cardinality, and target uniqueness while reversing occurrence semantics.
+    data.edge_features["translation_unit_of"][first_generated] = {second_source}
+    data.edge_features["translation_unit_of"][second_generated] = {first_source}
+
+    report = build_conversion_report(tmp_path, books, data)
+
+    assert report["semantic_checks"]["generated_translation_alignment"] is False
+    assert "generated_translation_alignment" in report["failed_checks"]

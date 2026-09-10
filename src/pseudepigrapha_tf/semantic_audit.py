@@ -335,12 +335,22 @@ def _section_addresses_unique(
     return _section_addresses_unique_from_records(_section_address_records(data, node_index))
 
 
+def _unit_order(data: TFData, node: int) -> tuple[int, int]:
+    """Return a deterministic occurrence order without trusting feature shape."""
+
+    value = base._feature(data, "unit_index", node, 0)
+    try:
+        index = int(value)
+    except (TypeError, ValueError):
+        index = 0
+    return index, node
+
 
 def _graph_generated_translation_inventory(
     data: TFData,
     node_index: dict[str, list[int]],
 ) -> list[dict]:
-    """Project generated/source alignment independently from graph provenance."""
+    """Project generated/source alignment, including duplicate occurrence order."""
 
     version_kind = data.node_features.get("version_kind", {})
     version_id = data.node_features.get("version_id", {})
@@ -371,27 +381,47 @@ def _graph_generated_translation_inventory(
         )
         prefix = f"{language.strip().lower()[:2]}_" if language.strip() else ""
         generated_units = units_by_version.get(generated_version_id, [])
+        source_units = units_by_version.get(source_version_id, []) if source_book is not None else []
 
-        aligned = 0
-        seen_targets: set[int] = set()
+        source_groups: dict[tuple[str, str], list[int]] = {}
+        for unit in source_units:
+            identity = (
+                str(base._feature(data, "source_ref", unit)),
+                str(base._feature(data, "unit_id", unit)),
+            )
+            source_groups.setdefault(identity, []).append(unit)
+        for group in source_groups.values():
+            group.sort(key=lambda node: _unit_order(data, node))
+
+        generated_groups: dict[tuple[str, str], list[int]] = {}
         for unit in generated_units:
-            unit_targets = translation_unit_of.get(unit, set())
-            if len(unit_targets) != 1 or source_book is None:
-                continue
-            target = next(iter(unit_targets))
             generated_id = str(base._feature(data, "unit_id", unit))
             if prefix and generated_id.startswith(prefix):
                 generated_id = generated_id[len(prefix):]
-            if (
-                target not in seen_targets
-                and version_kind.get(target) == "source"
-                and str(version_id.get(target, "")) == source_version_id
-                and str(base._feature(data, "source_ref", unit))
-                == str(base._feature(data, "source_ref", target))
-                and generated_id == str(base._feature(data, "unit_id", target))
-            ):
-                aligned += 1
-                seen_targets.add(target)
+            identity = (str(base._feature(data, "source_ref", unit)), generated_id)
+            generated_groups.setdefault(identity, []).append(unit)
+        for group in generated_groups.values():
+            group.sort(key=lambda node: _unit_order(data, node))
+
+        aligned = 0
+        seen_targets: set[int] = set()
+        for identity, group in generated_groups.items():
+            expected_targets = source_groups.get(identity, [])
+            if len(group) != len(expected_targets):
+                continue
+            for unit, expected_target in zip(group, expected_targets):
+                unit_targets = translation_unit_of.get(unit, set())
+                if len(unit_targets) != 1 or source_book is None:
+                    continue
+                target = next(iter(unit_targets))
+                if (
+                    target == expected_target
+                    and target not in seen_targets
+                    and version_kind.get(target) == "source"
+                    and str(version_id.get(target, "")) == source_version_id
+                ):
+                    aligned += 1
+                    seen_targets.add(target)
 
         records.append({
             "ocp_book": base._feature(data, "ocp_book", book),
