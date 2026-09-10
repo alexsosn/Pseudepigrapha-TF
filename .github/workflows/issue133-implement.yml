@@ -1,0 +1,182 @@
+name: issue133-implement
+
+on:
+  push:
+    branches:
+      - perf/133-batch-enrichment-validation
+
+permissions:
+  contents: write
+
+jobs:
+  implement:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: perf/133-batch-enrichment-validation
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+      - name: Split mutation internals and add one batch validation boundary
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          # Public metadata: retain the standalone fail-closed wrapper while
+          # exposing a package-private mutation primitive for the trusted batch.
+          path = Path('src/pseudepigrapha_tf/metadata.py')
+          text = path.read_text(encoding='utf-8')
+          start = text.index('def attach_public_metadata(data: TFData, metadata: PublicMetadataCorpus) -> None:')
+          end = text.index('\n\nclass WorkMetadata:', start)
+          body = text[start:end]
+          body = body.replace(
+              'def attach_public_metadata(data: TFData, metadata: PublicMetadataCorpus) -> None:',
+              'def _attach_public_metadata_unvalidated(data: TFData, metadata: PublicMetadataCorpus) -> bool:',
+              1,
+          )
+          body = body.replace(
+              '    """Attach one lossless work-level TF node per public metadata document."""',
+              '    """Mutate the graph with public metadata; caller owns final validation."""',
+              1,
+          )
+          needle = '    if not metadata.documents:\n        return\n'
+          assert body.count(needle) == 1, body.count(needle)
+          body = body.replace(needle, '    if not metadata.documents:\n        return False\n', 1)
+          tail = '''    failures = data.validate()
+              if failures:
+                  raise ValueError("invalid Text-Fabric graph after public metadata attachment: " + "; ".join(failures))'''
+          assert body.count(tail) == 1, body.count(tail)
+          replacement = '''    return True
+
+
+          def attach_public_metadata(data: TFData, metadata: PublicMetadataCorpus) -> None:
+              """Attach public metadata and fail closed if the resulting graph is invalid."""
+
+              if not _attach_public_metadata_unvalidated(data, metadata):
+                  return
+              failures = data.validate()
+              if failures:
+                  raise ValueError("invalid Text-Fabric graph after public metadata attachment: " + "; ".join(failures))'''
+          body = body.replace(tail, replacement, 1)
+          text = text[:start] + body + text[end:]
+          path.write_text(text, encoding='utf-8')
+
+          # Historical classifications: same standalone wrapper / private mutation split.
+          path = Path('src/pseudepigrapha_tf/classifications.py')
+          text = path.read_text(encoding='utf-8')
+          start = text.index('def attach_historical_classifications(\n')
+          end = text.index('\n\nclass HistoricalClassifications:', start)
+          body = text[start:end]
+          body = body.replace(
+              'def attach_historical_classifications(\n',
+              'def _attach_historical_classifications_unvalidated(\n',
+              1,
+          )
+          body = body.replace(
+              ') -> None:\n    """Attach historical catalogue classifications to existing work metadata nodes."""',
+              ') -> None:\n    """Mutate the graph with historical classifications; caller owns validation."""',
+              1,
+          )
+          tail = '''    failures = data.validate()
+              if failures:
+                  raise ValueError(
+                      "invalid Text-Fabric graph after historical classification attachment: "
+                      + "; ".join(failures)
+                  )'''
+          assert body.count(tail) == 1, body.count(tail)
+          replacement = '''def attach_historical_classifications(
+              data: TFData,
+              classifications: HistoricalClassificationCorpus,
+          ) -> None:
+              """Attach historical classifications and fail closed on invalid graph state."""
+
+              _attach_historical_classifications_unvalidated(data, classifications)
+              failures = data.validate()
+              if failures:
+                  raise ValueError(
+                      "invalid Text-Fabric graph after historical classification attachment: "
+                      + "; ".join(failures)
+                  )'''
+          body = body.replace(tail, replacement, 1)
+          text = text[:start] + body + text[end:]
+          path.write_text(text, encoding='utf-8')
+
+          # One explicit trusted batching boundary. No cache/validated flag is stored.
+          Path('src/pseudepigrapha_tf/enrichment.py').write_text('''from __future__ import annotations
+
+          from .classifications import (
+              HistoricalClassificationCorpus,
+              _attach_historical_classifications_unvalidated,
+          )
+          from .graph import TFData
+          from .metadata import PublicMetadataCorpus, _attach_public_metadata_unvalidated
+
+
+          def attach_scholarly_metadata_layers(
+              data: TFData,
+              public_metadata: PublicMetadataCorpus | None,
+              historical_classifications: HistoricalClassificationCorpus | None,
+          ) -> None:
+              """Apply trusted adjacent scholarly enrichments, then validate once."""
+
+              mutated = False
+              if public_metadata is not None:
+                  mutated = _attach_public_metadata_unvalidated(data, public_metadata) or mutated
+              if historical_classifications is not None:
+                  _attach_historical_classifications_unvalidated(data, historical_classifications)
+                  mutated = True
+              if not mutated:
+                  return
+
+              failures = data.validate()
+              if failures:
+                  raise ValueError(
+                      "invalid Text-Fabric graph after scholarly metadata attachment: "
+                      + "; ".join(failures)
+                  )
+          ''', encoding='utf-8')
+
+          # Route only the package-controlled CLI through the batch boundary.
+          path = Path('src/pseudepigrapha_tf/cli.py')
+          text = path.read_text(encoding='utf-8')
+          text = text.replace(
+              'from .classifications import (\n    attach_historical_classifications,\n',
+              'from .classifications import (\n',
+              1,
+          )
+          text = text.replace(
+              'from .metadata import (\n    attach_public_metadata,\n',
+              'from .metadata import (\n',
+              1,
+          )
+          anchor = 'from .distribution import feature_directory_identity\n'
+          assert text.count(anchor) == 1, text.count(anchor)
+          text = text.replace(anchor, anchor + 'from .enrichment import attach_scholarly_metadata_layers\n', 1)
+          old = '''    if public_metadata is not None:
+              attach_public_metadata(data, public_metadata)
+          if historical_classifications is not None:
+              attach_historical_classifications(data, historical_classifications)'''
+          new = '''    attach_scholarly_metadata_layers(
+              data,
+              public_metadata,
+              historical_classifications,
+          )'''
+          assert text.count(old) == 1, text.count(old)
+          text = text.replace(old, new, 1)
+          path.write_text(text, encoding='utf-8')
+          PY
+          git diff --check
+      - name: Targeted GREEN gate
+        run: |
+          pip install -e '.[dev]'
+          pytest -q tests/test_enrichment_validation_performance.py tests/test_public_metadata.py tests/test_historical_classifications.py
+      - name: Commit implementation
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add src/pseudepigrapha_tf/metadata.py src/pseudepigrapha_tf/classifications.py src/pseudepigrapha_tf/enrichment.py src/pseudepigrapha_tf/cli.py
+          git commit -m 'perf: batch scholarly enrichment validation'
+          git push origin HEAD:perf/133-batch-enrichment-validation
