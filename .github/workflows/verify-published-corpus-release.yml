@@ -85,11 +85,19 @@ jobs:
           import os
           from pathlib import Path
 
+          import pseudepigrapha_tf
           from pseudepigrapha_tf.distribution import validate_distribution
 
           root = Path('/tmp/published-assets')
           manifest = json.loads((root / 'dataset-manifest.json').read_text(encoding='utf-8'))
+          converter_version = manifest['converter']['version']
           data_version = manifest['text_fabric']['data_version']
+          if pseudepigrapha_tf.__version__ != converter_version:
+              raise SystemExit(
+                  f'installed converter version mismatch: {pseudepigrapha_tf.__version__!r} != {converter_version!r}'
+              )
+          if os.environ['RELEASE_TAG'] != f'v{converter_version}':
+              raise SystemExit('release tag does not match installed converter version')
           expected = {
               f'tf-{data_version}.zip',
               'complete.zip',
@@ -107,8 +115,8 @@ jobs:
               app_directory=Path('app'),
               expected_release_tag=os.environ['RELEASE_TAG'],
               expected_release_commit=os.environ['RELEASE_COMMIT'],
-              expected_converter_version='0.2.0',
-              expected_data_version='0.2',
+              expected_converter_version=converter_version,
+              expected_data_version=data_version,
           )
           PY
 
@@ -119,13 +127,23 @@ jobs:
           mkdir -p /tmp/pseudepigrapha-tf-live-home
           export HOME=/tmp/pseudepigrapha-tf-live-home
           python - <<'PY'
+          import json
           import os
           import socket
+          from pathlib import Path
 
           from tf.app import use
 
+          manifest = json.loads(
+              Path('/tmp/published-assets/dataset-manifest.json').read_text(encoding='utf-8')
+          )
           release_tag = os.environ['RELEASE_TAG']
-          expected_upstream = 'c939dcbacad78c5d18d2c4282cad23c47e19ac07'
+          expected_data_version = manifest['text_fabric']['data_version']
+          expected_converter_version = manifest['converter']['version']
+          expected_upstream = manifest['upstream']['commit']
+          expected_source_status = manifest['provenance']['source_identity_status']
+          expected_license_status = manifest['provenance']['content_license_status']
+          expected_license = manifest['provenance']['content_license']
 
           app = use(
               f'alexsosn/Pseudepigrapha-TF:{release_tag}',
@@ -135,12 +153,14 @@ jobs:
           if app is None or app.api is None:
               raise SystemExit('fresh tagged Text-Fabric load failed')
           generic = app.api.TF.features['otype'].metaData
-          assert generic['version'] == '0.2'
-          assert generic['converterVersion'] == '0.2.0'
+          assert generic['version'] == expected_data_version
+          assert generic['converterVersion'] == expected_converter_version
           assert generic['upstreamCommit'] == expected_upstream
-          assert generic['sourceIdentityStatus'] == 'verified'
-          assert generic['contentLicenseStatus'] == 'verified'
-          assert generic['contentLicense'] == 'CC-BY-4.0'
+          assert generic['sourceIdentityStatus'] == expected_source_status
+          assert generic['contentLicenseStatus'] == expected_license_status
+          assert generic['contentLicense'] == expected_license
+          fresh_max_slot = app.api.F.otype.maxSlot
+          assert fresh_max_slot > 0
 
           def network_forbidden(*args, **kwargs):
               raise AssertionError('network access attempted during checkout="local" reload')
@@ -156,8 +176,11 @@ jobs:
           if local_app is None or local_app.api is None:
               raise SystemExit('network-free local Text-Fabric reload failed')
           local_generic = local_app.api.TF.features['otype'].metaData
-          assert local_generic['version'] == '0.2'
-          assert local_generic['converterVersion'] == '0.2.0'
+          assert local_generic['version'] == expected_data_version
+          assert local_generic['converterVersion'] == expected_converter_version
           assert local_generic['upstreamCommit'] == expected_upstream
-          assert local_app.api.F.otype.maxSlot == 922922
+          assert local_generic['sourceIdentityStatus'] == expected_source_status
+          assert local_generic['contentLicenseStatus'] == expected_license_status
+          assert local_generic['contentLicense'] == expected_license
+          assert local_app.api.F.otype.maxSlot == fresh_max_slot
           PY
