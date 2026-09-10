@@ -148,7 +148,11 @@ def test_stock_tf_browser_and_compare_route_coexist_on_one_flask_app(tmp_path):
     assert 'class="state-omission"' in html
     assert "Sample" in html
 
-    css = client.get("/data/static/comparison.css").get_data(as_text=True)
+    css_response = client.get("/data/static/comparison.css")
+    try:
+        css = css_response.get_data(as_text=True)
+    finally:
+        css_response.close()
     assert ".version-grid" in css
     assert ".source-version-card" in css
     assert "@media" in css
