@@ -197,6 +197,7 @@ jobs:
           export HOME=/tmp/pseudepigrapha-tf-express-live-home
           python - <<'PY'
           import json
+          import os
           import socket
           from pathlib import Path
 
@@ -214,11 +215,13 @@ jobs:
           expected_license = manifest['provenance']['content_license']
 
           download_complete_results = []
+          download_complete_releases = []
           original_download_complete = Checkout.downloadComplete
 
           def recording_download_complete(self, *args, **kwargs):
               result = original_download_complete(self, *args, **kwargs)
               download_complete_results.append(result)
+              download_complete_releases.append(self.releaseOn)
               return result
 
           Checkout.downloadComplete = recording_download_complete
@@ -232,6 +235,11 @@ jobs:
 
           assert download_complete_results, 'Text-Fabric did not enter downloadComplete()'
           assert all(download_complete_results), download_complete_results
+          assert download_complete_releases, 'Text-Fabric did not expose the resolved express release'
+          assert all(
+              release == os.environ['RELEASE_TAG']
+              for release in download_complete_releases
+          ), download_complete_releases
           if app is None or app.api is None:
               raise SystemExit('fresh express Text-Fabric complete.zip load failed')
           generic = app.api.TF.features['otype'].metaData
