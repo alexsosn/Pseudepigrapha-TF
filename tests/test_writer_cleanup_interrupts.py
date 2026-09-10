@@ -250,5 +250,7 @@ def test_nonfatal_warning_hook_baseexception_cannot_escape(monkeypatch):
 
     monkeypatch.setattr(writer.warnings, "showwarning", interrupting_showwarning)
 
-    assert writer._warn_nonfatal("cleanup diagnostic") is None
+    with writer.warnings.catch_warnings():
+        writer.warnings.simplefilter("always")
+        assert writer._warn_nonfatal("cleanup diagnostic") is None
     assert hook_called
