@@ -80,3 +80,18 @@ def test_published_release_verifier_provisions_github_backend_and_checks_offline
     assert "socket.socket.connect" in text
     assert "network access attempted" in text
     assert "dataset-manifest.json" in text
+
+
+def test_published_release_verifier_derives_release_identity_instead_of_freezing_v020():
+    text = VERIFY_WORKFLOW.read_text(encoding="utf-8")
+
+    assert "manifest['converter']['version']" in text
+    assert "manifest['text_fabric']['data_version']" in text
+    assert "manifest['upstream']['commit']" in text
+    assert "manifest['provenance']['content_license']" in text
+    assert "expected_converter_version=converter_version" in text
+    assert "expected_data_version=data_version" in text
+    assert "local_app.api.F.otype.maxSlot == fresh_max_slot" in text
+    assert "expected_converter_version='0.2.0'" not in text
+    assert "expected_data_version='0.2'" not in text
+    assert "922922" not in text
