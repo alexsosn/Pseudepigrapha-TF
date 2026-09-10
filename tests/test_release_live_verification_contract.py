@@ -161,3 +161,14 @@ def test_published_release_express_gate_checks_manifest_identity_and_keeps_tagge
         "fresh_max_slot",
     ):
         assert fragment in express
+
+
+def test_published_release_express_gate_binds_actual_resolved_release_to_requested_tag():
+    text = VERIFY_WORKFLOW.read_text(encoding="utf-8")
+    express = text.split(EXPRESS_STEP, 1)[1]
+
+    assert "download_complete_releases" in express
+    assert "self.releaseOn" in express
+    assert "assert download_complete_releases" in express
+    assert "os.environ['RELEASE_TAG']" in express
+    assert "all(release == os.environ['RELEASE_TAG']" in express
