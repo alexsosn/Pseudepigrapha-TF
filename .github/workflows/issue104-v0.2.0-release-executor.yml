@@ -47,8 +47,9 @@ jobs:
           test "$(git diff --name-only "$PARENT_SHA" HEAD)" = ".release-trigger"
           git merge-base --is-ancestor "$TARGET_SHA" "$PARENT_SHA"
 
-          git fetch --no-tags origin main
-          test "$(git rev-parse origin/main)" = "$TARGET_SHA"
+          REMOTE_MAIN_SHA="$(git ls-remote origin refs/heads/main | awk '{print $1}')"
+          test -n "$REMOTE_MAIN_SHA"
+          test "$REMOTE_MAIN_SHA" = "$TARGET_SHA"
 
       - name: Verify exact green main CI and owned release identity
         run: |
