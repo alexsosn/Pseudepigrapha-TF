@@ -40,6 +40,9 @@ jobs:
           git fetch --force --no-tags origin "refs/tags/$RELEASE_TAG:refs/tags/$RELEASE_TAG"
           TAG_COMMIT="$(git rev-parse "refs/tags/$RELEASE_TAG^{commit}")"
           test "$TAG_COMMIT" = "$RELEASE_COMMIT"
+          LATEST_RELEASE_TAG="$(gh api "repos/$GITHUB_REPOSITORY/releases/latest" --jq .tag_name)"
+          echo "LATEST_RELEASE_TAG=$LATEST_RELEASE_TAG" >> "$GITHUB_ENV"
+          test "$LATEST_RELEASE_TAG" = "$RELEASE_TAG"
           python - <<'PY'
           import json
           import os
@@ -175,6 +178,90 @@ jobs:
           )
           if local_app is None or local_app.api is None:
               raise SystemExit('network-free local Text-Fabric reload failed')
+          local_generic = local_app.api.TF.features['otype'].metaData
+          assert local_generic['version'] == expected_data_version
+          assert local_generic['converterVersion'] == expected_converter_version
+          assert local_generic['upstreamCommit'] == expected_upstream
+          assert local_generic['sourceIdentityStatus'] == expected_source_status
+          assert local_generic['contentLicenseStatus'] == expected_license_status
+          assert local_generic['contentLicense'] == expected_license
+          assert local_app.api.F.otype.maxSlot == fresh_max_slot
+          PY
+
+      - name: Fresh-cache express complete.zip load then network-blocked local reload
+        run: |
+          set -euo pipefail
+          test "$LATEST_RELEASE_TAG" = "$RELEASE_TAG"
+          rm -rf /tmp/pseudepigrapha-tf-express-live-home
+          mkdir -p /tmp/pseudepigrapha-tf-express-live-home
+          export HOME=/tmp/pseudepigrapha-tf-express-live-home
+          python - <<'PY'
+          import json
+          import os
+          import socket
+          from pathlib import Path
+
+          from tf.advanced.repo import Checkout
+          from tf.app import use
+
+          manifest = json.loads(
+              Path('/tmp/published-assets/dataset-manifest.json').read_text(encoding='utf-8')
+          )
+          expected_data_version = manifest['text_fabric']['data_version']
+          expected_converter_version = manifest['converter']['version']
+          expected_upstream = manifest['upstream']['commit']
+          expected_source_status = manifest['provenance']['source_identity_status']
+          expected_license_status = manifest['provenance']['content_license_status']
+          expected_license = manifest['provenance']['content_license']
+
+          download_complete_results = []
+          download_complete_releases = []
+          original_download_complete = Checkout.downloadComplete
+
+          def recording_download_complete(self, *args, **kwargs):
+              result = original_download_complete(self, *args, **kwargs)
+              download_complete_results.append(result)
+              download_complete_releases.append(self.releaseOn)
+              return result
+
+          Checkout.downloadComplete = recording_download_complete
+          try:
+              app = use(
+                  'alexsosn/Pseudepigrapha-TF',
+                  silent='deep',
+              )
+          finally:
+              Checkout.downloadComplete = original_download_complete
+
+          assert download_complete_results, 'Text-Fabric did not enter downloadComplete()'
+          assert all(download_complete_results), download_complete_results
+          assert download_complete_releases, 'Text-Fabric did not expose the resolved express release'
+          assert all(release == os.environ['RELEASE_TAG'] for release in download_complete_releases), download_complete_releases
+          if app is None or app.api is None:
+              raise SystemExit('fresh express Text-Fabric complete.zip load failed')
+          generic = app.api.TF.features['otype'].metaData
+          assert generic['version'] == expected_data_version
+          assert generic['converterVersion'] == expected_converter_version
+          assert generic['upstreamCommit'] == expected_upstream
+          assert generic['sourceIdentityStatus'] == expected_source_status
+          assert generic['contentLicenseStatus'] == expected_license_status
+          assert generic['contentLicense'] == expected_license
+          fresh_max_slot = app.api.F.otype.maxSlot
+          assert fresh_max_slot > 0
+
+          def network_forbidden(*args, **kwargs):
+              raise AssertionError('network access attempted during express-cache local reload')
+
+          socket.create_connection = network_forbidden
+          socket.socket.connect = network_forbidden
+
+          local_app = use(
+              'alexsosn/Pseudepigrapha-TF:local',
+              checkout='local',
+              silent='deep',
+          )
+          if local_app is None or local_app.api is None:
+              raise SystemExit('network-free local reload from express-populated cache failed')
           local_generic = local_app.api.TF.features['otype'].metaData
           assert local_generic['version'] == expected_data_version
           assert local_generic['converterVersion'] == expected_converter_version
