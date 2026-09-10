@@ -1,0 +1,136 @@
+name: issue104-v0.2.0-release-executor
+
+on:
+  push:
+    branches:
+      - ops/104-v0.2.0-release-execute
+
+permissions:
+  contents: write
+  actions: write
+
+concurrency:
+  group: issue104-v0.2.0-release-executor
+  cancel-in-progress: false
+
+jobs:
+  execute:
+    runs-on: ubuntu-latest
+    env:
+      TARGET_SHA: 317e960e05ca7f36f35a11fcf567285312951095
+      RELEASE_TAG: v0.2.0
+      PRETAG_CI_RUN: "34459831089"
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Verify reviewed trigger and frozen candidate
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REPOSITORY" = "alexsosn/Pseudepigrapha-TF"
+          test "$GITHUB_REF" = "refs/heads/ops/104-v0.2.0-release-execute"
+          test -f .release-trigger
+
+          PARENT_SHA="$(git rev-parse HEAD^)"
+          REVIEWED_HELPER_SHA="$(sed -n 's/^reviewed_helper_sha=//p' .release-trigger)"
+          TRIGGER_TARGET_SHA="$(sed -n 's/^release_candidate_sha=//p' .release-trigger)"
+          TRIGGER_TAG="$(sed -n 's/^release_tag=//p' .release-trigger)"
+          TRIGGER_CI_RUN="$(sed -n 's/^pretag_ci_run=//p' .release-trigger)"
+
+          test -n "$REVIEWED_HELPER_SHA"
+          test "$PARENT_SHA" = "$REVIEWED_HELPER_SHA"
+          test "$TRIGGER_TARGET_SHA" = "$TARGET_SHA"
+          test "$TRIGGER_TAG" = "$RELEASE_TAG"
+          test "$TRIGGER_CI_RUN" = "$PRETAG_CI_RUN"
+          test "$(git diff --name-only "$PARENT_SHA" HEAD)" = ".release-trigger"
+          git merge-base --is-ancestor "$TARGET_SHA" "$PARENT_SHA"
+
+          git fetch --no-tags origin main
+          test "$(git rev-parse origin/main)" = "$TARGET_SHA"
+
+      - name: Verify exact green main CI and owned release identity
+        run: |
+          set -euo pipefail
+          test "$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$PRETAG_CI_RUN" --jq .head_sha)" = "$TARGET_SHA"
+          test "$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$PRETAG_CI_RUN" --jq .head_branch)" = "main"
+          test "$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$PRETAG_CI_RUN" --jq .event)" = "push"
+          test "$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$PRETAG_CI_RUN" --jq .status)" = "completed"
+          test "$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$PRETAG_CI_RUN" --jq .conclusion)" = "success"
+
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          import tomllib
+
+          root = Path('.')
+          project = tomllib.loads((root / 'pyproject.toml').read_text(encoding='utf-8'))
+          assert project['project']['version'] == '0.2.0'
+
+          identity = {}
+          exec((root / 'src/pseudepigrapha_tf/release_identity.py').read_text(encoding='utf-8'), identity)
+          assert identity['CONVERTER_VERSION'] == '0.2.0'
+          assert identity['TF_DATA_VERSION'] == '0.2'
+
+          materializer = json.loads((root / 'agora.materializer.json').read_text(encoding='utf-8'))
+          assert materializer['plugin']['version'] == '0.2.0'
+          source = materializer['materializers'][0]['acquisition'][0]
+          assert source['ref'] == 'c939dcbacad78c5d18d2c4282cad23c47e19ac07'
+
+          config = (root / 'app/config.yaml').read_text(encoding='utf-8')
+          assert 'version: "0.2"' in config
+          PY
+
+      - name: Verify release namespace and prevent duplicate publisher dispatch
+        run: |
+          set -euo pipefail
+
+          RELEASE_API="https://api.github.com/repos/$GITHUB_REPOSITORY/releases/tags/$RELEASE_TAG"
+          HTTP_STATUS="$(curl --silent --show-error \
+            --output /tmp/release-probe.json \
+            --write-out '%{http_code}' \
+            --header "Authorization: Bearer $GH_TOKEN" \
+            --header 'Accept: application/vnd.github+json' \
+            --header 'X-GitHub-Api-Version: 2022-11-28' \
+            "$RELEASE_API")"
+          test "$HTTP_STATUS" = "404"
+
+          TAG_STATE=absent
+          if git ls-remote --exit-code --tags origin "refs/tags/$RELEASE_TAG" >/tmp/tag-ref; then
+            git fetch --force --no-tags origin "refs/tags/$RELEASE_TAG:refs/tags/$RELEASE_TAG"
+            test "$(git rev-parse "refs/tags/$RELEASE_TAG^{commit}")" = "$TARGET_SHA"
+            TAG_STATE=present
+          else
+            status=$?
+            test "$status" -eq 2
+          fi
+          echo "TAG_STATE=$TAG_STATE" >> "$GITHUB_ENV"
+
+          PRIOR_RUNS="$(gh api \
+            "repos/$GITHUB_REPOSITORY/actions/workflows/publish-corpus-release.yml/runs?event=workflow_dispatch&head_sha=$TARGET_SHA&per_page=20" \
+            --jq '.total_count')"
+          test "$PRIOR_RUNS" = "0"
+
+      - name: Create immutable release tag if still absent
+        run: |
+          set -euo pipefail
+          if [ "$TAG_STATE" = "absent" ]; then
+            git config user.name 'github-actions[bot]'
+            git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+            git tag -a "$RELEASE_TAG" "$TARGET_SHA" \
+              -m "Pseudepigrapha-TF $RELEASE_TAG canonical corpus release"
+            git push origin "refs/tags/$RELEASE_TAG"
+          fi
+
+          git fetch --force --no-tags origin "refs/tags/$RELEASE_TAG:refs/tags/$RELEASE_TAG"
+          test "$(git rev-parse "refs/tags/$RELEASE_TAG^{commit}")" = "$TARGET_SHA"
+
+      - name: Dispatch permanent reviewed publisher
+        run: |
+          set -euo pipefail
+          gh workflow run publish-corpus-release.yml \
+            --repo "$GITHUB_REPOSITORY" \
+            --ref "$RELEASE_TAG" \
+            --field "release_tag=$RELEASE_TAG" \
+            --field "release_commit=$TARGET_SHA"
