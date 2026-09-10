@@ -4,21 +4,26 @@
 
 Add a focused semantic-audit fixture with one source version containing two consecutive units that deliberately share the same `source_ref` and `unit_id` but have distinguishable primary reading text.
 
-Build TF data and first assert the normal report is green. Then swap only the two `reading_of` edge targets while leaving all node features and reading payloads untouched. Re-run the report and assert `reading_ownership` (or another explicitly occurrence-aware semantic check) becomes false.
+Build TF data and first assert the normal report is green. Then swap only the two `reading_of` edge targets while leaving all node features and reading payloads untouched. Re-run the report and assert `reading_ownership` becomes false.
 
-Before implementation, observe the test failing because the current report remains green.
+RED has been observed on commit `588f349559de0c269f7b612c4e396fa4e7023a89`: the existing report remained green after the mutation, so the new assertion failed.
 
 ## 2. GREEN implementation
 
-Keep the literal source identity untouched and use existing `unit_index` as source-order occurrence identity:
+Keep the literal source identity untouched and avoid adding per-reading serialized features.
 
-- assign a 1-based, per-version source-order unit index in the raw XML inventory;
-- include it in raw unit and reading records;
-- stamp the owning `unit_index` on each reading when the graph builder creates it;
-- include it in graph unit and reading inventory records;
-- require reading `unit_index` to equal its `reading_of` target's `unit_index` in the ownership check.
+Add a compact independent occurrence-audit module that:
 
-Do not add a new feature name or synthesize uniqueness into `unit_id`/`source_ref`.
+- re-reads XML directly;
+- reconstructs textual versions, source refs, and per-version 1-based unit order;
+- records the direct reading payloads belonging to each raw unit occurrence;
+- groups TF units by exact version ownership and sorts them by existing `unit_index`;
+- resolves actual graph readings through `reading_of`;
+- compares each graph occurrence and its attached reading payloads with the corresponding raw XML occurrence.
+
+Fold this source-grounded predicate into the existing `reading_ownership` semantic check so the report shape stays stable.
+
+Do not add a new feature, enlarge the corpus for audit-only metadata, or synthesize uniqueness into `unit_id`/`source_ref`.
 
 ## 3. Public API regression
 
@@ -31,9 +36,10 @@ If an existing lightweight fake API gives equivalent coverage without bypassing 
 Run:
 
 - the new focused semantic-audit RED/GREEN regression;
+- direct tests of modern nested and wrapped-legacy raw occurrence traversal;
 - existing audit tests;
 - apparatus and Text-Fabric integration tests;
-- generated-translation tests, because generated readings also pass through `_add_unit()`;
+- generated-translation tests;
 - the full repository CI including pinned OCP conversion/audit and researcher interface checks.
 
 ## 5. Logically independent adversarial review
@@ -43,9 +49,10 @@ Review the final diff as a hostile data-integrity check. Attempt to falsify it w
 - duplicate ref/id owner swap;
 - cross-version owner with same local identity;
 - missing/multiple owner edge;
-- corrupted reading-side `unit_index` with otherwise correct edge;
+- corrupted `unit_index` with otherwise correct edge;
 - duplicate or reordered source identities that are legitimately preserved;
 - nested and wrapped-legacy traversal order;
+- generated translation occurrence accounting;
 - accidental changes to public upstream ids or TF section addressing;
 - hidden quadratic scans or avoidable corpus-size expansion.
 
