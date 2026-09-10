@@ -1,0 +1,185 @@
+name: PR134 one-shot GREEN helper
+
+on:
+  push:
+    branches:
+      - perf/133-batch-enrichment-validation
+    paths:
+      - .github/workflows/agent-pr134-green.yml
+
+permissions:
+  contents: write
+
+jobs:
+  green:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: perf/133-batch-enrichment-validation
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+      - name: Guard exact RED head and apply bounded implementation
+        env:
+          EXPECTED_BEFORE: a09b4131be280c82afe6c014f70717b6d117c74f
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "${{ github.event.before }}" = "$EXPECTED_BEFORE"
+          test "${{ github.ref_name }}" = "perf/133-batch-enrichment-validation"
+          python - <<'PY'
+          from pathlib import Path
+
+          def replace_once(path: str, old: str, new: str) -> None:
+              p = Path(path)
+              text = p.read_text(encoding='utf-8')
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f'{path}: expected one occurrence, found {count}: {old[:80]!r}')
+              p.write_text(text.replace(old, new), encoding='utf-8')
+
+          metadata = 'src/pseudepigrapha_tf/metadata.py'
+          replace_once(
+              metadata,
+              'def attach_public_metadata(data: TFData, metadata: PublicMetadataCorpus) -> None:\n    """Attach one lossless work-level TF node per public metadata document."""\n\n    if not metadata.documents:\n        return\n',
+              'def _attach_public_metadata_unvalidated(data: TFData, metadata: PublicMetadataCorpus) -> bool:\n    """Attach public metadata without validating; return whether the graph changed."""\n\n    if not metadata.documents:\n        return False\n',
+          )
+          replace_once(
+              metadata,
+              '    failures = data.validate()\n    if failures:\n        raise ValueError("invalid Text-Fabric graph after public metadata attachment: " + "; ".join(failures))\n\n\nclass WorkMetadata:',
+              '    return True\n\n\ndef attach_public_metadata(data: TFData, metadata: PublicMetadataCorpus) -> None:\n    """Attach one lossless work-level TF node per public metadata document."""\n\n    if not _attach_public_metadata_unvalidated(data, metadata):\n        return\n    failures = data.validate()\n    if failures:\n        raise ValueError("invalid Text-Fabric graph after public metadata attachment: " + "; ".join(failures))\n\n\nclass WorkMetadata:',
+          )
+
+          classifications = 'src/pseudepigrapha_tf/classifications.py'
+          replace_once(
+              classifications,
+              'def attach_historical_classifications(\n    data: TFData,\n    classifications: HistoricalClassificationCorpus,\n) -> None:\n    """Attach historical catalogue classifications to existing work metadata nodes."""\n',
+              'def _attach_historical_classifications_unvalidated(\n    data: TFData,\n    classifications: HistoricalClassificationCorpus,\n) -> bool:\n    """Attach historical classifications without validating the complete graph."""\n',
+          )
+          replace_once(
+              classifications,
+              '    failures = data.validate()\n    if failures:\n        raise ValueError(\n            "invalid Text-Fabric graph after historical classification attachment: "\n            + "; ".join(failures)\n        )\n\n\nclass HistoricalClassifications:',
+              '    return True\n\n\ndef attach_historical_classifications(\n    data: TFData,\n    classifications: HistoricalClassificationCorpus,\n) -> None:\n    """Attach historical catalogue classifications to existing work metadata nodes."""\n\n    _attach_historical_classifications_unvalidated(data, classifications)\n    failures = data.validate()\n    if failures:\n        raise ValueError(\n            "invalid Text-Fabric graph after historical classification attachment: "\n            + "; ".join(failures)\n        )\n\n\nclass HistoricalClassifications:',
+          )
+
+          cli = 'src/pseudepigrapha_tf/cli.py'
+          replace_once(
+              cli,
+              'from .classifications import (\n    attach_historical_classifications,\n',
+              'from .classifications import (\n    _attach_historical_classifications_unvalidated,\n',
+          )
+          replace_once(
+              cli,
+              'from .metadata import (\n    attach_public_metadata,\n',
+              'from .metadata import (\n    _attach_public_metadata_unvalidated,\n',
+          )
+          replace_once(
+              cli,
+              'def _validate_report_path(report_path: Path, output: Path) -> Path:\n',
+              'def _attach_scholarly_enrichments(\n    data,\n    public_metadata,\n    historical_classifications,\n) -> None:\n    """Apply trusted scholarly enrichments and validate once after all mutations."""\n\n    changed = False\n    if public_metadata is not None:\n        changed = _attach_public_metadata_unvalidated(data, public_metadata) or changed\n    if historical_classifications is not None:\n        changed = (\n            _attach_historical_classifications_unvalidated(data, historical_classifications)\n            or changed\n        )\n    if not changed:\n        return\n    failures = data.validate()\n    if failures:\n        raise ValueError(\n            "invalid Text-Fabric graph after scholarly enrichment: " + "; ".join(failures)\n        )\n\n\ndef _validate_report_path(report_path: Path, output: Path) -> Path:\n',
+          )
+          replace_once(
+              cli,
+              '    if public_metadata is not None:\n        attach_public_metadata(data, public_metadata)\n    if historical_classifications is not None:\n        attach_historical_classifications(data, historical_classifications)\n',
+              '    _attach_scholarly_enrichments(data, public_metadata, historical_classifications)\n',
+          )
+
+          tests = Path('tests/test_enrichment_validation_performance.py')
+          text = tests.read_text(encoding='utf-8')
+          addition = r'''
+
+
+def test_metadata_only_batch_validates_once(monkeypatch) -> None:
+    data = build_tf_data([parse_file(FIXTURES / "sample.xml")])
+    calls = 0
+    original_validate = TFData.validate
+
+    def counted_validate(self):
+        nonlocal calls
+        calls += 1
+        return original_validate(self)
+
+    monkeypatch.setattr(TFData, "validate", counted_validate)
+    cli._attach_scholarly_enrichments(data, _public_metadata(), None)
+    assert calls == 1
+
+
+def test_classification_only_batch_validates_once(monkeypatch) -> None:
+    data = build_tf_data([parse_file(FIXTURES / "sample.xml")])
+    attach_public_metadata(data, _public_metadata())
+    calls = 0
+    original_validate = TFData.validate
+
+    def counted_validate(self):
+        nonlocal calls
+        calls += 1
+        return original_validate(self)
+
+    monkeypatch.setattr(TFData, "validate", counted_validate)
+    cli._attach_scholarly_enrichments(data, None, _classifications())
+    assert calls == 1
+
+
+def test_empty_batch_performs_no_enrichment_validation(monkeypatch) -> None:
+    data = build_tf_data([parse_file(FIXTURES / "sample.xml")])
+    calls = 0
+    original_validate = TFData.validate
+
+    def counted_validate(self):
+        nonlocal calls
+        calls += 1
+        return original_validate(self)
+
+    monkeypatch.setattr(TFData, "validate", counted_validate)
+    cli._attach_scholarly_enrichments(data, None, None)
+    assert calls == 0
+
+
+def test_batch_fails_closed_after_final_enrichment_mutation(monkeypatch) -> None:
+    data = build_tf_data([parse_file(FIXTURES / "sample.xml")])
+
+    monkeypatch.setattr(TFData, "validate", lambda self: ["sentinel invalid graph"])
+    with pytest.raises(ValueError, match="after scholarly enrichment: sentinel invalid graph"):
+        cli._attach_scholarly_enrichments(data, _public_metadata(), _classifications())
+
+
+def test_batched_payload_matches_sequential_standalone_helpers() -> None:
+    book = parse_file(FIXTURES / "sample.xml")
+    sequential = build_tf_data([book])
+    batched = build_tf_data([book])
+    metadata = _public_metadata()
+    classifications = _classifications()
+
+    attach_public_metadata(sequential, metadata)
+    attach_historical_classifications(sequential, classifications)
+    cli._attach_scholarly_enrichments(batched, metadata, classifications)
+
+    assert batched.node_features == sequential.node_features
+    assert batched.edge_features == sequential.edge_features
+    assert batched.metadata == sequential.metadata
+    assert batched.warnings == sequential.warnings
+'''
+          if 'test_metadata_only_batch_validates_once' in text:
+              raise SystemExit('performance tests already contain GREEN cases')
+          tests.write_text(text.rstrip() + addition + '\n', encoding='utf-8')
+          PY
+          git diff --check
+          python -m compileall -q src tests/test_enrichment_validation_performance.py
+      - name: Install and run focused GREEN tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install -e '.[dev]'
+          pytest -q tests/test_enrichment_validation_performance.py
+      - name: Commit source and test changes
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/pseudepigrapha_tf/metadata.py src/pseudepigrapha_tf/classifications.py src/pseudepigrapha_tf/cli.py tests/test_enrichment_validation_performance.py
+          git commit -m "perf: batch scholarly enrichment validation"
+          git push origin HEAD:perf/133-batch-enrichment-validation
