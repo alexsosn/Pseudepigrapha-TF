@@ -126,6 +126,14 @@ def test_published_release_verifier_exercises_stock_complete_zip_express_path():
     assert 'checkout="latest"' not in express[:network_block]
     assert "checkout=\"local\"" in express or "checkout='local'" in express
 
+    # A plain use() can fall back to ordinary GitHub acquisition after a failed
+    # express attempt. Instrument Text-Fabric's own path and require success so
+    # fallback cannot make a broken complete.zip look healthy.
+    assert "Checkout.downloadComplete" in express
+    assert "download_complete_results" in express
+    assert "assert download_complete_results" in express
+    assert "all(download_complete_results)" in express
+
 
 def test_published_release_express_gate_checks_manifest_identity_and_keeps_tagged_gate():
     text = VERIFY_WORKFLOW.read_text(encoding="utf-8")
