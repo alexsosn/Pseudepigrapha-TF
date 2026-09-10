@@ -203,8 +203,12 @@ def test_cleanup_interrupt_after_successful_rollback_preserves_original_error(mo
     monkeypatch.setattr(Path, "replace", fail_second_staged_move)
     monkeypatch.setattr(Path, "rmdir", interrupt_backup_cleanup)
 
-    with pytest.raises(OSError) as caught:
-        writer._install_staged_tf_features(stage, output)
+    with pytest.warns(
+        RuntimeWarning,
+        match="previous TF set was restored, but empty backup cleanup failed",
+    ):
+        with pytest.raises(OSError) as caught:
+            writer._install_staged_tf_features(stage, output)
 
     assert caught.value is install_error
     assert {path.name: path.read_bytes() for path in output.iterdir()} == before
@@ -223,7 +227,11 @@ def test_cleanup_interrupt_after_commit_cannot_turn_committed_install_into_failu
 
     monkeypatch.setattr(writer.shutil, "rmtree", interrupt_backup_cleanup)
 
-    assert writer._install_staged_tf_features(stage, output) is None
+    with pytest.warns(
+        RuntimeWarning,
+        match="Text-Fabric features were installed successfully, but the old backup could not be removed",
+    ):
+        assert writer._install_staged_tf_features(stage, output) is None
     assert (output / "otype.tf").read_bytes() == b"new otype\n"
     assert (output / "oslots.tf").read_bytes() == b"new oslots\n"
     assert (output / "new_feature.tf").read_bytes() == b"new only\n"
@@ -233,10 +241,16 @@ def test_cleanup_interrupt_after_commit_cannot_turn_committed_install_into_failu
 
 def test_nonfatal_warning_hook_baseexception_cannot_escape(monkeypatch):
     warning_interrupt = KeyboardInterrupt("warning hook interrupted")
+    hook_called = False
 
     def interrupting_showwarning(*args, **kwargs):
+        nonlocal hook_called
+        hook_called = True
         raise warning_interrupt
 
     monkeypatch.setattr(writer.warnings, "showwarning", interrupting_showwarning)
 
-    assert writer._warn_nonfatal("cleanup diagnostic") is None
+    with writer.warnings.catch_warnings():
+        writer.warnings.simplefilter("always")
+        assert writer._warn_nonfatal("cleanup diagnostic") is None
+    assert hook_called

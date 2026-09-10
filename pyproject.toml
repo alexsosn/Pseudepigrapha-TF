@@ -21,3 +21,4 @@ pseudepigrapha-tf = "pseudepigrapha_tf.cli:main"
 [tool.pytest.ini_options]
 addopts = "-q"
 testpaths = ["tests"]
+filterwarnings = ["error"]
