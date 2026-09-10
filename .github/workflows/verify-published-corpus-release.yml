@@ -1,0 +1,163 @@
+name: verify-published-corpus-release
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: Existing published GitHub release tag to verify
+        required: true
+        type: string
+      release_commit:
+        description: Exact commit the release tag must dereference to
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    env:
+      RELEASE_TAG: ${{ inputs.release_tag }}
+      RELEASE_COMMIT: ${{ inputs.release_commit }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.release_commit }}
+          fetch-depth: 1
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+
+      - name: Verify immutable tag and public release identity
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$RELEASE_COMMIT"
+          git fetch --force --no-tags origin "refs/tags/$RELEASE_TAG:refs/tags/$RELEASE_TAG"
+          TAG_COMMIT="$(git rev-parse "refs/tags/$RELEASE_TAG^{commit}")"
+          test "$TAG_COMMIT" = "$RELEASE_COMMIT"
+          python - <<'PY'
+          import json
+          import os
+          import subprocess
+
+          payload = subprocess.check_output(
+              [
+                  'gh', 'release', 'view', os.environ['RELEASE_TAG'],
+                  '--repo', os.environ['GITHUB_REPOSITORY'],
+                  '--json', 'isDraft,isPrerelease,tagName',
+              ],
+              text=True,
+          )
+          release = json.loads(payload)
+          if release['tagName'] != os.environ['RELEASE_TAG']:
+              raise SystemExit('published release tag mismatch')
+          if release['isDraft']:
+              raise SystemExit('release is still draft')
+          if release['isPrerelease']:
+              raise SystemExit('release is a prerelease')
+          PY
+
+      - name: Install exact release package
+        run: python -m pip install .
+
+      - name: Provision Text-Fabric GitHub backend for live acquisition
+        run: python -m pip install 'text-fabric[github]>=13.1,<14'
+
+      - name: Download and validate public release generation
+        run: |
+          set -euo pipefail
+          rm -rf /tmp/published-assets
+          mkdir -p /tmp/published-assets
+          gh release download "$RELEASE_TAG" \
+            --repo "$GITHUB_REPOSITORY" \
+            --dir /tmp/published-assets \
+            --pattern 'tf-*.zip' \
+            --pattern complete.zip \
+            --pattern conversion-report.json \
+            --pattern dataset-manifest.json
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          from pseudepigrapha_tf.distribution import validate_distribution
+
+          root = Path('/tmp/published-assets')
+          manifest = json.loads((root / 'dataset-manifest.json').read_text(encoding='utf-8'))
+          data_version = manifest['text_fabric']['data_version']
+          expected = {
+              f'tf-{data_version}.zip',
+              'complete.zip',
+              'conversion-report.json',
+              'dataset-manifest.json',
+          }
+          actual = {path.name for path in root.iterdir() if path.is_file()}
+          if actual != expected:
+              raise SystemExit(f'public release asset set mismatch: {sorted(actual)} != {sorted(expected)}')
+          validate_distribution(
+              manifest,
+              root / f'tf-{data_version}.zip',
+              root / 'conversion-report.json',
+              express_archive=root / 'complete.zip',
+              app_directory=Path('app'),
+              expected_release_tag=os.environ['RELEASE_TAG'],
+              expected_release_commit=os.environ['RELEASE_COMMIT'],
+              expected_converter_version='0.2.0',
+              expected_data_version='0.2',
+          )
+          PY
+
+      - name: Fresh-cache tagged load then network-blocked local reload
+        run: |
+          set -euo pipefail
+          rm -rf /tmp/pseudepigrapha-tf-live-home
+          mkdir -p /tmp/pseudepigrapha-tf-live-home
+          export HOME=/tmp/pseudepigrapha-tf-live-home
+          python - <<'PY'
+          import os
+          import socket
+
+          from tf.app import use
+
+          release_tag = os.environ['RELEASE_TAG']
+          expected_upstream = 'c939dcbacad78c5d18d2c4282cad23c47e19ac07'
+
+          app = use(
+              f'alexsosn/Pseudepigrapha-TF:{release_tag}',
+              checkout=release_tag,
+              silent='deep',
+          )
+          if app is None or app.api is None:
+              raise SystemExit('fresh tagged Text-Fabric load failed')
+          generic = app.api.TF.features['otype'].metaData
+          assert generic['version'] == '0.2'
+          assert generic['converterVersion'] == '0.2.0'
+          assert generic['upstreamCommit'] == expected_upstream
+          assert generic['sourceIdentityStatus'] == 'verified'
+          assert generic['contentLicenseStatus'] == 'verified'
+          assert generic['contentLicense'] == 'CC-BY-4.0'
+
+          def network_forbidden(*args, **kwargs):
+              raise AssertionError('network access attempted during checkout="local" reload')
+
+          socket.create_connection = network_forbidden
+          socket.socket.connect = network_forbidden
+
+          local_app = use(
+              'alexsosn/Pseudepigrapha-TF:local',
+              checkout="local",
+              silent='deep',
+          )
+          if local_app is None or local_app.api is None:
+              raise SystemExit('network-free local Text-Fabric reload failed')
+          local_generic = local_app.api.TF.features['otype'].metaData
+          assert local_generic['version'] == '0.2'
+          assert local_generic['converterVersion'] == '0.2.0'
+          assert local_generic['upstreamCommit'] == expected_upstream
+          assert local_app.api.F.otype.maxSlot == 922922
+          PY
