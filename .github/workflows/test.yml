@@ -180,12 +180,17 @@ jobs:
               release_commit=os.environ['GITHUB_SHA'],
               converter_version='0.2.0',
               data_version='0.2',
+              app_directory=Path('app'),
           )
+          assert set(assets) == {'tf', 'express', 'report', 'manifest'}
           manifest = json.loads(assets['manifest'].read_text(encoding='utf-8'))
+          assert manifest['assets']['express']['name'] == 'complete.zip'
           validate_distribution(
               manifest,
               assets['tf'],
               assets['report'],
+              express_archive=assets['express'],
+              app_directory=Path('app'),
               expected_release_tag=os.environ['CANDIDATE_RELEASE_TAG'],
               expected_release_commit=os.environ['GITHUB_SHA'],
               expected_converter_version='0.2.0',
@@ -209,6 +214,39 @@ jobs:
           assert generic['sourceIdentityStatus'] == 'verified'
           assert generic['contentLicenseStatus'] == 'verified'
           assert generic['contentLicense'] == 'CC-BY-4.0'
+          PY
+      - name: Load complete.zip from a fresh stock Text-Fabric cache without network
+        run: |
+          set -euo pipefail
+          rm -rf /tmp/pseudepigrapha-tf-express-home
+          mkdir -p /tmp/pseudepigrapha-tf-express-home/text-fabric-data/github
+          unzip -q /tmp/release-assets/complete.zip \
+            -d /tmp/pseudepigrapha-tf-express-home/text-fabric-data/github
+          HOME=/tmp/pseudepigrapha-tf-express-home python - <<'PY'
+          import socket
+
+          from tf.app import use
+
+          def network_forbidden(*args, **kwargs):
+              raise AssertionError('network access attempted during local complete.zip load')
+
+          socket.create_connection = network_forbidden
+          socket.socket.connect = network_forbidden
+
+          app = use(
+              'alexsosn/Pseudepigrapha-TF:local',
+              checkout='local',
+              silent='deep',
+          )
+          if app is None or app.api is None:
+              raise SystemExit('stock Text-Fabric failed to load complete.zip cache')
+          generic = app.api.TF.features['otype'].metaData
+          assert generic['version'] == '0.2'
+          assert generic['converterVersion'] == '0.2.0'
+          assert generic['upstreamCommit'] == 'c939dcbacad78c5d18d2c4282cad23c47e19ac07'
+          assert generic['sourceIdentityStatus'] == 'verified'
+          assert generic['contentLicenseStatus'] == 'verified'
+          assert app.api.F.otype.maxSlot == 922922
           PY
       - name: Reload generated Text-Fabric dataset and verify interface semantics
         run: |

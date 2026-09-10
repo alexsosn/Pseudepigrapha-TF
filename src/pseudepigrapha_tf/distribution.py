@@ -1,459 +1,271 @@
 from __future__ import annotations
 
-import hashlib
-import json
 import os
 from pathlib import Path
 import shutil
+import stat
 from tempfile import mkdtemp
 from typing import Any, Mapping
-from zipfile import BadZipFile, ZIP_DEFLATED, ZipFile, ZipInfo
+from zipfile import BadZipFile, ZipFile
 
-from .provenance import (
-    REPORT_PROVENANCE_FIELDS,
-    corpus_license_provenance_is_consistent,
-    report_provenance,
-)
+from . import _distribution_native as _native
+from ._distribution_native import *  # noqa: F401,F403 - preserve the established public surface
 
 
-SCHEMA_VERSION = 1
-REPORT_NAME = "conversion-report.json"
-MANIFEST_NAME = "dataset-manifest.json"
-
-_CANONICAL_ZIP_DATETIME = (1980, 1, 1, 0, 0, 0)
-_CANONICAL_ZIP_CREATE_SYSTEM = 3  # Unix, fixed rather than host-derived.
-_CANONICAL_ZIP_EXTERNAL_ATTR = 0o100644 << 16
-
-
-def _canonical_zip_info(name: str) -> ZipInfo:
-    """Return host-independent metadata for one top-level TF archive member."""
-
-    info = ZipInfo(name, date_time=_CANONICAL_ZIP_DATETIME)
-    info.compress_type = ZIP_DEFLATED
-    info.create_system = _CANONICAL_ZIP_CREATE_SYSTEM
-    info.external_attr = _CANONICAL_ZIP_EXTERNAL_ATTR
-    info.extra = b""
-    info.comment = b""
-    return info
-
-
-class DistributionContractError(ValueError):
-    """Raised when a canonical corpus distribution fails closed validation."""
-
-
-def _sha256_bytes(payload: bytes) -> str:
-    return hashlib.sha256(payload).hexdigest()
-
-
-def _file_record(path: Path) -> dict[str, Any]:
-    payload = path.read_bytes()
-    return {
-        "name": path.name,
-        "bytes": len(payload),
-        "sha256": _sha256_bytes(payload),
-    }
-
-
-def _require_mapping(value: object, label: str) -> Mapping[str, Any]:
-    if not isinstance(value, Mapping):
-        raise DistributionContractError(f"{label} must be a JSON object")
-    return value
-
-
-def _require_nonempty_string(value: object, label: str) -> str:
-    if not isinstance(value, str) or not value.strip():
-        raise DistributionContractError(f"{label} must be a non-empty string")
-    return value
-
-
-def _require_git_sha(value: object, label: str) -> str:
-    value = _require_nonempty_string(value, label)
-    if len(value) != 40 or any(char not in "0123456789abcdef" for char in value):
-        raise DistributionContractError(
-            f"{label} must be a 40-character lowercase hexadecimal Git SHA"
-        )
-    return value
-
-
-def _require_data_version(value: object) -> str:
-    value = _require_nonempty_string(value, "Text-Fabric data version")
-    if value in {".", ".."} or "/" in value or "\\" in value or "\x00" in value:
-        raise DistributionContractError(
-            "Text-Fabric data version must be one safe path component"
-        )
-    return value
-
-
-def _load_report(path: Path) -> dict[str, Any]:
-    if path.name != REPORT_NAME:
-        raise DistributionContractError(
-            f"report filename must be {REPORT_NAME!r}, got {path.name!r}"
-        )
-    try:
-        value = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, UnicodeError, json.JSONDecodeError) as exc:
-        raise DistributionContractError(f"invalid conversion report: {exc}") from exc
-    return dict(_require_mapping(value, "conversion report"))
-
-
-def _validate_report_audit(report: Mapping[str, Any]) -> None:
-    """Require the report's success marker to agree with its semantic evidence."""
-
-    if report.get("status") != "ok":
-        raise DistributionContractError(
-            f"conversion report status must be 'ok', got {report.get('status')!r}"
-        )
-
-    failed_checks = report.get("failed_checks")
-    if not isinstance(failed_checks, list):
-        raise DistributionContractError("report failed_checks must be a JSON array")
-    if failed_checks:
-        raise DistributionContractError(
-            f"report failed_checks must be empty for publication, got {failed_checks!r}"
-        )
-
-    semantic_checks = _require_mapping(report.get("semantic_checks"), "report semantic_checks")
-    if not semantic_checks:
-        raise DistributionContractError("report semantic_checks must be non-empty")
-    failed_semantic = sorted(
-        str(name) for name, value in semantic_checks.items() if value is not True
-    )
-    if failed_semantic:
-        raise DistributionContractError(
-            "report semantic_checks must all be exactly true; failed: "
-            + ", ".join(failed_semantic)
-        )
-
-
-def _report_identity(report: Mapping[str, Any], *, converter_version: str) -> dict[str, Any]:
-    _validate_report_audit(report)
-
-    provenance = _require_mapping(report.get("provenance"), "report provenance")
-    if provenance.get("source_identity_status") != "verified":
-        raise DistributionContractError(
-            "report source identity status must be 'verified'"
-        )
-    if provenance.get("content_license_status") != "verified":
-        raise DistributionContractError(
-            "report content license status must be 'verified'"
-        )
-    if "source_identity_diagnostic" in provenance:
-        raise DistributionContractError(
-            "verified report source identity must not carry a diagnostic"
-        )
-    if "content_license_diagnostic" in provenance:
-        raise DistributionContractError(
-            "verified report content license must not carry a diagnostic"
-        )
-
-    report_converter = _require_nonempty_string(
-        provenance.get("converter_version"), "report converter version"
-    )
-    if report_converter != converter_version:
-        raise DistributionContractError(
-            f"converter version mismatch: report has {report_converter!r}, publication has {converter_version!r}"
-        )
-
-    upstream_repository = _require_nonempty_string(
-        provenance.get("upstream_repository"), "report upstream repository"
-    )
-    upstream_commit = _require_git_sha(
-        provenance.get("upstream_commit"), "report upstream commit"
-    )
-
-    required_provenance = (
-        "source_identity_status",
-        "content_license_status",
-        "content_license",
-        "converter_software_license",
-        "upstream_software_license",
-    )
-    manifest_provenance: dict[str, str] = {}
-    for key in required_provenance:
-        manifest_provenance[key] = _require_nonempty_string(
-            provenance.get(key), f"report provenance {key}"
-        )
-
-    # Keep additional immutable provenance evidence when the report exposes it,
-    # but never accept these values separately from the publication caller.
-    for key in ("upstream_license_commit", "content_license_source"):
-        value = provenance.get(key)
-        if value is not None:
-            manifest_provenance[key] = _require_nonempty_string(
-                value, f"report provenance {key}"
-            )
-
-    serialized_provenance: dict[str, str] = {}
-    for _serialized_key, report_key in REPORT_PROVENANCE_FIELDS:
-        value = provenance.get(report_key)
-        if value is not None:
-            serialized_provenance[report_key] = _require_nonempty_string(
-                value, f"report provenance {report_key}"
-            )
-
-    return {
-        "upstream_repository": upstream_repository,
-        "upstream_commit": upstream_commit,
-        "provenance": manifest_provenance,
-        "serialized_provenance": serialized_provenance,
-    }
-
-
-def _validate_canonical_provenance_profile(identity: Mapping[str, Any]) -> None:
-    serialized_provenance = _require_mapping(
-        identity.get("serialized_provenance"), "report-derived serialized provenance"
-    )
-    generic_provenance = {
-        serialized_key: serialized_provenance[report_key]
-        for serialized_key, report_key in REPORT_PROVENANCE_FIELDS
-        if report_key in serialized_provenance
-    }
-    if not corpus_license_provenance_is_consistent(generic_provenance):
-        raise DistributionContractError(
-            "report provenance does not match a canonical verified source/license profile"
-        )
-
-
-def _feature_records(archive: Path) -> list[dict[str, Any]]:
-    try:
-        with ZipFile(archive) as zf:
-            infos = zf.infolist()
-            names = [info.filename for info in infos]
-            if not infos:
-                raise DistributionContractError("TF archive contains no feature files")
-            if len(set(names)) != len(names):
-                raise DistributionContractError("TF archive contains duplicate feature filenames")
-
-            records: list[dict[str, Any]] = []
-            for info in infos:
-                name = info.filename
-                if info.is_dir() or "/" in name or "\\" in name or not name.endswith(".tf"):
-                    raise DistributionContractError(
-                        f"TF archive contains non-feature or non-top-level entry {name!r}"
-                    )
-                payload = zf.read(info)
-                records.append(
-                    {
-                        "name": name,
-                        "bytes": len(payload),
-                        "sha256": _sha256_bytes(payload),
-                    }
-                )
-    except DistributionContractError:
-        raise
-    except (OSError, BadZipFile, RuntimeError) as exc:
-        raise DistributionContractError(f"invalid TF archive: {exc}") from exc
-
-    return sorted(records, key=lambda item: item["name"])
-
-
-_SERIALIZED_IDENTITY_KEYS = {
-    "version",
-    *(source for source, _target in REPORT_PROVENANCE_FIELDS),
+EXPRESS_NAME = "complete.zip"
+DEFAULT_REPOSITORY_OWNER = "alexsosn"
+DEFAULT_REPOSITORY_NAME = "Pseudepigrapha-TF"
+_EXPRESS_CHECKOUT_NAME = "__checkout__.txt"
+_EXPRESS_EXCLUDE = {
+    ".DS_Store",
+    ".tf",
+    "__pycache__",
+    "_local",
+    "_temp",
+    ".ipynb_checkpoints",
 }
 
 
-def _serialized_otype_metadata(archive: Path) -> dict[str, str]:
-    """Read release identity from a Text-Fabric-compatible otype header."""
-
-    try:
-        with ZipFile(archive) as zf:
-            payload = zf.read("otype.tf")
-    except KeyError as exc:
-        raise DistributionContractError("TF archive is missing required otype.tf") from exc
-    except (OSError, BadZipFile, RuntimeError) as exc:
-        raise DistributionContractError(f"could not read serialized otype metadata: {exc}") from exc
-    try:
-        lines = payload.decode("utf-8").splitlines()
-    except UnicodeDecodeError as exc:
-        raise DistributionContractError("serialized otype.tf is not valid UTF-8") from exc
-
-    if not lines or lines[0] != "@node":
-        raise DistributionContractError("serialized otype.tf header must start with @node")
-
-    metadata: dict[str, str] = {}
-    saw_blank = False
-    for line in lines[1:]:
-        if line == "":
-            saw_blank = True
-            break
-        if not line.startswith("@") or "=" not in line:
-            raise DistributionContractError(
-                "serialized otype.tf metadata must end with a blank line before data"
-            )
-        key, value = line[1:].split("=", 1)
-        if not key:
-            raise DistributionContractError("serialized otype.tf contains an empty metadata key")
-        if key in _SERIALIZED_IDENTITY_KEYS and key in metadata:
-            raise DistributionContractError(
-                f"serialized otype.tf contains duplicate identity metadata key {key!r}"
-            )
-        # Text-Fabric may repeat non-identity generic metadata such as writtenBy.
-        # Publication consumes only the explicitly enumerated identity keys.
-        metadata.setdefault(key, value)
-    if not saw_blank:
-        raise DistributionContractError(
-            "serialized otype.tf metadata is missing the required blank separator"
-        )
-    return metadata
+def _require_repository_component(value: object, label: str) -> str:
+    value = _native._require_nonempty_string(value, label)
+    if (
+        value in {".", ".."}
+        or "/" in value
+        or "\\" in value
+        or "\x00" in value
+        or "\n" in value
+        or "\r" in value
+    ):
+        raise DistributionContractError(f"{label} must be one safe path component")
+    return value
 
 
-def _validate_serialized_identity(
-    archive: Path,
-    *,
-    identity: Mapping[str, Any],
-    converter_version: str,
-    data_version: str,
-) -> None:
-    metadata = _serialized_otype_metadata(archive)
-    serialized_provenance = report_provenance(metadata)
-    expected_provenance = _require_mapping(
-        identity.get("serialized_provenance"), "report-derived serialized provenance"
-    )
-
-    for report_key, expected_value in expected_provenance.items():
-        label = report_key.replace("_", " ")
-        actual = serialized_provenance.get(report_key)
-        if actual is None:
-            raise DistributionContractError(
-                f"serialized Text-Fabric identity is missing {label} metadata"
-            )
-        if actual != expected_value:
-            raise DistributionContractError(
-                f"serialized Text-Fabric {label} mismatch: {actual!r} != {expected_value!r}"
-            )
-
-    unexpected_provenance = sorted(
-        set(serialized_provenance) - set(expected_provenance)
-    )
-    if unexpected_provenance:
-        raise DistributionContractError(
-            "serialized Text-Fabric identity contains provenance absent from the "
-            "conversion report: " + ", ".join(unexpected_provenance)
-        )
-
-    actual_data_version = metadata.get("version")
-    if actual_data_version is None:
-        raise DistributionContractError(
-            "serialized Text-Fabric identity is missing data version metadata (version)"
-        )
-    if actual_data_version != data_version:
-        raise DistributionContractError(
-            f"serialized Text-Fabric data version mismatch: {actual_data_version!r} != {data_version!r}"
-        )
+def _checkout_marker(release_tag: str, release_commit: str) -> bytes:
+    release_tag = _native._require_nonempty_string(release_tag, "release tag")
+    if any(char in release_tag for char in ("\x00", "\n", "\r")):
+        raise DistributionContractError("release tag cannot contain control line separators")
+    release_commit = _native._require_git_sha(release_commit, "release commit")
+    return f"{release_tag}\n{release_commit}\n".encode("utf-8")
 
 
-def _directory_feature_records(directory: Path) -> list[dict[str, Any]]:
-    if directory.is_symlink():
-        raise DistributionContractError(
-            f"extracted TF directory must not itself be a symlink: {directory}"
-        )
-    if not directory.is_dir():
-        raise DistributionContractError(f"missing extracted TF directory: {directory}")
+def _safe_relative_parts(path: str, label: str) -> tuple[str, ...]:
+    if not path or "\x00" in path or "\\" in path or path.startswith("/"):
+        raise DistributionContractError(f"{label} contains an unsafe path {path!r}")
+    parts = tuple(path.split("/"))
+    if any(part in {"", ".", ".."} for part in parts):
+        raise DistributionContractError(f"{label} contains path traversal or empty components: {path!r}")
+    return parts
 
-    entries = list(directory.rglob("*"))
+
+def _collect_app_payloads(app_directory: Path) -> dict[str, bytes]:
+    if app_directory.is_symlink():
+        raise DistributionContractError(f"Text-Fabric app directory must not be a symlink: {app_directory}")
+    if not app_directory.is_dir():
+        raise DistributionContractError(f"missing Text-Fabric app directory: {app_directory}")
+
+    entries = list(app_directory.rglob("*"))
     symlinks = sorted(path for path in entries if path.is_symlink())
     if symlinks:
         raise DistributionContractError(
-            "extracted TF directory contains symlinked entries: "
-            + ", ".join(str(path.relative_to(directory)) for path in symlinks)
+            "Text-Fabric app directory contains symlinked entries: "
+            + ", ".join(str(path.relative_to(app_directory)) for path in symlinks)
         )
 
-    nested = [
-        path
-        for path in entries
-        if path.suffix == ".tf" and path.parent != directory and path.is_file()
-    ]
-    if nested:
-        raise DistributionContractError(
-            "extracted TF directory contains nested feature files: "
-            + ", ".join(str(path.relative_to(directory)) for path in sorted(nested))
-        )
+    payloads: dict[str, bytes] = {}
+    try:
+        for path in sorted(entries, key=lambda item: item.relative_to(app_directory).as_posix()):
+            relative = path.relative_to(app_directory).as_posix()
+            parts = _safe_relative_parts(relative, "Text-Fabric app entry")
+            if any(part in _EXPRESS_EXCLUDE for part in parts):
+                continue
+            if path.is_dir():
+                continue
+            if not path.is_file():
+                raise DistributionContractError(f"Text-Fabric app entry is not a regular file: {relative}")
+            if relative == _EXPRESS_CHECKOUT_NAME:
+                continue
+            payloads[relative] = path.read_bytes()
+    except OSError as exc:
+        raise DistributionContractError(f"could not read Text-Fabric app files: {exc}") from exc
 
-    features = sorted(path for path in directory.glob("*.tf") if path.is_file())
-    if not features:
-        raise DistributionContractError("extracted TF directory contains no feature files")
-    if any(path.is_symlink() for path in features):
-        raise DistributionContractError("extracted TF directory contains symlinked feature files")
+    if "config.yaml" not in payloads:
+        raise DistributionContractError("Text-Fabric app directory is missing required config.yaml")
+    return payloads
+
+
+def _native_feature_payloads(tf_archive: Path) -> dict[str, bytes]:
+    records = _native._feature_records(tf_archive)
+    try:
+        with ZipFile(tf_archive) as zf:
+            return {record["name"]: zf.read(record["name"]) for record in records}
+    except (OSError, BadZipFile, RuntimeError, KeyError) as exc:
+        raise DistributionContractError(f"could not read native Text-Fabric feature bytes: {exc}") from exc
+
+
+def _build_express_archive(
+    express_archive: Path,
+    native_archive: Path,
+    app_directory: Path,
+    *,
+    release_tag: str,
+    release_commit: str,
+    data_version: str,
+    repository_owner: str,
+    repository_name: str,
+) -> None:
+    data_version = _native._require_data_version(data_version)
+    repository_owner = _require_repository_component(repository_owner, "repository owner")
+    repository_name = _require_repository_component(repository_name, "repository name")
+    marker = _checkout_marker(release_tag, release_commit)
+    app_payloads = _collect_app_payloads(app_directory)
+    feature_payloads = _native_feature_payloads(native_archive)
+
+    root = f"{repository_owner}/{repository_name}"
+    app_root = f"{root}/app"
+    data_root = f"{root}/tf/{data_version}"
+    members: dict[str, bytes] = {
+        f"{app_root}/{_EXPRESS_CHECKOUT_NAME}": marker,
+        f"{data_root}/{_EXPRESS_CHECKOUT_NAME}": marker,
+    }
+    members.update({f"{app_root}/{name}": payload for name, payload in app_payloads.items()})
+    members.update({f"{data_root}/{name}": payload for name, payload in feature_payloads.items()})
 
     try:
-        return [_file_record(path) for path in features]
-    except OSError as exc:
-        raise DistributionContractError(f"could not read extracted TF feature: {exc}") from exc
+        with ZipFile(express_archive, "w") as zf:
+            for name in sorted(members):
+                zf.writestr(_native._canonical_zip_info(name), members[name])
+    except (OSError, RuntimeError) as exc:
+        raise DistributionContractError(f"could not build Text-Fabric express archive: {exc}") from exc
 
 
-def _feature_set_sha256(records: list[dict[str, Any]]) -> str:
-    payload = json.dumps(
-        records,
-        ensure_ascii=False,
-        sort_keys=True,
-        separators=(",", ":"),
-    ).encode("utf-8")
-    return _sha256_bytes(payload)
+def _validate_express_member(info: Any) -> tuple[str, ...]:
+    name = info.filename
+    parts = _safe_relative_parts(name, "Text-Fabric express member")
+    if info.is_dir():
+        raise DistributionContractError(f"Text-Fabric express archive contains a directory member: {name!r}")
+    if info.create_system == 3:
+        mode = (info.external_attr >> 16) & 0xFFFF
+        kind = stat.S_IFMT(mode)
+        if stat.S_ISLNK(mode):
+            raise DistributionContractError(f"Text-Fabric express archive contains a symlink member: {name!r}")
+        if kind not in {0, stat.S_IFREG}:
+            raise DistributionContractError(f"Text-Fabric express archive contains a special member: {name!r}")
+    return parts
 
 
-def _feature_identity(records: list[dict[str, Any]]) -> dict[str, Any]:
-    return {
-        "feature_count": len(records),
-        "features": records,
-        "feature_set_sha256": _feature_set_sha256(records),
-    }
-
-
-def feature_directory_identity(directory: str | Path) -> dict[str, Any]:
-    """Return normalized identity for one materialized top-level TF feature set."""
-
-    return _feature_identity(_directory_feature_records(Path(directory)))
-
-
-def _report_feature_identity(report: Mapping[str, Any]) -> dict[str, Any]:
-    raw = _require_mapping(report.get("text_fabric"), "report Text-Fabric feature identity")
-    raw_features = raw.get("features")
-    if not isinstance(raw_features, list) or not raw_features:
+def _validate_express_archive(
+    express_archive: str | Path,
+    native_archive: str | Path,
+    *,
+    release_tag: str,
+    release_commit: str,
+    data_version: str,
+    repository_owner: str,
+    repository_name: str,
+) -> dict[str, bytes]:
+    express_archive = Path(express_archive)
+    native_archive = Path(native_archive)
+    if express_archive.name != EXPRESS_NAME:
         raise DistributionContractError(
-            "report Text-Fabric feature identity must contain a non-empty features array"
+            f"Text-Fabric express archive filename must be {EXPRESS_NAME!r}, got {express_archive.name!r}"
         )
-    records: list[dict[str, Any]] = []
-    names: set[str] = set()
-    for index, item in enumerate(raw_features):
-        record = _require_mapping(item, f"report feature record {index}")
-        name = _require_nonempty_string(record.get("name"), f"report feature record {index} name")
-        if "/" in name or "\\" in name or not name.endswith(".tf") or name in names:
-            raise DistributionContractError(f"report feature record has invalid name {name!r}")
-        names.add(name)
-        byte_count = record.get("bytes")
-        sha256 = record.get("sha256")
-        if type(byte_count) is not int or byte_count < 0:
-            raise DistributionContractError(f"report feature {name!r} has invalid byte size")
-        if (
-            not isinstance(sha256, str)
-            or len(sha256) != 64
-            or any(char not in "0123456789abcdef" for char in sha256)
-        ):
-            raise DistributionContractError(f"report feature {name!r} has invalid sha256")
-        records.append({"name": name, "bytes": byte_count, "sha256": sha256})
-    if records != sorted(records, key=lambda item: item["name"]):
-        raise DistributionContractError("report feature records are not canonically sorted")
-    identity = _feature_identity(records)
-    if raw.get("feature_count") != identity["feature_count"]:
-        raise DistributionContractError("report feature count does not match feature records")
-    if raw.get("feature_set_sha256") != identity["feature_set_sha256"]:
-        raise DistributionContractError("report feature-set sha256 does not match feature records")
-    return identity
+    if not express_archive.is_file():
+        raise DistributionContractError(f"missing Text-Fabric express archive: {express_archive}")
 
+    data_version = _native._require_data_version(data_version)
+    repository_owner = _require_repository_component(repository_owner, "repository owner")
+    repository_name = _require_repository_component(repository_name, "repository name")
+    marker = _checkout_marker(release_tag, release_commit)
+    feature_payloads = _native_feature_payloads(native_archive)
 
-def canonical_manifest_bytes(manifest: Mapping[str, Any]) -> bytes:
-    """Serialize a schema-v1 manifest deterministically for release publication."""
+    root = f"{repository_owner}/{repository_name}"
+    app_prefix = f"{root}/app/"
+    data_prefix = f"{root}/tf/{data_version}/"
+    app_payloads: dict[str, bytes] = {}
+    data_payloads: dict[str, bytes] = {}
 
-    return (
-        json.dumps(
-            manifest,
-            ensure_ascii=False,
-            sort_keys=True,
-            separators=(",", ":"),
+    try:
+        with ZipFile(express_archive) as zf:
+            infos = zf.infolist()
+            names = [info.filename for info in infos]
+            if not infos:
+                raise DistributionContractError("Text-Fabric express archive contains no members")
+            if len(set(names)) != len(names):
+                raise DistributionContractError("Text-Fabric express archive contains duplicate members")
+            if names != sorted(names):
+                raise DistributionContractError("Text-Fabric express archive members are not canonically sorted")
+
+            for info in infos:
+                _validate_express_member(info)
+                name = info.filename
+                payload = zf.read(info)
+                if name.startswith(app_prefix):
+                    relative = name[len(app_prefix):]
+                    parts = _safe_relative_parts(relative, "Text-Fabric app member")
+                    if any(part in _EXPRESS_EXCLUDE for part in parts):
+                        raise DistributionContractError(
+                            f"Text-Fabric express archive contains excluded app member {name!r}"
+                        )
+                    app_payloads[relative] = payload
+                elif name.startswith(data_prefix):
+                    relative = name[len(data_prefix):]
+                    parts = _safe_relative_parts(relative, "Text-Fabric data member")
+                    if len(parts) != 1:
+                        raise DistributionContractError(
+                            f"Text-Fabric express data member must be top-level within the version: {name!r}"
+                        )
+                    data_payloads[relative] = payload
+                else:
+                    raise DistributionContractError(
+                        f"Text-Fabric express member is outside the expected repository roots: {name!r}"
+                    )
+    except DistributionContractError:
+        raise
+    except (OSError, BadZipFile, RuntimeError, KeyError) as exc:
+        raise DistributionContractError(f"invalid Text-Fabric express archive: {exc}") from exc
+
+    app_marker = app_payloads.pop(_EXPRESS_CHECKOUT_NAME, None)
+    data_marker = data_payloads.pop(_EXPRESS_CHECKOUT_NAME, None)
+    if app_marker is None or data_marker is None:
+        raise DistributionContractError("Text-Fabric express archive is missing required checkout marker")
+    if app_marker != marker or data_marker != marker:
+        raise DistributionContractError("Text-Fabric express checkout marker does not match release tag/commit")
+    if "config.yaml" not in app_payloads:
+        raise DistributionContractError("Text-Fabric express app is missing config.yaml")
+
+    if set(data_payloads) != set(feature_payloads):
+        missing = sorted(set(feature_payloads) - set(data_payloads))
+        extra = sorted(set(data_payloads) - set(feature_payloads))
+        raise DistributionContractError(
+            f"Text-Fabric express feature member set differs from native archive; missing={missing}, extra={extra}"
         )
-        + "\n"
-    ).encode("utf-8")
+    for name, native_payload in feature_payloads.items():
+        if data_payloads[name] != native_payload:
+            raise DistributionContractError(
+                f"Text-Fabric express feature {name!r} differs from native archive bytes"
+            )
+    return app_payloads
+
+
+def _validate_express_app_identity(
+    app_payloads: Mapping[str, bytes],
+    app_directory: str | Path,
+) -> None:
+    expected = _collect_app_payloads(Path(app_directory))
+    actual_names = set(app_payloads)
+    expected_names = set(expected)
+    if actual_names != expected_names:
+        missing = sorted(expected_names - actual_names)
+        extra = sorted(actual_names - expected_names)
+        raise DistributionContractError(
+            "Text-Fabric express app member set differs from exact app directory; "
+            f"missing={missing}, extra={extra}"
+        )
+    for name, expected_payload in expected.items():
+        if app_payloads[name] != expected_payload:
+            raise DistributionContractError(
+                f"Text-Fabric express app payload {name!r} differs from exact app directory"
+            )
 
 
 def build_distribution_manifest(
@@ -464,135 +276,38 @@ def build_distribution_manifest(
     release_commit: str,
     converter_version: str,
     data_version: str,
+    express_archive: str | Path | None = None,
+    app_directory: str | Path | None = None,
+    repository_owner: str = DEFAULT_REPOSITORY_OWNER,
+    repository_name: str = DEFAULT_REPOSITORY_NAME,
 ) -> dict[str, Any]:
-    """Build a deterministic manifest binding one native TF archive to its report."""
+    """Build the native manifest and bind optional express bytes to exact app identity."""
 
-    archive = Path(tf_archive)
-    report_file = Path(report_path)
-    release_tag = _require_nonempty_string(release_tag, "release tag")
-    release_commit = _require_git_sha(release_commit, "release commit")
-    converter_version = _require_nonempty_string(converter_version, "converter version")
-    data_version = _require_data_version(data_version)
-
-    expected_archive_name = f"tf-{data_version}.zip"
-    if archive.name != expected_archive_name:
-        raise DistributionContractError(
-            f"TF archive filename must be {expected_archive_name!r}, got {archive.name!r}"
-        )
-    if not archive.is_file():
-        raise DistributionContractError(f"missing TF archive: {archive}")
-    if not report_file.is_file():
-        raise DistributionContractError(f"missing conversion report: {report_file}")
-
-    report = _load_report(report_file)
-    identity = _report_identity(report, converter_version=converter_version)
-    features = _feature_records(archive)
-    feature_identity = _feature_identity(features)
-    report_feature_identity = _report_feature_identity(report)
-    if report_feature_identity != feature_identity:
-        raise DistributionContractError(
-            "report Text-Fabric feature identity does not match serialized feature bytes"
-        )
-    _validate_serialized_identity(
-        archive,
-        identity=identity,
+    manifest = _native.build_distribution_manifest(
+        tf_archive,
+        report_path,
+        release_tag=release_tag,
+        release_commit=release_commit,
         converter_version=converter_version,
         data_version=data_version,
     )
-    _validate_canonical_provenance_profile(identity)
-
-    return {
-        "schema_version": SCHEMA_VERSION,
-        "release": {
-            "tag": release_tag,
-            "commit": release_commit,
-        },
-        "converter": {"version": converter_version},
-        "text_fabric": {
-            "data_version": data_version,
-            **feature_identity,
-        },
-        "upstream": {
-            "repository": identity["upstream_repository"],
-            "commit": identity["upstream_commit"],
-        },
-        "assets": {
-            "tf": _file_record(archive),
-            "report": _file_record(report_file),
-        },
-        "audit": {"status": report["status"]},
-        "provenance": identity["provenance"],
-    }
-
-
-def _manifest_publication_identity(manifest: Mapping[str, Any]) -> tuple[str, str, str, str]:
-    if manifest.get("schema_version") != SCHEMA_VERSION:
-        raise DistributionContractError(
-            f"unsupported manifest schema version {manifest.get('schema_version')!r}"
+    if express_archive is not None:
+        app_payloads = _validate_express_archive(
+            express_archive,
+            tf_archive,
+            release_tag=release_tag,
+            release_commit=release_commit,
+            data_version=data_version,
+            repository_owner=repository_owner,
+            repository_name=repository_name,
         )
-    release = _require_mapping(manifest.get("release"), "manifest release")
-    converter = _require_mapping(manifest.get("converter"), "manifest converter")
-    text_fabric = _require_mapping(manifest.get("text_fabric"), "manifest text_fabric")
-    return (
-        _require_nonempty_string(release.get("tag"), "manifest release tag"),
-        _require_git_sha(release.get("commit"), "manifest release commit"),
-        _require_nonempty_string(converter.get("version"), "manifest converter version"),
-        _require_data_version(text_fabric.get("data_version")),
-    )
-
-
-def _manifest_feature_records(manifest: Mapping[str, Any]) -> list[dict[str, Any]]:
-    text_fabric = _require_mapping(manifest.get("text_fabric"), "manifest text_fabric")
-    raw_records = text_fabric.get("features")
-    if not isinstance(raw_records, list) or not raw_records:
-        raise DistributionContractError("manifest text_fabric features must be a non-empty JSON array")
-
-    records: list[dict[str, Any]] = []
-    names: set[str] = set()
-    for index, raw in enumerate(raw_records):
-        record = _require_mapping(raw, f"manifest feature record {index}")
-        name = _require_nonempty_string(record.get("name"), f"manifest feature record {index} name")
-        if "/" in name or "\\" in name or not name.endswith(".tf"):
-            raise DistributionContractError(f"manifest feature name is not a top-level .tf file: {name!r}")
-        if name in names:
-            raise DistributionContractError(f"manifest contains duplicate feature record {name!r}")
-        names.add(name)
-
-        byte_count = record.get("bytes")
-        if type(byte_count) is not int or byte_count < 0:
-            raise DistributionContractError(f"manifest feature {name!r} has invalid byte size")
-        sha256 = record.get("sha256")
-        if (
-            not isinstance(sha256, str)
-            or len(sha256) != 64
-            or any(char not in "0123456789abcdef" for char in sha256)
-        ):
-            raise DistributionContractError(f"manifest feature {name!r} has invalid sha256")
-        records.append({"name": name, "bytes": byte_count, "sha256": sha256})
-
-    if records != sorted(records, key=lambda item: item["name"]):
-        raise DistributionContractError("manifest feature records are not canonically sorted")
-    if text_fabric.get("feature_count") != len(records):
-        raise DistributionContractError("manifest feature count does not match feature records")
-    if text_fabric.get("feature_set_sha256") != _feature_set_sha256(records):
-        raise DistributionContractError("manifest feature-set sha256 does not match feature records")
-    return records
-
-
-def validate_feature_directory(
-    manifest: Mapping[str, Any],
-    tf_directory: str | Path,
-) -> None:
-    """Fail closed unless extracted top-level .tf bytes match the manifest exactly."""
-
-    manifest = _require_mapping(manifest, "dataset manifest")
-    _manifest_publication_identity(manifest)
-    expected = _manifest_feature_records(manifest)
-    actual = _directory_feature_records(Path(tf_directory))
-    if actual != expected:
-        raise DistributionContractError(
-            "extracted Text-Fabric feature set does not match dataset manifest"
-        )
+        if app_directory is None:
+            raise DistributionContractError(
+                "Text-Fabric express app manifest binding requires an exact app directory identity"
+            )
+        _validate_express_app_identity(app_payloads, app_directory)
+        manifest["assets"]["express"] = _native._file_record(Path(express_archive))
+    return manifest
 
 
 def validate_distribution(
@@ -600,79 +315,69 @@ def validate_distribution(
     tf_archive: str | Path,
     report_path: str | Path,
     *,
+    express_archive: str | Path | None = None,
+    app_directory: str | Path | None = None,
+    repository_owner: str = DEFAULT_REPOSITORY_OWNER,
+    repository_name: str = DEFAULT_REPOSITORY_NAME,
     expected_release_tag: str | None = None,
     expected_release_commit: str | None = None,
     expected_converter_version: str | None = None,
     expected_data_version: str | None = None,
 ) -> None:
-    """Fail closed unless archive, report and manifest form one exact release unit."""
+    """Validate native closure plus complete.zip against its exact app checkout."""
 
-    manifest = _require_mapping(manifest, "dataset manifest")
-    release_tag, release_commit, converter_version, data_version = _manifest_publication_identity(manifest)
-
-    if expected_release_tag is not None and release_tag != expected_release_tag:
+    manifest = _native._require_mapping(manifest, "dataset manifest")
+    release_tag, release_commit, converter_version, data_version = _native._manifest_publication_identity(manifest)
+    assets = _native._require_mapping(manifest.get("assets"), "manifest assets")
+    manifest_has_express = "express" in assets
+    supplied_express = express_archive is not None
+    if manifest_has_express != supplied_express:
         raise DistributionContractError(
-            f"release tag mismatch: manifest has {release_tag!r}, expected {expected_release_tag!r}"
-        )
-    if expected_release_commit is not None and release_commit != expected_release_commit:
-        raise DistributionContractError(
-            f"release commit mismatch: manifest has {release_commit!r}, expected {expected_release_commit!r}"
-        )
-    if expected_converter_version is not None and converter_version != expected_converter_version:
-        raise DistributionContractError(
-            f"converter version mismatch: manifest has {converter_version!r}, expected {expected_converter_version!r}"
-        )
-    if expected_data_version is not None and data_version != expected_data_version:
-        raise DistributionContractError(
-            f"data version mismatch: manifest has {data_version!r}, expected {expected_data_version!r}"
+            "dataset manifest and validation call disagree about Text-Fabric express transport"
         )
 
-    archive = Path(tf_archive)
-    report_file = Path(report_path)
-    rebuilt = build_distribution_manifest(
-        archive,
-        report_file,
-        release_tag=release_tag,
-        release_commit=release_commit,
-        converter_version=converter_version,
-        data_version=data_version,
+    native_manifest = dict(manifest)
+    native_assets = dict(assets)
+    native_assets.pop("express", None)
+    native_manifest["assets"] = native_assets
+    _native.validate_distribution(
+        native_manifest,
+        tf_archive,
+        report_path,
+        expected_release_tag=expected_release_tag,
+        expected_release_commit=expected_release_commit,
+        expected_converter_version=expected_converter_version,
+        expected_data_version=expected_data_version,
     )
 
-    # Compare the manifest structurally after all referenced bytes and report
-    # provenance have been re-derived. This catches asset, feature-set, upstream,
-    # audit, and license/provenance tampering without trusting duplicated fields.
-    if dict(manifest) != rebuilt:
-        upstream = _require_mapping(manifest.get("upstream"), "manifest upstream")
-        if upstream.get("repository") != rebuilt["upstream"]["repository"]:
-            raise DistributionContractError("upstream repository mismatch between manifest and report")
-        if upstream.get("commit") != rebuilt["upstream"]["commit"]:
-            raise DistributionContractError("upstream commit mismatch between manifest and report")
+    if express_archive is None:
+        return
 
-        assets = _require_mapping(manifest.get("assets"), "manifest assets")
-        tf_asset = _require_mapping(assets.get("tf"), "manifest TF asset")
-        report_asset = _require_mapping(assets.get("report"), "manifest report asset")
-        if tf_asset.get("name") != rebuilt["assets"]["tf"]["name"]:
-            raise DistributionContractError("TF archive filename mismatch")
-        if tf_asset.get("sha256") != rebuilt["assets"]["tf"]["sha256"]:
-            raise DistributionContractError("TF archive sha256 mismatch")
-        if tf_asset.get("bytes") != rebuilt["assets"]["tf"]["bytes"]:
-            raise DistributionContractError("TF archive byte-size mismatch")
-        if report_asset.get("name") != rebuilt["assets"]["report"]["name"]:
-            raise DistributionContractError("report filename mismatch")
-        if report_asset.get("sha256") != rebuilt["assets"]["report"]["sha256"]:
-            raise DistributionContractError("report sha256 mismatch")
-        if report_asset.get("bytes") != rebuilt["assets"]["report"]["bytes"]:
-            raise DistributionContractError("report byte-size mismatch")
-
-        text_fabric = _require_mapping(manifest.get("text_fabric"), "manifest text_fabric")
-        if text_fabric.get("features") != rebuilt["text_fabric"]["features"]:
-            raise DistributionContractError("Text-Fabric feature records mismatch")
-        if text_fabric.get("feature_set_sha256") != rebuilt["text_fabric"]["feature_set_sha256"]:
-            raise DistributionContractError("Text-Fabric feature-set sha256 mismatch")
-
+    app_payloads = _validate_express_archive(
+        express_archive,
+        tf_archive,
+        release_tag=release_tag,
+        release_commit=release_commit,
+        data_version=data_version,
+        repository_owner=repository_owner,
+        repository_name=repository_name,
+    )
+    if app_directory is None:
         raise DistributionContractError(
-            "dataset manifest does not match archive/report-derived release identity"
+            "Text-Fabric express app validation requires an exact app directory identity"
         )
+    _validate_express_app_identity(app_payloads, app_directory)
+
+    actual = _native._file_record(Path(express_archive))
+    expected = dict(_native._require_mapping(assets.get("express"), "manifest express asset"))
+    if expected != actual:
+        if expected.get("name") != actual["name"]:
+            raise DistributionContractError("Text-Fabric express archive filename mismatch")
+        if expected.get("sha256") != actual["sha256"]:
+            raise DistributionContractError("Text-Fabric express archive sha256 mismatch")
+        if expected.get("bytes") != actual["bytes"]:
+            raise DistributionContractError("Text-Fabric express archive byte-size mismatch")
+        raise DistributionContractError("Text-Fabric express asset record mismatch")
 
 
 def stage_distribution_assets(
@@ -683,82 +388,94 @@ def stage_distribution_assets(
     release_commit: str,
     converter_version: str,
     data_version: str,
+    app_directory: str | Path | None = None,
+    repository_owner: str = DEFAULT_REPOSITORY_OWNER,
+    repository_name: str = DEFAULT_REPOSITORY_NAME,
 ) -> dict[str, Path]:
-    """Atomically stage the native TF archive, report and validated manifest."""
+    """Atomically stage native assets and, when requested, complete.zip transport."""
 
-    source = Path(tf_directory)
-    destination = Path(destination)
-    data_version = _require_data_version(data_version)
-    if not source.is_dir():
-        raise DistributionContractError(f"missing materialized TF directory: {source}")
-    if destination.exists():
-        raise DistributionContractError(
-            f"release destination already exists; refusing to mix generations: {destination}"
-        )
-
-    report_source = source / REPORT_NAME
-    if not report_source.is_file():
-        raise DistributionContractError(f"missing conversion report: {report_source}")
-
-    # Reject an unsafe materialized layout before trusting a report from the
-    # same directory. The same normalized feature set is then used for report
-    # binding, archive construction, and extracted verification.
-    source_records = _directory_feature_records(source)
-    report = _load_report(report_source)
-    _report_identity(report, converter_version=converter_version)
-    source_identity = _feature_identity(source_records)
-    if _report_feature_identity(report) != source_identity:
-        raise DistributionContractError(
-            "report Text-Fabric feature identity does not match materialized feature bytes"
-        )
-    features = [source / record["name"] for record in source_records]
-
-    destination.parent.mkdir(parents=True, exist_ok=True)
-    stage = Path(
-        mkdtemp(
-            prefix=".pseudepigrapha-tf-release-",
-            dir=str(destination.parent),
-        )
-    )
-    archive = stage / f"tf-{data_version}.zip"
-    staged_report = stage / REPORT_NAME
-    staged_manifest = stage / MANIFEST_NAME
-
-    try:
-        # Text-Fabric 13.1 tf-zip writes sorted top-level .tf files with
-        # ZIP_DEFLATED and excludes non-feature files such as the report.
-        with ZipFile(archive, "w", compression=ZIP_DEFLATED) as zf:
-            for feature in features:
-                zf.writestr(_canonical_zip_info(feature.name), feature.read_bytes())
-        shutil.copyfile(report_source, staged_report)
-
-        manifest = build_distribution_manifest(
-            archive,
-            staged_report,
+    if app_directory is None:
+        return _native.stage_distribution_assets(
+            tf_directory,
+            destination,
             release_tag=release_tag,
             release_commit=release_commit,
             converter_version=converter_version,
             data_version=data_version,
         )
-        staged_manifest.write_bytes(canonical_manifest_bytes(manifest))
+
+    destination = Path(destination)
+    if destination.exists():
+        raise DistributionContractError(
+            f"release destination already exists; refusing to mix generations: {destination}"
+        )
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    outer_stage = Path(
+        mkdtemp(
+            prefix=".pseudepigrapha-tf-express-release-",
+            dir=str(destination.parent),
+        )
+    )
+    generation = outer_stage / "generation"
+
+    try:
+        native_assets = _native.stage_distribution_assets(
+            tf_directory,
+            generation,
+            release_tag=release_tag,
+            release_commit=release_commit,
+            converter_version=converter_version,
+            data_version=data_version,
+        )
+        express = generation / EXPRESS_NAME
+        _build_express_archive(
+            express,
+            native_assets["tf"],
+            Path(app_directory),
+            release_tag=release_tag,
+            release_commit=release_commit,
+            data_version=data_version,
+            repository_owner=repository_owner,
+            repository_name=repository_name,
+        )
+        manifest = build_distribution_manifest(
+            native_assets["tf"],
+            native_assets["report"],
+            release_tag=release_tag,
+            release_commit=release_commit,
+            converter_version=converter_version,
+            data_version=data_version,
+            express_archive=express,
+            app_directory=app_directory,
+            repository_owner=repository_owner,
+            repository_name=repository_name,
+        )
+        native_assets["manifest"].write_bytes(_native.canonical_manifest_bytes(manifest))
         validate_distribution(
             manifest,
-            archive,
-            staged_report,
+            native_assets["tf"],
+            native_assets["report"],
+            express_archive=express,
+            app_directory=app_directory,
+            repository_owner=repository_owner,
+            repository_name=repository_name,
             expected_release_tag=release_tag,
             expected_release_commit=release_commit,
             expected_converter_version=converter_version,
             expected_data_version=data_version,
         )
-
-        os.replace(stage, destination)
+        os.replace(generation, destination)
     except BaseException:
-        if stage.exists():
-            shutil.rmtree(stage, ignore_errors=True)
+        if outer_stage.exists():
+            shutil.rmtree(outer_stage, ignore_errors=True)
         raise
+    else:
+        if outer_stage.exists():
+            shutil.rmtree(outer_stage, ignore_errors=True)
 
     return {
-        "tf": destination / archive.name,
-        "report": destination / REPORT_NAME,
-        "manifest": destination / MANIFEST_NAME,
+        "tf": destination / f"tf-{_native._require_data_version(data_version)}.zip",
+        "express": destination / EXPRESS_NAME,
+        "report": destination / _native.REPORT_NAME,
+        "manifest": destination / _native.MANIFEST_NAME,
     }

@@ -134,6 +134,7 @@ jobs:
               validate_distribution,
           )
 
+          app_directory = Path(os.environ['GITHUB_WORKSPACE']) / 'app'
           assets = stage_distribution_assets(
               Path('/tmp/pseudepigrapha-tf') / os.environ['DATA_VERSION'],
               Path('/tmp/release-assets'),
@@ -141,12 +142,15 @@ jobs:
               release_commit=os.environ['RELEASE_COMMIT'],
               converter_version=os.environ['CONVERTER_VERSION'],
               data_version=os.environ['DATA_VERSION'],
+              app_directory=app_directory,
           )
           manifest = json.loads(assets['manifest'].read_text(encoding='utf-8'))
           validate_distribution(
               manifest,
               assets['tf'],
               assets['report'],
+              express_archive=assets['express'],
+              app_directory=app_directory,
               expected_release_tag=os.environ['RELEASE_TAG'],
               expected_release_commit=os.environ['RELEASE_COMMIT'],
               expected_converter_version=os.environ['CONVERTER_VERSION'],
@@ -154,7 +158,7 @@ jobs:
           )
           PY
 
-      - name: Load release-candidate archive with stock Text-Fabric
+      - name: Load release-candidate native archive with stock Text-Fabric
         run: |
           mkdir /tmp/release-candidate-tf
           unzip -q "/tmp/release-assets/tf-${DATA_VERSION}.zip" -d /tmp/release-candidate-tf
@@ -175,12 +179,48 @@ jobs:
           assert generic['contentLicense'] == 'CC-BY-4.0'
           PY
 
+      - name: Simulate stock Text-Fabric complete.zip cache load before publication
+        run: |
+          set -euo pipefail
+          rm -rf /tmp/pseudepigrapha-tf-express-home
+          mkdir -p /tmp/pseudepigrapha-tf-express-home/text-fabric-data/github
+          unzip -q /tmp/release-assets/complete.zip \
+            -d /tmp/pseudepigrapha-tf-express-home/text-fabric-data/github
+          HOME=/tmp/pseudepigrapha-tf-express-home python - <<'PY'
+          import os
+          import socket
+
+          from tf.app import use
+
+          def network_forbidden(*args, **kwargs):
+              raise AssertionError('network access attempted during pre-publication local express reload')
+
+          socket.create_connection = network_forbidden
+          socket.socket.connect = network_forbidden
+
+          app = use(
+              'alexsosn/Pseudepigrapha-TF:local',
+              checkout='local',
+              silent='deep',
+          )
+          if app is None or app.api is None:
+              raise SystemExit('pre-publication complete.zip local Text-Fabric load failed')
+          generic = app.api.TF.features['otype'].metaData
+          assert generic['version'] == os.environ['DATA_VERSION']
+          assert generic['converterVersion'] == os.environ['CONVERTER_VERSION']
+          assert generic['upstreamCommit'] == 'c939dcbacad78c5d18d2c4282cad23c47e19ac07'
+          assert generic['sourceIdentityStatus'] == 'verified'
+          assert generic['contentLicenseStatus'] == 'verified'
+          assert app.api.F.otype.maxSlot == 922922
+          PY
+
       - name: Export validated candidate assets
         uses: actions/upload-artifact@v4
         with:
           name: pseudepigrapha-tf-corpus-release-candidate
           path: |
             /tmp/release-assets/tf-*.zip
+            /tmp/release-assets/complete.zip
             /tmp/release-assets/conversion-report.json
             /tmp/release-assets/dataset-manifest.json
           if-no-files-found: error
