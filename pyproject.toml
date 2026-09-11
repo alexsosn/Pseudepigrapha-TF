@@ -10,7 +10,7 @@ readme = "README.md"
 requires-python = ">=3.10"
 license = {text = "MIT"}
 authors = [{name = "Pseudepigrapha-TF contributors"}]
-dependencies = ["text-fabric>=13.1,<14"]
+dependencies = ["text-fabric[github]>=13.1,<14"]
 
 [project.optional-dependencies]
 dev = ["pytest>=8"]
