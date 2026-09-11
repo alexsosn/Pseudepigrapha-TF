@@ -4,8 +4,8 @@ build-backend = "hatchling.build"
 
 [project]
 name = "pseudepigrapha-tf"
-version = "0.2.0"
-description = "Convert Online Critical Pseudepigrapha XML editions to Text-Fabric"
+version = "1.0.0"
+description = "Published Text-Fabric corpus and research tools for the Online Critical Pseudepigrapha"
 readme = "README.md"
 requires-python = ">=3.10"
 license = {text = "MIT"}
