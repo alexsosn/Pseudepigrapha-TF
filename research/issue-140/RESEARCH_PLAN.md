@@ -71,6 +71,22 @@ No broad UI or server rewrite is justified by the current evidence. The main gap
 4. Any CSS change requires a concrete failing layout contract, not cosmetic preference.
 5. Run ordinary unit/TF CI and the pinned full-corpus integration gate on the exact final head.
 
+## Observed probe and TDD evidence
+
+The ephemeral pinned-corpus HTTP probe exercised the actual tracked Flask app rather than only the view-model renderer. Its source-grounded results were:
+
+- `TJob 1:1`: 200; metadata-only Coptic remained separate, the large witness selector rendered, and passage navigation was present.
+- `1En 1:2`: 200 with the selected Ethiopic/Greek source versions, distinct omission/unattested witness states, and generated translations nested under the Ethiopic source card.
+- ordinary `PssSol` passages rendered normally, while the known orphan-reading locus `1:5` failed closed with the existing readable 400 ambiguity diagnostic instead of guessing at source ownership.
+- `Aristob 7:32:13`: 200 despite the preserved upstream structural anomaly.
+- the second duplicate `4Ezra/Syriac 10:4~2` occurrence rendered normally, but the first `10:4` returned 400 with `generated translation ... source unit ... is outside requested source passage`.
+
+That last result exposed a real occurrence-selection bug rather than an ambiguous source. A persistent full-corpus RED was added to require both duplicate 4Ezra sections to render through `/compare`. On the RED head, ordinary tests passed and the pinned job passed conversion/parity/release staging before failing specifically at the first duplicate-section HTTP assertion.
+
+The implementation changes only generated-translation lookup for comparison: it adds `Translations.aligned_to_source_units()` and resolves generated units through exact `translation_unit_of` source-node identity. `Translations.passage()` remains available for direct section-address access, and inconsistent missing-source/generated-passage states still fail closed. The first focused implementation attempt was rejected by its own gate because the comparison test double did not implement the new source-unit contract; no implementation was pushed from that run. After updating the test double, focused translation/comparison/web/navigation tests passed and the occurrence-aware implementation was pushed.
+
+The persistent pinned acceptance now also carries the successful real-corpus checks from the probe, so no temporary probe workflow remains in the PR.
+
 ## Stop rule
 
 Stop when the required researcher workflows are persistently exercised on the pinned corpus and no material web defect remains. Do not broaden this ticket into frontend replacement, TF-server replacement, release machinery, or cosmetic redesign.
