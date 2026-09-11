@@ -1,316 +1,293 @@
 # Pseudepigrapha-TF
 
-A tested converter from the [Online Critical Pseudepigrapha](https://github.com/OnlineCriticalPseudepigrapha/Online-Critical-Pseudepigrapha) Grammateus XML files to [Text-Fabric](https://annotation.github.io/text-fabric/), with a BHSA-compatible word/section interface and an apparatus-preserving graph model.
+Pseudepigrapha-TF is a published [Text-Fabric](https://annotation.github.io/text-fabric/tf/) corpus derived from the [Online Critical Pseudepigrapha (OCP)](https://github.com/OnlineCriticalPseudepigrapha/Online-Critical-Pseudepigrapha), plus a small Python package for apparatus, translation, metadata, and local comparison workflows.
 
-The repository ships the converter, tests, and documentation. It does **not** include OCP XML or generated corpus data.
+The normal researcher path is to **load the published corpus directly**. You do not need to clone OCP or run the converter. Rebuilding from OCP is a maintainer/custom-snapshot workflow documented later in this README.
 
-## Install
+Python 3.10+ and Text-Fabric 13.1.x are supported.
 
-Python 3.10+ is required.
+## What the corpus contains
 
-For normal use from a repository checkout, install the runtime package non-editably:
+The corpus preserves the parts of OCP needed for research rather than flattening it to plain text:
+
+- textual source versions as Text-Fabric `book / chapter / verse` sections with exact upstream citations retained in `source_ref`;
+- apparatus units, primary and alternative readings, manuscript metadata, witness assignments, explicit omissions, and citation-only witnesses;
+- metadata-only source versions without fabricating text for them;
+- OCP's source-declared generated English/French translations as a separate layer linked to their exact source version and source units;
+- public work metadata from OCP's `intros.json`, including introductions, manuscript discussions, bibliography, provenance, and per-work citations;
+- historical OCP genre and biblical-figure catalogue classifications, explicitly marked as historical rather than inferred for later works;
+- source anomalies and unusual structures without silently repairing or reassigning them.
+
+Generated translations are **not** treated as historical witnesses. Source/critical evidence belongs to `Apparatus`; generated parallel text belongs to `Translations`.
+
+The public `v0.2.0` release contains the derived Text-Fabric corpus (`complete.zip` for stock Text-Fabric acquisition and `tf-0.2.zip` as a native feature archive), its conversion report, and its dataset manifest. The upstream OCP XML remains in the OCP repository. See [data licensing and attribution](DATA_LICENSE.md) for the exact source/license boundary.
+
+## Get and load the published corpus
+
+The shortest supported path uses Text-Fabric's normal GitHub-release acquisition. For corpus access alone:
 
 ```bash
 python -m venv .venv
-source .venv/bin/activate
-pip install .
+source .venv/bin/activate        # Windows: .venv\Scripts\activate
+python -m pip install "text-fabric[github]>=13.1,<14"
 ```
 
-For development and the test suite, use the editable development install instead:
-
-```bash
-pip install -e '.[dev]'
-```
-
-### Runtime footprint
-
-Reference measurements for the post-#141 corpus on a GitHub-hosted Ubuntu 24.04 / Python 3.12 / Text-Fabric 13.1 runner are: about **9.20 MiB** for stock `complete.zip`, **145.4 MiB** for the populated Text-Fabric cache with no retained ZIP archive, and about **1.34 GiB peak RSS** for a warm full-app load. A translation-oriented selective `Fabric.load()` measured about **1023 MiB peak RSS**. These are CI reference measurements, not hardware requirements.
-
-If a workflow only needs generated/source translation alignment, selective feature loading avoids paying for the full advanced-app feature set; see [Researcher runtime footprint](docs/runtime-footprint.md) for the measured feature list, first-load behavior, installation footprint, methodology, and caveats.
-
-## Convert OCP
-
-For a reproducible conversion, clone OCP and check out the revision used by CI:
-
-```bash
-git clone https://github.com/OnlineCriticalPseudepigrapha/Online-Critical-Pseudepigrapha.git
-git -C Online-Critical-Pseudepigrapha checkout c939dcbacad78c5d18d2c4282cad23c47e19ac07
-pseudepigrapha-tf convert \
-  Online-Critical-Pseudepigrapha/static/docs \
-  --output tf/0.2
-```
-
-The converter auto-detects the source Git commit and records it in TF metadata. `--upstream-commit` can override this for a nonstandard checkout. Zero-byte XML files are reported and skipped; malformed non-empty XML fails loudly. Well-formed XML also fails with `InvalidSourceError` when it contains unsupported structural children or attributes, when a modern OCP element omits an attribute declared `#REQUIRED` by the pinned Grammateus DTD, or when two manuscript declarations inside the same OCP version use the same non-empty `ms/@abbrev`. Reading witness citations identify manuscripts only by non-empty abbreviation, so duplicate identifiers inside one version are semantically ambiguous and are rejected rather than assigned to the first or last declaration. The same abbreviation may be reused independently in different OCP versions. Abbreviation-less legacy/direct-model manuscript metadata remains preservable but is not entered into witness lookup; a missing modern `ms/@abbrev` still fails the modern required-attribute rule. The pinned corpus contains five record-specific violations of the DTD's required `ms/@language` rule: two manuscripts in `ClMal.xml`, one in `Eup.xml`, and two in `Ps-Eup.xml`. Those exact records are preserved with unknown manuscript language rather than rejected or inferred from `version/@language`; neighboring records in the same files remain subject to the normal required-attribute rule.
-
-The refreshed OCP snapshot also contains English and French versions generated by OCP's translation workflow. Pseudepigrapha-TF preserves them as a first-class **generated-translation layer**, classified only by the strict source-declared `OCP-Trans` structure — never by language or title. This distinction is important because the pinned `4Q548` has a genuine scholarly English source version. Generated books and units carry `version_kind=generated_translation`, generated books link to their exact source version through `translation_of`, and generated units link occurrence-by-occurrence through `translation_unit_of`. The synthetic `OCP-Trans` manuscript remains available as provenance (`synthetic_witness=1`) but is excluded from historical witness/apparatus semantics. Mixed or ambiguous marker use fails loudly.
-
-The exact pinned snapshot records its generation workflow as `llm` with model `openrouter/google/gemini-3.7-flash`; those history-derived claims are emitted only when the conversion is tied to that evidenced upstream commit. An arbitrary later snapshot with the same structural marker remains identifiable as generated but is not assigned an unevidenced model. Generated-capable TF datasets declare `generatedTranslationLayer=1` in corpus metadata so `Apparatus` can fail closed if a selective load omits provenance features; source-only corpora retain the previous partial-load behavior.
-
-### Generated translations
-
-Use `Translations` for parallel generated text and `Apparatus` for source/critical textual evidence:
+Then load the published release:
 
 ```python
-from tf.fabric import Fabric
-from pseudepigrapha_tf import Apparatus, Translations
+from tf.app import use
 
-TF = Fabric(locations=["tf/0.2"], modules=[""], silent="deep")
-api = TF.load(
-    "book ocp_book version_title version_kind language generated_language "
-    "generation_marker generation_method generation_model unit_id source_ref "
-    "reading_text is_primary synthetic_witness undefined_manuscript ms_abbrev "
-    "translation_of translation_unit_of reading_of manuscript_of witness",
+app = use(
+    "alexsosn/Pseudepigrapha-TF:v0.2.0",
+    checkout="v0.2.0",
     silent="deep",
 )
-
-T = Translations(api)
-translations = T.versions(work="4Ezra", language="French")
-generated_book = translations[0]["node"]
-T.aligned_units(generated_book)
-T.passage(translations[0]["id"], "1", "1")
-
-A = Apparatus(api)
-# Source/critical witnesses only: OCP-Trans is synthetic provenance, not evidence.
-A.work_passage("4Ezra", "1", "1")
+api = app.api
 ```
 
-Alignment uses full source division path + stripped unit id + occurrence ordinal, not positional zip or bare id. This preserves duplicate upstream identities and the known reordered generated versions without inventing correspondence. `conversion-report.json` independently rereads raw XML and reports generated version/unit counts, alignment coverage, provenance, and mapping diagnostics.
-
-Current upstream also wraps the legacy chapter/verse `Esdr.xml` source inside a `<version>` while preserving its legacy body. The converter accepts that exact hybrid source shape and retains ordinary Chapter/Verse semantics; this does not broaden modern XML validation for unrelated versions.
-
-Every successful conversion also writes `conversion-report.json` beside the `.tf` features. The conversion fails if the independent raw-XML parity audit detects a semantic mismatch.
-
-## Data model
-
-The main Text-Fabric shape follows BHSA where OCP semantics permit it:
-
-| Role | Representation |
-| --- | --- |
-| slots | `word` |
-| standard sections | `book`, `chapter`, `verse` |
-| primary Unicode display | `prefix_utf8` + `g_word_utf8` + `trailer_utf8` + `boundary_utf8` |
-| exact source citation | `source_ref` plus JSON `source_ref_parts` |
-| exact upstream-version identity | `version_id` on version-owned non-slot nodes; stable even when sibling versions have the same title |
-| source hierarchy | `div` nodes, literal labels/numbers, `parent` edges |
-| empty source `div` inside a textual version | preserved `div` with `is_empty_div=1` and one technical anchor; no fabricated text section |
-| pinned `<elipsis>` structural marker | `ellipsis` node with literal `source_tag=elipsis`, `ellipsis_text`, `source_child_index`, `parent`, and one technical anchor |
-| direct `<reading>` under `<div>` source anomaly | `orphan_reading` with `is_source_anomaly=1`, full reading payload, `source_child_index`, `parent`, and ordinary `witness` edges; never assigned to an invented unit |
-| textual locus | `unit` node, explicitly parented to its source `div` |
-| apparatus alternative | `reading` node |
-| alternative-reading token | `variant_word` node |
-| witness | `manuscript` node; each non-empty abbreviation is unique within its OCP version; `witness` edge from reading/orphan reading; citation-only witnesses have `undefined_manuscript=1` |
-| upstream version with no textual units | `version_metadata` node; never a fabricated TF `book` section |
-| OCP `<w>` annotation | `lex`, `morph`, `style`, effective `language`, literal `w_lang` |
-
-The primary slot stream is OCP `reading option="0"`, matching OCP's default-selection rule. If option 0 is absent, the converter uses the first reading and emits a warning. Empty primary readings receive a surface-less `is_gap=1` anchor slot so apparatus nodes still have a valid locus.
-
-The OCP DTD also permits a `div` with no child `div` or `unit`. When such an empty structure occurs inside an otherwise textual version, the converter preserves its exact `source_ref`, fragment metadata, and `parent` relation as a `div` with `is_empty_div=1`. Text-Fabric 13.1 requires every non-slot node to have `oslots`, so the node receives one technical anchor from the nearest non-empty structural ancestor (or the version as a fallback). That anchor does not assert textual containment: the converter creates no gap slot and no `chapter`/`verse` section for the empty source division.
-
-The pinned OCP checkout contains two additional source structures that cannot simply be discarded. `Aristob.xml` extends its embedded DTD with the upstream-spelled `<elipsis>` child of `<div>`; these markers become `ellipsis` nodes. `PssSol.xml` contains direct `<reading>` children of `<div>` even though its own embedded DTD requires readings to be inside `<unit>`. Those readings become `orphan_reading` nodes. The converter preserves their source position and payload but does **not** guess which neighboring unit they were intended to belong to. Their `mss` citations still become ordinary `witness` edges, including citation-only `undefined_manuscript=1` nodes for undeclared abbreviations such as the pinned `unit149` citation. Both special node types use a single parent-derived technical `oslots` anchor and contribute no fabricated word slot or text section.
-
-OCP can also declare a version whose metadata exists but whose text has not yet been included. The pinned corpus does this for `TJob/Coptic`. Such a version is preserved as `version_metadata` with its version/manuscript/resource metadata, but contributes no `book/chapter/verse` section and no invented text.
-
-`version_id` identifies the exact OCP version represented by each version-owned non-slot graph node. For a one-version work it is normally the work id; for multi-version works it is the stable TF version id, with deterministic suffixes when human-readable version titles repeat. This lets provenance and ownership checks distinguish, for example, two sibling versions both titled `Greek` without treating the title as a unique key.
-
-### Sections and deep references
-
-Text-Fabric supports the standard three-level section API, while OCP may have deeper references. For one source level, the converter synthesizes chapter `1`. For two levels, source parent/terminal values map directly to chapter/verse. For three or more levels, **all parent components are folded into the TF chapter and the terminal component becomes the verse**.
-
-For example:
-
-```text
-OCP source ref: 1:23:153:4
-TF address:     <book> / 1:23:153 / 4
-```
-
-The full citation remains directly available as `source_ref="1:23:153:4"` on the source `div`, `unit`, `reading`, primary words, and variant words. Researchers do not have to reconstruct the citation by walking generic nodes.
-
-Pinned OCP also contains a few **exact duplicate source citations**: for example `4Ezra/Syriac 10:4`, `Jub/Greek 10:21`, and `SibOr/Greek 3:261`/`3:262` each occur twice in the source structure. The converter does not guess whether these are editorial typos, fragments, or another upstream convention, and it does not merge the corresponding source divisions. The first occurrence keeps the ordinary TF verse label; later occurrences receive only a deterministic technical suffix (`4~2`, `21~2`, and so on) and a `section_occurrence` feature. Their exact `source_ref` remains unchanged, so `4Ezra__Syriac / 10 / 4` and `4Ezra__Syriac / 10 / 4~2` are separately addressable TF sections whose `source_ref` is `10:4` in both cases. The `~N` suffix is therefore an interface disambiguator, **not an editorial correction to OCP numbering**.
-
-### Apparatus text semantics
-
-Alternative readings occupy the primary locus for graph/search purposes, but `T.text(reading)` must not therefore print the primary reading. The corpus defines node-type default formats:
-
-```text
-reading-default          -> reading_text
-variant_word-default     -> the variant token itself
-manuscript-default       -> manuscript abbreviation
-resource-default         -> resource name
-version_metadata-default -> version title
-ellipsis-default         -> ellipsis_text
-orphan_reading-default   -> reading_text
-```
-
-This makes standard `T.text()` calls unsurprising. Text-Fabric 13.1 requires every non-slot node to serialize with an `oslots` anchor, so manuscripts, resources, metadata-only versions, special source-anomaly nodes, and variant tokens use a **single O(1) technical anchor** rather than a fabricated textual span where they do not own ordinary text slots. Their node-type formats prevent that anchor from being rendered as their text.
-
-For routine apparatus work, the package also provides helpers:
+The first call obtains the release's stock Text-Fabric `complete.zip` and populates the Text-Fabric cache. After that acquisition, an offline/local reload is:
 
 ```python
+from tf.app import use
+
+app = use(
+    "alexsosn/Pseudepigrapha-TF:local",
+    checkout="local",
+    silent="deep",
+)
+api = app.api
+```
+
+Both the fresh tagged acquisition and a network-blocked `checkout="local"` reload are exercised by the repository's published-release verification workflow.
+
+For the Pseudepigrapha-TF helper APIs used below, install the current package as well:
+
+```bash
+python -m pip install "git+https://github.com/alexsosn/Pseudepigrapha-TF.git"
+```
+
+The project package already depends on `text-fabric[github]>=13.1,<14`. Installing Text-Fabric separately first is useful when you only need standard Text-Fabric access to the published corpus.
+
+## Query a passage
+
+A normal Text-Fabric section lookup needs no Pseudepigrapha-TF helper:
+
+```python
+verse = api.T.nodeFromSection(("1En__Ethiopic", "1", "2"))
+assert verse is not None
+
+api.T.text(verse)
+api.T.sectionFromNode(verse)
+```
+
+`1En__Ethiopic` is the stable TF source-version id. Multi-version OCP works therefore remain distinguishable even when human-readable titles are not unique.
+
+For deeper OCP references, Text-Fabric's three-level section API folds all parent components into the chapter field. The exact OCP address is still available as `source_ref`; see [Known limitations](#known-limitations).
+
+## Apparatus and witnesses
+
+`Apparatus.passage()` returns one source version's passage together with all apparatus units and its witness evidence. The stock advanced app does not need every apparatus relation for display, so load the extra semantic features before using the helper on `app.api`:
+
+```python
+app.load(
+    "ocp_book version_id version_title version_kind language author "
+    "reading_text is_primary ms_abbrev ms_language ms_name ms_show "
+    "unit_id source_ref undefined_manuscript synthetic_witness "
+    "reading_of witness manuscript_of"
+)
+
 from pseudepigrapha_tf import Apparatus
 
-A = Apparatus(api)
-A.unit_readings(unit)
-A.reading_text(reading)
-A.reading_tokens(reading)
-A.witness_reading(unit, manuscript)
-A.witness_state(unit, manuscript)
-A.witness_text(manuscript)
-A.apparatus(unit)
-A.passage("1En__Ethiopic", "1", "2")
-A.work_passage("1En", "1", "2")
-```
-
-`reading_tokens(reading)` returns token nodes that actually belong to that reading. A non-empty primary reading returns its `word` slots through Text-Fabric's `oslots.s()` API; a non-empty alternative returns its `variant_word` nodes. An explicit omission returns `()`, so a primary `is_gap` slot or an alternative reading's shared primary locus is never exposed as textual content. A non-primary reading that has text but no variant tokens is treated as an inconsistent graph and raises `ValueError` rather than silently substituting the primary locus.
-
-For a selective Text-Fabric load, `reading_tokens()` requires `reading_text` and `is_primary`. The `oslots` warp feature is provided by Text-Fabric and is used only for non-empty primary readings. `variant_word_of` is additionally required only when resolving a non-empty alternative reading; corpora with no alternative tokens may legitimately have no serialized `variant_word_of` feature, and primary readings or omissions remain usable in that case. Missing required features/edges are reported as `ValueError` with the relevant feature name.
-
-Global `witness_text(manuscript)` reconstructs only ordinary unit-bound readings cited by that manuscript. It follows the reverse `witness` relation once, validates each cited source with `otype.v`, follows `reading_of` once per ordinary reading, excludes `orphan_reading` anomalies from continuous reconstruction, and emits the attested units in TF node order. Pseudepigrapha-TF finalization preserves source creation order within each `otype`, so sorting the already-attested `unit` node ids gives the same source order without scanning every unrelated unit in the corpus. The global path therefore needs `reading_text`, `witness` reverse lookup, `reading_of` forward lookup, and `otype.v`, but not `otype.s("unit")`. Passing an explicit `units=` iterable instead preserves the caller's order and duplicates and uses the ordinary per-unit witness lookup semantics.
-
-### Passage-level apparatus
-
-`Apparatus.passage(book, chapter, verse)` is the high-level interface for retrieving a verse together with all of its critical evidence from **one textual OCP version**. When an OCP work contains several top-level `<version>` elements, `book` is that version's stable TF section id, for example:
-
-```python
+A = Apparatus(app.api)
 passage = A.passage("1En__Ethiopic", "1", "2")
 
 passage["units"]
-passage["witnesses"]["p"]["text"]
+passage["witnesses"]["p"]["segments"]
 passage["witnesses"]["Bertalotto"]["segments"]
 ```
 
-The result contains every apparatus `unit` in the verse, every reading at each unit, and every witness linked to the containing OCP version. This includes abbreviations that occur in reading citations even when OCP did not declare a corresponding `<ms>` entry: the converter preserves them as citation-only manuscript nodes instead of dropping the evidence. Every witness record has a boolean `declared` field: `True` for an upstream-declared manuscript and `False` for a citation-only synthesized witness. Per-witness `segments` explicitly distinguish:
+Witness segments deliberately distinguish three states:
 
-- `reading`: the witness is assigned to a non-empty reading;
-- `omission`: the witness is explicitly assigned to an empty OCP reading;
-- `unattested`: no reading at that unit cites the witness.
+- `reading` — the witness is assigned to a non-empty reading;
+- `omission` — the witness is explicitly assigned to an empty OCP reading;
+- `unattested` — no reading at that unit cites the witness.
 
-A witness-level `text` is returned only when the witness is represented at every unit in the verse (explicit omissions count as represented). If one or more units are `unattested`, `text` is `None`; `attested_text` still gives the concatenation of the readings that are actually present. This prevents missing evidence from being silently turned into either an omission or a continuous reconstructed text.
+Those are not interchangeable. If a witness is unattested at one or more units, its reconstructed `text` is `None`; `attested_text` still contains the readings that are actually present. The API does not infer a lacuna or omission from silence.
 
-The API does not infer `lacuna` or `fragment` merely from absence. If OCP encodes such information only in the reading content rather than as a structural flag, that source wording remains available in the reading instead of being reclassified by the converter.
-
-### Work-level retrieval across all versions
-
-`Apparatus.work_passage(work, chapter, verse)` is the work-level interface for the common research query “give me this passage in every OCP version and witness”. It discovers all textual versions through the preserved `ocp_book` identity and then applies the same passage/apparatus logic to each one.
-
-For a multi-version work:
-
-```python
-result = A.work_passage("Multi", "1", "1")
-
-result["versions"]["Multi__Syriac"]["passage"]
-result["versions"]["Multi__Greek"]["passage"]
-```
-
-Textual versions are keyed by their stable TF book/version id rather than by human-readable title, so duplicate titles cannot overwrite one another. Each version record includes its title, language, author, all linked witnesses with their `declared` provenance, status, and passage result.
-
-The status is explicit:
-
-- `available`: that textual version contains the requested TF section;
-- `not_present`: the textual version exists, but that requested section does not;
-- `metadata_only`: the upstream version is declared by OCP but contains no textual units at all.
-
-Metadata-only versions are returned separately under `metadata_only_versions` with their witness metadata and `passage=None`. Thus a fragmentary or not-yet-transcribed version never disappears from the work-level result and is never converted into a fake empty passage.
-
-`chapter` and `verse` are the normalized TF section address, applied independently to each textual OCP version. This is deliberately **not** an automatic alignment claim: fragmentary works can use different division schemes in different versions. Exact upstream addresses remain available in each returned passage's `source_refs`, while a version without the requested normalized section is reported as `not_present` instead of being forced into a false correspondence.
-
-For example, on the pinned corpus a `TJob` query still exposes the Coptic version metadata even though OCP has `<text></text>` for that version:
-
-```python
-result = A.work_passage("TJob", "1", "1")
-result["metadata_only_versions"]["TJob__Coptic"]
-```
-
-The pinned `1En.xml` is a particularly useful real-world case: it contains four top-level textual OCP versions — Ethiopic, Qumran Aramaic, Latin Fragments, and Greek. One call exposes all four version records and, where the requested section exists, their complete apparatus:
+To ask for one normalized passage across every textual source version of a work:
 
 ```python
 result = A.work_passage("1En", "1", "2")
 
-result["versions"]["1En__Ethiopic"]["passage"]["witnesses"]
+result["versions"]["1En__Ethiopic"]["status"]
 result["versions"]["1En__Qumran_Aramaic"]["status"]
 result["versions"]["1En__Latin_Fragments"]["status"]
 result["versions"]["1En__Greek"]["status"]
 ```
 
-For an available passage in a selective Text-Fabric load, `passage()` / `work_passage()` semantically depend on `reading_text`, `is_primary`, `ms_abbrev`, `unit_id`, `undefined_manuscript`, `reading_of`, `witness`, and `manuscript_of` (plus `ocp_book` for `work_passage()`). In generated corpora Text-Fabric automatically loads `reading_text` and `ms_abbrev` because the `reading-default` and `manuscript-default` text formats reference them; they are still API dependencies and a genuinely incomplete/nonstandard API object is rejected if either identity feature is unavailable. `unit_id` and `is_primary` are not format dependencies and must be selected explicitly when using selective loads for an available passage. `undefined_manuscript` is always serialized, including as an empty feature when every witness is declared, so declaration provenance is stable across generated corpora. Load `title`, `version_title`, `language`, `author`, `ms_language`, `ms_name`, `ms_show`, and `source_ref` as well only when those optional descriptive fields are desired. If the loaded corpus contains metadata-only versions, load `version_id` so those versions can be keyed unambiguously. A `work_passage()` request whose textual version does not contain the requested section does not require passage-only `unit_id`, `is_primary`, `reading_of`, or `witness`; it still requires the work/witness-inventory dependencies because the version record returns its witnesses.
+Possible source-version states are `available`, `not_present`, and (separately) `metadata_only`. A normalized address is applied independently to each version; this is not a claim that differently divided source versions are automatically aligned.
 
-## Preservation audit
+See [apparatus helper loading contracts](docs/apparatus.md) for selective-load details and lower-level methods.
 
-`conversion-report.json` is built by rereading the raw XML independently of the converter's parsed model and comparing it with the generated TF graph. It checks:
+## Generated translations
 
-- source file SHA-256s and every declared version, including metadata-only versions;
-- explicit modern/legacy child-element and attribute vocabulary plus modern DTD-required attribute presence before inventory extraction, so unsupported or missing source structure cannot be silently ignored or normalized by both parser and audit; duplicate non-empty manuscript abbreviations within one version are rejected at the same boundary because witness citations cannot distinguish them; the five pinned record-specific `ms/@language` omissions are the documented exception and remain empty/unknown;
-- division declarations and every structural division/reference;
-- unit attributes and explicit unit→div parent linkage;
-- every standard reading's option, witnesses, flags, normalized text, and mixed XML;
-- `reading_of` cardinality, target type, exact version ownership, source locus, and unit identity;
-- preserved `<elipsis>` markers by source tag, text, exact parent/source reference, source child position, and technical anchor;
-- direct-div `orphan_reading` anomalies by option, raw `mss`, **actual `witness` graph targets**, flags, normalized/mixed XML, exact parent/source position, technical anchor, and exact-version witness ownership;
-- manuscript metadata and bibliography;
-- `manuscript_of` cardinality, target type, and exact version ownership, including citation-only and metadata-only witnesses;
-- resources and `resource_of` cardinality, target type, and exact version ownership, including metadata-only resources;
-- duplicate human-readable version titles remain distinguishable through `version_id` during ownership validation;
-- every annotated `<w>` in standard unit readings and its attributes; special orphan-reading mixed XML remains preserved verbatim in `reading_xml` because no unit/token locus is inferred for malformed source structure;
-- primary and alternative token reconstruction;
-- complete and unique `book/chapter/verse` coverage for the textual slot stream, including deterministic disambiguation of repeated exact upstream citations without changing their `source_ref`;
-- corpus-license provenance consistency: the exact supported OCP source tuple carries the researched verified profile, while other tuples cannot retain verified CC-BY fields;
-- graph size including `oslots` edge count.
+OCP marks its generated translations structurally. Pseudepigrapha-TF preserves them as `version_kind=generated_translation`, links each generated book to one source version with `translation_of`, and links generated units occurrence-by-occurrence with `translation_unit_of`.
 
-The report says `status: "ok"` only when every semantic check passes. Section coverage, ownership, source-structure validation, and special-anomaly scans are linear in their respective node/element/edge counts so the audit itself does not reintroduce the dense-scaling problem eliminated from the graph.
-
-## Test
-
-```bash
-pytest
-```
-
-The synthetic suite covers parser, graph, apparatus helpers, reading-token semantics on real Text-Fabric, passage-level witness coverage and declaration provenance, work-level multi-version retrieval, semantic parity, ownership-edge corruption, explicit source-structure and required-attribute drift rejection, ambiguous duplicate non-empty witness declarations at XML/raw-audit/direct-model boundaries plus abbreviation-less controls, preserved ellipsis/direct-reading anomalies and their corruption detection, legacy OCP, deep/non-numeric and duplicate references, omissions, empty source divisions, metadata-only versions, corpus-license provenance and real-TF reload, and reproducible paths. CI additionally installs real Text-Fabric, verifies node-type `T.text()` behavior and deep/duplicate `T.sectionFromNode()`/`T.nodeFromSection()` addresses, converts and audits the pinned complete OCP checkout (including the real Aristob/PssSol source anomalies and documented manuscript-language omissions), reloads the full dataset, exercises `Apparatus.passage("1En__Ethiopic", "1", "2")`, verifies witness declaration provenance, verifies that `Apparatus.work_passage("1En", "1", "2")` exposes all four real 1 Enoch versions, and verifies that real `TJob/Coptic` remains visible as metadata-only evidence.
-
-## Licensing and corpus provenance
-
-The converter code, tests, and repository-authored software are MIT-licensed; see `LICENSE` and `pyproject.toml`. The supported reproducible corpus build uses OCP commit `c939dcbacad78c5d18d2c4282cad23c47e19ac07`. OCP's dual-license clarification at commit `8c8c2c55a2c55ba4b23ac506956f98dcc25045b2` scopes GNU GPL v3 to OCP software and **CC BY 4.0** to text editions and TEI XML under `static/docs/`.
-
-For that exact source tuple, generated TF metadata records `contentLicense=CC-BY-4.0`, the exact upstream repository/SHA and license-evidence commit, the content scope, the MIT converter-software license, the upstream GPL software license, and OCP attribution/citation. `conversion-report.json` mirrors and audits those values. A nonstandard checkout remains convertible, but is marked `contentLicenseStatus=unverified` and receives no verified CC-BY claim.
-
-OCP requests attribution to the Online Critical Pseudepigrapha and to the individual editor named for an edition. The converter preserves per-work `citation`/`copyright` data from `intros.json` when present and source version/editor metadata independently of the corpus-level license record. See [`DATA_LICENSE.md`](DATA_LICENSE.md) for the exact source boundary, attribution guidance, and pinned upstream license evidence.
-
-This repository still does **not** redistribute the OCP XML or a generated TF corpus; the metadata above travels with a corpus produced by the converter.
-
-## Public document metadata (`intros.json`)
-
-When the supplied OCP `static/docs` directory contains the committed public `intros.json` export, conversion includes it automatically. Records are matched to works by the exact root-level XML filename, never by display title; duplicate JSON object keys are rejected rather than accepted with last-write-wins semantics. This matters because OCP metadata titles are not guaranteed to equal XML titles. A public record whose XML file is empty, such as pinned `3Macc.xml`, is still preserved as a `document_metadata` node; its single `oslots` value is only a Text-Fabric technical anchor and does not create a `book`, chapter, verse, or word.
-
-Each public document gets one `document_metadata` node. `title`, edition `version`, per-work `citation`, and the public body fields `introduction`, `provenance`, `themes`, `status`, `manuscripts`, `bibliography`, `corrections`, `sigla`, and `copyright` are stored only on that node. The TF feature names are `intro_title_json`, `intro_version_json`, `intro_citation_json`, and `intro_<field>_json`. Values use reversible JSON-scalar encoding because raw multi-line HTML is not lossless through Text-Fabric's line-oriented feature serialization. The encoding preserves HTML, CRLF/newline characters, entities, Unicode, and the distinction between a missing key, an empty string, and JSON `null`.
-
-Researchers normally should not decode those features manually. Load the metadata feature set and use `WorkMetadata`:
+Load the additional generated-translation features and query them separately from historical apparatus:
 
 ```python
-from tf.fabric import Fabric
-from pseudepigrapha_tf import WorkMetadata
+app.load(
+    "generated_language generation_marker generation_method generation_model "
+    "unit_index translation_of translation_unit_of"
+)
 
-TF = Fabric(locations=['tf/0.2'], modules=[''], silent='deep')
-api = TF.load(' '.join(WorkMetadata.REQUIRED_FEATURES), silent='deep')
-M = WorkMetadata(api)
+from pseudepigrapha_tf import Translations
 
-tjob = M['TJob']
-tjob['fields']['provenance']   # provenance / cultural-setting HTML
-tjob['fields']['manuscripts']  # manuscript discussion HTML
-tjob['fields']['bibliography'] # bibliography HTML, including original line endings
-tjob['citation']                # per-work OCP citation
-M['TAdam']['fields']['introduction']  # public introduction HTML
-M['3Macc']                            # works even though pinned 3Macc.xml has no text
+T = Translations(app.api)
+french = T.versions(work="1En", language="French")
+generated_book = french[0]["node"]
+
+aligned = T.aligned_units(generated_book)
+aligned[0]["source_text"]
+aligned[0]["translation_text"]
 ```
 
-Dataset-level TF metadata records `introsSource`, `introsSha256`, and the export date when supplied upstream. `conversion-report.json` independently rereads raw `intros.json` and checks document coverage, scalar values, and provenance against the graph, so corrupt or dropped metadata fails the same semantic parity gate as XML conversion.
+`Translations.aligned_units()` uses the explicit graph alignment rather than positional zipping or bare verse labels. This matters for repeated source citations such as the two Syriac `4Ezra 10:4` occurrences.
 
+The synthetic `OCP-Trans` witness remains provenance for the generated layer but is excluded from historical manuscript/apparatus semantics. A genuine scholarly English source version, such as pinned `4Q548`, is therefore not reclassified merely because it is English.
 
-## Historical OCP catalogue classifications
+## Browse and compare
 
-The generated corpus exposes the public OCP genre and biblical-figure catalogue assignments recovered from the historical 2017 snapshot as an explicitly historical metadata layer. No classifications are inferred for later works absent from that snapshot. See [`docs/historical-classifications.md`](docs/historical-classifications.md) for the source boundary, provenance, full controlled vocabularies, and audit details.
+The published corpus works with the standard Text-Fabric advanced app loaded by `tf.app.use()` above. Pseudepigrapha-TF also provides a local `/compare` view for passage-centered comparison across source versions, manuscripts, and generated translations.
+
+The comparison server takes a **local materialized TF feature directory**; it does not run the OCP converter. One reproducible layout is to extract the published native archive and use the tracked app from this repository:
+
+```bash
+curl -L \
+  -o /tmp/tf-0.2.zip \
+  https://github.com/alexsosn/Pseudepigrapha-TF/releases/download/v0.2.0/tf-0.2.zip
+
+mkdir -p /tmp/pseudepigrapha-tf/0.2
+python -m zipfile -e /tmp/tf-0.2.zip /tmp/pseudepigrapha-tf/0.2
+
+git clone --depth 1 https://github.com/alexsosn/Pseudepigrapha-TF.git
+cd Pseudepigrapha-TF
+python -m pip install .
+pseudepigrapha-tf browse /tmp/pseudepigrapha-tf/0.2 --app app
+```
+
+Open `http://127.0.0.1:8000/compare`. The stock Text-Fabric browser remains available at `/`; the comparison route is an addition, not a replacement server.
+
+The real pinned-corpus acceptance gate exercises, among other cases:
+
+- 1 Enoch with multiple source versions and distinguishable witness omission/unattested states;
+- TJob with a metadata-only Coptic version and a large witness inventory;
+- generated English/French translations nested under their exact source version;
+- duplicate Syriac `4Ezra 10:4` occurrences as separate TF sections;
+- readable fail-closed behavior where OCP source evidence is genuinely ambiguous.
+
+## Resource expectations
+
+Resource measurements are reference measurements from GitHub-hosted Ubuntu runners, **not hardware requirements**.
+
+For the currently published `v0.2.0` corpus, the stock `complete.zip` is about **9.36 MiB**, the populated stock Text-Fabric cache measured about **216.6 MiB**, and a warm full-app load measured about **1.69 GiB peak RSS**.
+
+Current post-#141 corpus output intended for the next publication is smaller: about **9.20 MiB** compressed, **145.4 MiB** in the populated stock cache, about **1.34 GiB peak RSS** for a warm full-app load, and about **1023 MiB peak RSS** for the measured translation-oriented selective load. Text-Fabric retained no ZIP archive in the populated cache in either measurement.
+
+The first local load is more expensive because Text-Fabric compiles/cache-materializes features. On the reference runner the post-#141 first local load took about 46 seconds and peaked around 2.08 GiB; a warm full-app load took about 3.6 seconds. Hosted-runner wall-clock values fluctuate, so the disk/RSS deltas are more meaningful than the exact seconds.
+
+If you only need a narrow workflow, load only its required features rather than the whole advanced app. The exact measurement method and a tested translation-oriented selective feature list are in [researcher runtime footprint](docs/runtime-footprint.md).
+
+## Metadata and feature reference
+
+Public work metadata is exposed through `WorkMetadata`; researchers normally do not need to decode the serialized JSON-scalar features manually:
+
+```python
+from pseudepigrapha_tf import WorkMetadata
+
+app.load(" ".join(WorkMetadata.REQUIRED_FEATURES))
+M = WorkMetadata(app.api)
+
+tjob = M["TJob"]
+tjob["fields"]["manuscripts"]
+tjob["fields"]["bibliography"]
+tjob["citation"]
+```
+
+Historical OCP catalogue categories have their own explicitly historical API:
 
 ```python
 from pseudepigrapha_tf import HistoricalClassifications
 
-C = HistoricalClassifications(api)
+app.load(" ".join(HistoricalClassifications.REQUIRED_FEATURES))
+C = HistoricalClassifications(app.api)
+
 C.works_by_genre("testaments")
 C.works_by_figure("Moses")
 ```
+
+For the schema itself, use the generated [Text-Fabric feature reference](docs/features/0_home.md). It is generated from the serialization contracts and is the canonical index for node/edge feature meanings. Additional focused documentation:
+
+- [apparatus helper contracts](docs/apparatus.md)
+- [researcher runtime footprint](docs/runtime-footprint.md)
+- [source identity and anomaly policy](docs/source-identity-and-anomalies.md)
+- [historical classifications](docs/historical-classifications.md)
+- [data licensing and attribution](DATA_LICENSE.md)
+
+## Known limitations
+
+Pseudepigrapha-TF preserves source uncertainty and irregularity instead of silently normalizing it. Important consequences:
+
+- **Three-level TF sections:** OCP may use deeper reference trees. Parent components are folded into the TF chapter field; the exact upstream citation remains in `source_ref`.
+- **Duplicate source citations:** exact repeated OCP citations remain separate sections. The first keeps the normal verse label and later occurrences receive a technical `~N` suffix such as `4~2`. The suffix is an interface disambiguator, not an editorial correction; both occurrences retain the same exact `source_ref`.
+- **No automatic cross-version alignment:** `Apparatus.work_passage()` asks each source version independently for the same normalized TF address. A missing section is `not_present`; it is not forced into a correspondence with another version.
+- **Metadata-only versions:** OCP can declare a version with metadata but no text. Pinned `TJob__Coptic` remains visible as metadata-only evidence and does not become a fake empty `book` section.
+- **Malformed/exceptional source structures:** pinned Aristob `<elipsis>` markers and PssSol direct-div readings are preserved as dedicated anomaly nodes. They are not reassigned to guessed textual loci. A comparison whose source ownership is genuinely ambiguous may return a readable 400 instead of inventing an answer.
+- **Generated translations:** source-declared generated translations are useful parallel text, but they are not historical witnesses and are intentionally excluded from source apparatus semantics.
+- **Resource figures:** the numbers above describe one CI environment and corpus state, not a guaranteed minimum-RAM specification for every query or machine.
+
+For exact anomaly provenance and record-specific exceptions, see [source identity and anomaly policy](docs/source-identity-and-anomalies.md).
+
+## Rebuild from OCP
+
+Rebuilding is for maintainers, reproducibility work, or researchers intentionally converting another OCP snapshot. It is **not required to use the published corpus**.
+
+For the release-pinned source used by the full integration gate:
+
+```bash
+git clone https://github.com/OnlineCriticalPseudepigrapha/Online-Critical-Pseudepigrapha.git
+git -C Online-Critical-Pseudepigrapha checkout c939dcbacad78c5d18d2c4282cad23c47e19ac07
+
+pseudepigrapha-tf convert \
+  Online-Critical-Pseudepigrapha/static/docs \
+  --output tf/0.2
+```
+
+Conversion auto-detects and records source Git identity where possible. The supported pinned source receives the researched verified content-license profile; arbitrary source tuples are convertible but remain explicitly unverified rather than inheriting that claim.
+
+Every successful conversion writes `conversion-report.json`. The report is built by independently rereading raw source data and checking the generated graph for source files/versions, divisions, apparatus readings and witnesses, ownership edges, annotations, generated translations/alignment, metadata, classifications, preserved anomalies, section coverage, and provenance. Unsupported or ambiguous source structures fail rather than being silently discarded.
+
+### Developer setup
+
+```bash
+git clone https://github.com/alexsosn/Pseudepigrapha-TF.git
+cd Pseudepigrapha-TF
+python -m venv .venv
+source .venv/bin/activate
+python -m pip install -e '.[dev]'
+pytest
+```
+
+The full CI additionally converts/audits the pinned OCP corpus and reloads it through real Text-Fabric, including stock `complete.zip`, advanced-app, apparatus, translation, metadata, classification, and comparison acceptance.
+
+### Contributor and implementation reference
+
+The README intentionally stops short of reproducing the complete feature catalogue and every converter invariant. Start with:
+
+- [Text-Fabric feature reference](docs/features/0_home.md) for serialized node/edge contracts;
+- [source identity and anomaly policy](docs/source-identity-and-anomalies.md) for fail-closed source handling;
+- [apparatus helper contracts](docs/apparatus.md) for semantic/selective-load requirements;
+- [data licensing and attribution](DATA_LICENSE.md) for corpus/software license boundaries;
+- tests under `tests/` for executable graph, audit, release-loading, and public-API contracts.
+
+The repository-authored converter/package code is MIT-licensed. The supported OCP text/edition source boundary is CC BY 4.0 under OCP's license clarification; OCP asks researchers to attribute the project and the individual editor of the edition being used. Per-work citation/copyright metadata is preserved in the corpus where supplied upstream.
