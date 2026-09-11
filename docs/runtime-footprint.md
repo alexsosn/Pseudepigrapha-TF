@@ -67,7 +67,7 @@ Researchers who only need generated/source translation alignment do not need the
 from tf.fabric import Fabric
 from pseudepigrapha_tf import Translations
 
-TF = Fabric(locations=["tf/0.2"], modules=[""], silent="deep")
+TF = Fabric(locations=["tf/1.0"], modules=[""], silent="deep")
 api = TF.load(
     "book ocp_book version_title version_kind language generated_language "
     "generation_marker generation_method generation_model unit_id unit_index source_ref "

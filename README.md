@@ -261,7 +261,7 @@ git -C Online-Critical-Pseudepigrapha checkout c939dcbacad78c5d18d2c4282cad23c47
 
 pseudepigrapha-tf convert \
   Online-Critical-Pseudepigrapha/static/docs \
-  --output tf/0.2
+  --output tf/1.0
 ```
 
 Conversion auto-detects and records source Git identity where possible. The supported pinned source receives the researched verified content-license profile; arbitrary source tuples are convertible but remain explicitly unverified rather than inheriting that claim.
