@@ -1,0 +1,89 @@
+name: issue-141-apply-phase2
+
+on:
+  push:
+    branches:
+      - research/141-runtime-footprint
+    paths:
+      - .github/workflows/issue-141-apply-phase2.yml
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: research/141-runtime-footprint
+      - name: Apply exact version-kind scope patch
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          conversion = Path('src/pseudepigrapha_tf/conversion.py')
+          text = conversion.read_text(encoding='utf-8')
+          old = '''def _stamp_version_kind(
+              builder: _Builder,
+              object_start: int,
+              slot_start: int,
+              kind: str,
+          ) -> None:
+              """Stamp version classification without changing source book-id semantics."""
+
+              for index in range(object_start, len(builder.objects)):
+                  builder.objects[index].features["version_kind"] = kind
+              for slot in range(slot_start, builder.next_slot):
+                  builder.set_slot_feature(slot, "version_kind", kind)
+          '''
+          new = '''def _stamp_version_kind(
+              builder: _Builder,
+              object_start: int,
+              _slot_start: int,
+              kind: str,
+          ) -> None:
+              """Stamp version classification only where runtime semantics consume it."""
+
+              semantic_kinds = {"book", "unit", "version_metadata"}
+              for index in range(object_start, len(builder.objects)):
+                  obj = builder.objects[index]
+                  if obj.kind in semantic_kinds:
+                      obj.features["version_kind"] = kind
+          '''
+          assert old in text, 'expected broad _stamp_version_kind implementation not found'
+          text = text.replace(old, new, 1)
+          old_desc = '"source for critical/source versions; generated_translation for OCP machine translations"'
+          new_desc = '"source or generated_translation classification stored on TF book, unit, and version_metadata nodes"'
+          assert old_desc in text, 'expected conversion version_kind description not found'
+          text = text.replace(old_desc, new_desc, 1)
+          conversion.write_text(text, encoding='utf-8')
+
+          graph = Path('src/pseudepigrapha_tf/graph.py')
+          text = graph.read_text(encoding='utf-8')
+          old_graph = '"version_kind": "source for critical/source versions; generated_translation for OCP machine translations",'
+          new_graph = '"version_kind": "source or generated_translation classification stored on TF book, unit, and version_metadata nodes",'
+          assert old_graph in text, 'expected graph version_kind description not found'
+          graph.write_text(text.replace(old_graph, new_graph, 1), encoding='utf-8')
+
+          docs = Path('docs/features/version_kind.md')
+          text = docs.read_text(encoding='utf-8')
+          old_docs = '''source for critical/source versions; generated_translation for OCP machine translations
+
+          **Observed node types in render graph:** `book`, `chapter`, `div`, `manuscript`, `reading`, `resource`, `unit`, `variant_word`, `verse`, `word`
+          '''
+          new_docs = '''source or generated_translation classification stored on TF book, unit, and version_metadata nodes
+
+          **Observed node types in render graph:** `book`, `unit`, `version_metadata`
+          '''
+          assert old_docs in text, 'expected tracked version_kind documentation not found'
+          docs.write_text(text.replace(old_docs, new_docs, 1), encoding='utf-8')
+          PY
+          rm .github/workflows/issue-141-apply-phase2.yml
+          git diff --check
+          git diff -- src/pseudepigrapha_tf/conversion.py src/pseudepigrapha_tf/graph.py docs/features/version_kind.md
+          git config user.name 'Pseudepigrapha-TF automation'
+          git config user.email 'actions@users.noreply.github.com'
+          git add src/pseudepigrapha_tf/conversion.py src/pseudepigrapha_tf/graph.py docs/features/version_kind.md .github/workflows/issue-141-apply-phase2.yml
+          git commit -m 'perf: narrow version kind to semantic nodes'
+          git push origin HEAD:research/141-runtime-footprint
