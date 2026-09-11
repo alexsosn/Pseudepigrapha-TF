@@ -20,6 +20,13 @@ def _language_map(records):
     return {key: tuple(sorted(values)) for key, values in sorted(by_source.items())}
 
 
+def _primary_text(api, unit: int) -> str:
+    readings = tuple(api.E.reading_of.t(unit))
+    primary = tuple(reading for reading in readings if api.F.is_primary.v(reading) == 1)
+    assert len(primary) == 1, (unit, readings, primary)
+    return str(api.F.reading_text.v(primary[0]) or "")
+
+
 def verify(api, source_dir: Path) -> None:
     raw = audit._raw_inventory(source_dir)
     assert raw["generated_translation_mapping_failures"] == []
@@ -32,7 +39,6 @@ def verify(api, source_dir: Path) -> None:
     actual_versions = translations.versions()
     assert len(actual_versions) == len(expected_versions)
 
-    aligned_by_book: dict[int, tuple[dict[str, object], ...]] = {}
     actual_inventory: list[tuple[object, ...]] = []
     api_generated_units: set[int] = set()
     actual_languages: dict[tuple[str, str, str], set[str]] = defaultdict(set)
@@ -41,7 +47,6 @@ def verify(api, source_dir: Path) -> None:
         book_node = int(record["node"])
         source_node = int(record["source_node"])
         aligned = translations.aligned_units(book_node)
-        aligned_by_book[book_node] = aligned
 
         source_title = str(api.F.version_title.v(source_node) or "")
         source_language = str(api.F.language.v(source_node) or "")
@@ -64,6 +69,8 @@ def verify(api, source_dir: Path) -> None:
         assert record["generation_method"] == "llm"
         assert record["generation_model"] == "openrouter/google/gemini-3.7-flash"
         assert api.F.version_kind.v(source_node) == "source"
+        source_section = api.T.sectionFromNode(source_node)
+        assert source_section and str(source_section[0]) == str(record["source_id"]), record
         assert aligned, record["id"]
 
         source_units: list[int] = []
@@ -80,6 +87,8 @@ def verify(api, source_dir: Path) -> None:
             assert row["translation_unit_id"] == str(api.F.unit_id.v(generated_unit) or "")
             assert row["source_unit_id"] == str(api.F.unit_id.v(source_unit) or "")
             assert row["source_ref"] == str(api.F.source_ref.v(source_unit) or "")
+            assert row["translation_text"] == _primary_text(api, generated_unit)
+            assert row["source_text"] == _primary_text(api, source_unit)
 
         # Occurrence identity must survive the public API even where source
         # refs/unit ids repeat: one generated occurrence cannot collapse onto
