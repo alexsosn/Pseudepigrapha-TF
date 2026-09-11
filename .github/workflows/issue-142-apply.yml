@@ -1,0 +1,70 @@
+name: issue-142-apply
+
+on:
+  push:
+    branches: [research/142-release-readiness]
+    paths: [.github/workflows/issue-142-apply.yml]
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: research/142-release-readiness
+      - name: Apply guarded 1.0 identity replacements
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          plans = {
+              Path('.github/workflows/test.yml'): [
+                  ('0.2.0', '1.0.0'),
+                  ('/tmp/pseudepigrapha-tf/0.2', '/tmp/pseudepigrapha-tf/1.0'),
+                  ("'0.2'", "'1.0'"),
+                  ('"0.2"', '"1.0"'),
+              ],
+              Path('.github/workflows/publish-corpus-release.yml'): [
+                  ("expected_converter_version='0.2.0'", "expected_converter_version='1.0.0'"),
+                  ("expected_data_version='0.2'", "expected_data_version='1.0'"),
+                  ("if data_version != '0.2':", "if data_version != '1.0':"),
+                  ('research/issue-104/RELEASE_NOTES.md', 'research/issue-142/RELEASE_NOTES.md'),
+              ],
+              Path('tests/test_release_contract.py'): [
+                  ('"0.2.0"', '"1.0.0"'),
+                  ('Path("tf/0.2")', 'Path("tf/1.0")'),
+              ],
+              Path('tests/test_release_020_contract.py'): [
+                  ('EXPECTED_PACKAGE_VERSION = "0.2.0"', 'EXPECTED_PACKAGE_VERSION = "1.0.0"'),
+                  ('EXPECTED_DATA_VERSION = "0.2"', 'EXPECTED_DATA_VERSION = "1.0"'),
+                  ('EXPECTED_RELEASE_TAG = "v0.2.0"', 'EXPECTED_RELEASE_TAG = "v1.0.0"'),
+                  ('EXPECTED_TF_ASSET = "tf-0.2.zip"', 'EXPECTED_TF_ASSET = "tf-1.0.zip"'),
+                  ("expected_converter_version='0.2.0'", "expected_converter_version='1.0.0'"),
+                  ("expected_data_version='0.2'", "expected_data_version='1.0'"),
+              ],
+              Path('tests/test_ci_full_corpus_contract.py'): [
+                  ('LOCAL_TF = "/tmp/pseudepigrapha-tf/0.2"', 'LOCAL_TF = "/tmp/pseudepigrapha-tf/1.0"'),
+                  ('version="0.2"', 'version="1.0"'),
+              ],
+          }
+
+          for path, replacements in plans.items():
+              text = path.read_text(encoding='utf-8')
+              for old, new in replacements:
+                  count = text.count(old)
+                  if count == 0:
+                      raise SystemExit(f'{path}: expected replacement source not found: {old!r}')
+                  text = text.replace(old, new)
+              path.write_text(text, encoding='utf-8')
+          PY
+      - name: Remove one-shot workflow and commit
+        run: |
+          rm .github/workflows/issue-142-apply.yml
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add .github/workflows/test.yml .github/workflows/publish-corpus-release.yml tests/test_release_contract.py tests/test_release_020_contract.py tests/test_ci_full_corpus_contract.py .github/workflows/issue-142-apply.yml
+          git commit -m "Align current release workflows and tests with 1.0"
+          git push origin HEAD:research/142-release-readiness
