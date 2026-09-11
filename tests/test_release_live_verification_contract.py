@@ -32,13 +32,15 @@ def test_publisher_live_verifier_provisions_github_backend_before_remote_use():
     assert "socket.socket.connect" in live
 
 
-def test_github_verifier_dependency_does_not_leak_into_normal_package_runtime():
+def test_normal_package_runtime_includes_github_backend_for_public_corpus_acquisition():
     project = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
     dependencies = [str(dep).lower() for dep in project["project"]["dependencies"]]
 
-    assert "text-fabric>=13.1,<14" in dependencies
-    assert all("text-fabric[github]" not in dep for dep in dependencies)
-    assert all("pygithub" not in dep for dep in dependencies)
+    # Public release acquisition is a supported researcher path, so the
+    # package itself must provision Text-Fabric's GitHub backend. Requiring
+    # users to discover/install this extra separately broke clean v0.2.0 use.
+    assert TF_GITHUB_EXTRA in dependencies
+    assert all(not dep.startswith("pygithub") for dep in dependencies)
 
 
 def test_published_release_verifier_is_read_only_and_bound_to_explicit_identity():
@@ -109,8 +111,6 @@ def test_published_release_verifier_binds_express_check_to_requested_latest_rele
 
 def test_published_release_verifier_exercises_stock_complete_zip_express_path():
     text = VERIFY_WORKFLOW.read_text(encoding="utf-8")
-
-    assert EXPRESS_STEP in text
     express = text.split(EXPRESS_STEP, 1)[1]
     assert EXPRESS_HOME in express
 
