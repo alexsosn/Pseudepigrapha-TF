@@ -212,7 +212,7 @@ M = WorkMetadata(app.api)
 tjob = M["TJob"]
 tjob["fields"]["manuscripts"]
 tjob["fields"]["bibliography"]
-tjob["citation"]
+tjob.get("citation")  # optional; absent when upstream did not supply one
 ```
 
 Historical OCP catalogue categories have their own explicitly historical API:
