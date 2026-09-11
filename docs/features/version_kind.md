@@ -8,4 +8,4 @@
 
 source or generated_translation classification stored on TF book, unit, and version_metadata nodes
 
-**Observed node types in render graph:** `book`, `unit`, `version_metadata`
+**Observed node types in render graph:** `book`, `unit`
