@@ -48,14 +48,14 @@ That leaves one researcher-facing layer less strongly closed than:
 
 ## Frozen plan
 
-1. Add a focused pinned full-corpus acceptance script for scholarly metadata/classification closure. It must load only the public `HistoricalClassifications.REQUIRED_FEATURES` plus Text-Fabric warp data, instantiate `HistoricalClassifications`, and independently load the packaged classification fixture.
+1. Add a focused pinned full-corpus acceptance helper for scholarly metadata/classification closure. It must load only the public `HistoricalClassifications.REQUIRED_FEATURES` plus Text-Fabric warp data, instantiate `HistoricalClassifications`, and independently load the packaged classification fixture.
 2. Compare **every** classified work record from the serialized TF API with the fixture-derived expected record:
    - `historical_doc_id`;
    - exact ordered genre labels;
    - exact ordered biblical-figure labels.
 3. Compare the API's complete controlled genre and biblical-figure vocabularies with the fixture vocabularies and verify reverse query helpers (`works_by_genre`, `works_by_figure`) reproduce the expected work sets.
-4. Run this script in the existing `pinned-upstream-integration` job against the same materialization already used by all other full-corpus checks. Do not perform a second OCP conversion.
-5. Add a deterministic workflow-contract test first. RED on current `main` must prove that the pinned job does not yet invoke the new historical-classification acceptance script.
+4. Reuse the existing `tests/pinned_comparison_acceptance.py` invocation in `pinned-upstream-integration` and have it call the classification helper against the same materialization. Do not modify the workflow or perform a second OCP conversion.
+5. Add a deterministic contract test first. RED on current `main` must prove that the existing pinned comparison acceptance path does not yet call the classification helper.
 6. Keep production conversion/data-model code unchanged unless the new acceptance run finds a real mismatch. If it does, create a focused correctness issue/regression before changing production semantics.
 7. Record the supported upstream source-scope conclusion in the eventual 1.0 researcher documentation (#139), not by adding release/certification machinery here.
 
@@ -63,18 +63,18 @@ That leaves one researcher-facing layer less strongly closed than:
 
 ### RED
 
-Before implementation, add a workflow-contract regression requiring the pinned full-corpus integration to invoke `tests/pinned_classification_acceptance.py` against `/tmp/pseudepigrapha-tf/0.2`. Current `main` must fail because no such invocation exists.
+Before implementation, add a contract regression requiring the existing pinned full-corpus comparison acceptance path to call the new historical-classification helper. Current `main` must fail because `pinned_comparison_acceptance.py` has no classification API verification. The first RED commit used a direct workflow-invocation assertion; before GREEN that contract was narrowed to the cheaper and more maintainable invariant above, still RED against `main` and still proving the same full-corpus coverage requirement.
 
 ### GREEN
 
-Add the acceptance script and one invocation in the existing pinned job. The script must fail closed on missing/incomplete classifications, vocabulary drift, value drift, or reverse-index drift.
+Add the acceptance helper and call it from the existing pinned comparison acceptance script. The helper must fail closed on missing/incomplete classifications, vocabulary drift, value drift, or reverse-index drift.
 
 ### Full tests
 
 Require:
 
 - unit/Text-Fabric suite green;
-- workflow-contract tests green;
+- full-corpus contract tests green;
 - exact pinned OCP conversion and all semantic checks green;
 - full-corpus TF reload green;
 - new classification API acceptance green;
@@ -89,7 +89,7 @@ After the exact PR head is green, perform a logically separate skeptical review 
 - whether controlled vocabularies can drift while records happen to remain decodable;
 - whether reverse query indexes can silently omit/misassign works;
 - whether selective loading accidentally relies on unrelated features;
-- whether the workflow added another full conversion;
+- whether the change added another full conversion or workflow lane;
 - whether this work has expanded into release/provenance machinery instead of scholarly correctness.
 
 Any blocker must become a new RED regression, followed by fix, full gates, and a fresh exact-head adversarial review.
