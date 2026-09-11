@@ -1,0 +1,125 @@
+name: issue-141-final-measure
+
+on:
+  push:
+    branches:
+      - research/141-runtime-footprint
+    paths:
+      - .github/workflows/issue-141-final-measure.yml
+
+jobs:
+  measure:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: research/141-runtime-footprint
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Build wheel outside measured environment
+        run: |
+          python -m pip install build
+          python -m build --wheel
+      - name: Measure supported package install footprint
+        run: |
+          set -euo pipefail
+          python -m venv /tmp/ptf-install
+          echo "venv_base_bytes=$(du -sb /tmp/ptf-install | cut -f1)" | tee /tmp/install.metrics
+          /tmp/ptf-install/bin/python -m pip install --upgrade pip >/dev/null
+          echo "venv_after_pip_upgrade_bytes=$(du -sb /tmp/ptf-install | cut -f1)" | tee -a /tmp/install.metrics
+          /tmp/ptf-install/bin/python -m pip install dist/pseudepigrapha_tf-0.2.0-py3-none-any.whl >/dev/null
+          echo "venv_after_ptf_bytes=$(du -sb /tmp/ptf-install | cut -f1)" | tee -a /tmp/install.metrics
+          echo "wheel_bytes=$(stat -c %s dist/pseudepigrapha_tf-0.2.0-py3-none-any.whl)" | tee -a /tmp/install.metrics
+          cat /tmp/install.metrics
+      - name: Clone pinned source and build optimized corpus
+        run: |
+          git clone -q https://github.com/OnlineCriticalPseudepigrapha/Online-Critical-Pseudepigrapha.git /tmp/ocp
+          git -C /tmp/ocp checkout -q c939dcbacad78c5d18d2c4282cad23c47e19ac07
+          /tmp/ptf-install/bin/pseudepigrapha-tf convert /tmp/ocp/static/docs \
+            --output /tmp/pseudepigrapha-tf/0.2 \
+            --upstream-commit c939dcbacad78c5d18d2c4282cad23c47e19ac07
+      - name: Stage stock transport
+        run: |
+          /tmp/ptf-install/bin/python - <<'PY'
+          import os
+          from pathlib import Path
+          from pseudepigrapha_tf.distribution import stage_distribution_assets
+          assets = stage_distribution_assets(
+              Path('/tmp/pseudepigrapha-tf/0.2'),
+              Path('/tmp/release-assets'),
+              release_tag='v0.2.0-issue-141-final-measure',
+              release_commit=os.environ['GITHUB_SHA'],
+              converter_version='0.2.0',
+              data_version='0.2',
+              app_directory=Path('app'),
+          )
+          print(f"complete_zip_bytes={assets['express'].stat().st_size}")
+          PY
+          rm -rf /tmp/ptf-home
+          mkdir -p /tmp/ptf-home/text-fabric-data/github
+          unzip -q /tmp/release-assets/complete.zip -d /tmp/ptf-home/text-fabric-data/github
+      - name: Measure first offline stock-app load
+        run: |
+          /usr/bin/time -f 'cold_local_elapsed_s=%e\ncold_local_max_rss_kb=%M' -o /tmp/cold.time \
+            env HOME=/tmp/ptf-home /tmp/ptf-install/bin/python - <<'PY'
+          import socket
+          from tf.app import use
+          def forbidden(*args, **kwargs):
+              raise AssertionError('network access attempted')
+          socket.create_connection = forbidden
+          socket.socket.connect = forbidden
+          app = use('alexsosn/Pseudepigrapha-TF:local', checkout='local', version='0.2', silent='deep')
+          assert app is not None and app.api is not None
+          assert app.api.F.otype.maxSlot == 922922
+          print('PTF_COLD_LOCAL_OK')
+          PY
+          cat /tmp/cold.time
+      - name: Measure warm offline stock-app load
+        run: |
+          /usr/bin/time -f 'warm_local_elapsed_s=%e\nwarm_local_max_rss_kb=%M' -o /tmp/warm.time \
+            env HOME=/tmp/ptf-home /tmp/ptf-install/bin/python - <<'PY'
+          import socket
+          from tf.app import use
+          def forbidden(*args, **kwargs):
+              raise AssertionError('network access attempted')
+          socket.create_connection = forbidden
+          socket.socket.connect = forbidden
+          app = use('alexsosn/Pseudepigrapha-TF:local', checkout='local', version='0.2', silent='deep')
+          assert app is not None and app.api is not None
+          print('PTF_WARM_LOCAL_OK')
+          PY
+          cat /tmp/warm.time
+      - name: Measure representative comparison
+        run: |
+          /usr/bin/time -f 'comparison_elapsed_s=%e\ncomparison_max_rss_kb=%M' -o /tmp/comparison.time \
+            env HOME=/tmp/ptf-home /tmp/ptf-install/bin/python - <<'PY'
+          import socket
+          from tf.app import use
+          from pseudepigrapha_tf.comparison import build_passage_comparison
+          def forbidden(*args, **kwargs):
+              raise AssertionError('network access attempted')
+          socket.create_connection = forbidden
+          socket.socket.connect = forbidden
+          app = use('alexsosn/Pseudepigrapha-TF:local', checkout='local', version='0.2', silent='deep')
+          model = build_passage_comparison(
+              app.api, '1En', '1', '2',
+              selected_versions=('1En__Ethiopic', '1En__Greek'),
+              selected_witnesses={'1En__Ethiopic': ('p', 'Bertalotto')},
+          )
+          assert model['work'] == '1En'
+          assert any(row['status'] == 'available' for row in model['versions'])
+          print('PTF_COMPARISON_OK')
+          PY
+          cat /tmp/comparison.time
+      - name: Emit final metrics
+        run: |
+          echo PTF_ISSUE_141_FINAL_METRICS_BEGIN
+          cat /tmp/install.metrics
+          cat /tmp/cold.time
+          cat /tmp/warm.time
+          cat /tmp/comparison.time
+          echo "final_stock_cache_bytes=$(du -sb /tmp/ptf-home/text-fabric-data | cut -f1)"
+          echo "final_stock_cache_files=$(find /tmp/ptf-home/text-fabric-data -type f | wc -l)"
+          echo PTF_ISSUE_141_FINAL_METRICS_END
