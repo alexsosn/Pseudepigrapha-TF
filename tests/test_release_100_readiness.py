@@ -120,3 +120,15 @@ def test_current_local_user_examples_follow_1_0_data_identity() -> None:
     rebuild = readme.split("## Rebuild from OCP", 1)[1]
     assert "--output tf/1.0" in rebuild
     assert "--output tf/0.2" not in rebuild
+
+
+def test_primary_public_acquisition_is_not_frozen_to_previous_release() -> None:
+    readme = (ROOT / "README.md").read_text(encoding="utf-8")
+    acquisition = readme.split("## Get and load the published corpus", 1)[1].split(
+        "## Query a passage", 1
+    )[0]
+
+    assert '"alexsosn/Pseudepigrapha-TF"' in acquisition
+    assert '"alexsosn/Pseudepigrapha-TF:v0.2.0"' not in acquisition
+    assert 'checkout="v0.2.0"' not in acquisition
+    assert "latest public release" in acquisition.lower()
