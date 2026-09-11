@@ -271,6 +271,9 @@ jobs:
           assert api.F.otype.slotType == 'word'
           assert tuple(api.T.sectionTypes) == ('book', 'chapter', 'verse')
 
+          # Fail closed if the exact pinned corpus introduces a runtime node type
+          # without an intentional app display policy. Policies for supported
+          # optional types may legitimately be absent from this pinned snapshot.
           app_config = readYaml(asFile='app/config.yaml', plain=True)
           runtime_types = set(api.F.otype.all)
           configured_types = set(app_config['typeDisplay'])
@@ -309,6 +312,8 @@ jobs:
           assert sample_alignment
           assert all(api.F.version_kind.v(row['source_unit']) == 'source' for row in sample_alignment)
 
+          # Upstream 43444399 added linebreak="following" to all 32 non-primary
+          # Aramaic variant readings in 4Q548. Preserve that exact source value.
           refreshed_variant_linebreaks = [
               n for n in api.F.otype.s('reading')
               if api.F.ocp_book.v(n) == '4Q548'
@@ -346,6 +351,8 @@ jobs:
           section = api.T.sectionFromNode(deep_unit)
           assert section[1:] == ('1:23:153', '4'), section
 
+          # OCP contains exact duplicate source citations. Both remain preserved,
+          # while the later occurrence receives only a technical TF-address suffix.
           ezra_first = api.T.nodeFromSection(('4Ezra__Syriac', '10', '4'))
           ezra_second = api.T.nodeFromSection(('4Ezra__Syriac', '10', '4~2'))
           assert ezra_first is not None and ezra_second is not None and ezra_first != ezra_second
@@ -365,6 +372,10 @@ jobs:
           )
 
           A = Apparatus(api)
+
+          # Apparatus remains source-critical by default. Generated versions are
+          # available through Translations and synthetic OCP-Trans witnesses do
+          # not leak into the historical witness view.
           enoch = A.passage('1En__Ethiopic', '1', '2')
           assert enoch['reference'] == ('1En__Ethiopic', '1', '2')
           assert enoch['source_refs'] == ('1:2',)
