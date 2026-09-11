@@ -51,3 +51,13 @@ def test_readme_does_not_claim_the_published_corpus_is_unavailable():
 
     assert "v0.2.0" in text
     assert "published corpus" in text
+
+
+def test_readme_metadata_example_treats_optional_citation_as_optional():
+    text = README.read_text(encoding="utf-8")
+    metadata_section = text.split("## Metadata and feature reference", 1)[1].split(
+        "## Known limitations", 1
+    )[0]
+
+    assert 'tjob.get("citation")' in metadata_section
+    assert 'tjob["citation"]' not in metadata_section
