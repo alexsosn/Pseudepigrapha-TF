@@ -65,7 +65,7 @@ Timing is runner-sensitive; the memory and feature-size reductions are the prima
 
 ## Frozen Phase 2 — narrow `version_kind` only
 
-Source/API inspection now establishes the actual `version_kind` consumers:
+Source/API inspection establishes the actual `version_kind` consumers:
 
 - `Translations.source_version()` and `Translations.versions()` require it on textual **book** nodes.
 - `Apparatus._is_generated_book()` and work-level source/generated filtering require it on **book** nodes.
@@ -91,7 +91,36 @@ Source/API inspection now establishes the actual `version_kind` consumers:
 5. Update `version_kind` feature descriptions/help to state its owner/unit scope.
 6. Run the ordinary suite and exact pinned full-corpus integration, including all 231 generated translations and 54,143 generated/source unit alignments.
 7. Rerun the same temporary measurement workflow, additionally extracting staged `complete.zip` into a stock-style cache layout so post-Phase-2 disk footprint is directly comparable to #104.
-8. Stop after Phase 2 unless the remaining >1 GiB footprint is traced to another clearly accidental denormalization with an independently provable safe scope. Do not automatically proceed to `version_title`, `ocp_book`, or source-reference changes.
+8. Stop after Phase 2 unless the remaining footprint is traced to another clearly accidental denormalization with an independently provable safe scope. Do not automatically proceed to `version_title`, `ocp_book`, or source-reference changes.
+
+### Phase 2 TDD evidence
+
+The first metadata-only RED fixture attempt was rejected as invalid evidence because it failed parser validation before the new scope assertion (`version 'Coptic' is missing manuscripts or text`). The fixture was corrected to represent a parser-valid metadata-only version with manuscripts and an empty `<text/>` element.
+
+The corrected test-only head `903a440b17dd609036c42f11fd4681a2f6343f8d` then produced the intended RED result: **1 failed, 581 passed**. The sole failure was `test_version_kind_is_scoped_to_version_owners_and_alignment_units`; `version_kind` still covered slots and unrelated descendants instead of only the expected book/unit/version-metadata nodes.
+
+The Phase 2 implementation narrows `_stamp_version_kind()` to `book`, `unit`, and `version_metadata` objects and removes slot stamping. The feature-help contract now documents that semantic scope. On the measured post-change head, the full ordinary suite passed **582 tests**, the exact pinned OCP corpus built successfully, stock local acquisition loaded with network access forbidden, all 231 generated translations retained exact generation provenance, and the representative 1 Enoch comparison remained valid.
+
+### Phase 2 measurements
+
+Measured on the same GitHub-hosted Ubuntu 24.04 / Python 3.12 / Text-Fabric 13.1.0 runner class:
+
+- `version_kind.tf`: 21,103,140 B baseline / Phase 1 → **1,389,289 B** (~93.4% smaller)
+- raw generated TF tree before compiled caches: **101,786,528 B**
+- staged `complete.zip`: 9,816,530 B baseline → 9,691,770 B Phase 1 → **9,643,382 B** (~1.8% below baseline)
+- compiled local corpus tree after full-app priming: 173,921,175 B Phase 1 → **152,519,146 B (145.5 MiB)** (~12.3% smaller than Phase 1)
+- stock Text-Fabric cache after offline local app load: 227,070,492 B baseline → **152,510,275 B (145.4 MiB)**, still 205 files and no retained ZIPs (~32.8% smaller than baseline)
+- warm full app peak RSS: 1,767,192 KiB baseline → 1,496,964 KiB Phase 1 → **1,406,760 KiB** (~20.4% below baseline; ~6.0% below Phase 1)
+- selective translation load peak RSS: 1,397,648 KiB baseline → 1,126,028 KiB Phase 1 → **1,047,596 KiB (1023.0 MiB)** (~25.0% below baseline; ~7.0% below Phase 1 and just under 1 GiB)
+- representative comparison and generated-translation API checks remained green.
+
+Wall-clock timings varied between runners (Phase 2 warm app 3.73 s; selective load 2.86 s), so they are not treated as a regression signal. The stable byte/RSS reductions are the primary evidence.
+
+### Stop decision
+
+Issue #141 stops after Phase 2. The remaining large raw features (`version_title`, `source_ref_parts`, `ocp_book`) are upstream/source-identity data with plausible direct researcher-query value. Narrowing them would trade query ergonomics and low-level TF compatibility for additional memory without the same strong evidence that the current scope is accidental. That requires a separate research case rather than continuing optimization automatically.
+
+The two implemented changes already reduce the ordinary stock cache by about one third and bring the measured selective translation workflow below 1 GiB while preserving all tested scholarly data, translation alignment, apparatus behavior, metadata-only versions, browser loading, and comparison behavior.
 
 ## Deferred candidates requiring separate proof
 
@@ -99,7 +128,7 @@ These remain research candidates only; they are not authorized by this plan:
 
 1. `version_title` / `ocp_book`: heavily duplicated onto slots via `_surface()` and many objects via `_common()`, but they are upstream/source identity values and low-level researcher code may reasonably expect direct word/node access.
 2. `source_ref_parts`: repeated structural JSON that may be derivable from unit/div ownership, but changing its scope risks source traceability and query ergonomics.
-3. Text-Fabric compiled `.tfx` footprint/default app loading, if scope-safe raw-feature work is exhausted.
+3. Text-Fabric compiled `.tfx` footprint/default app loading, if a future measured user problem still justifies further work.
 
 Each requires its own research finding, RED contract, measurement, and explicit plan amendment before implementation.
 
@@ -109,7 +138,7 @@ Each requires its own research finding, RED contract, measurement, and explicit 
 - Generated provenance remains losslessly available through the generated book and `Translations` API.
 - `version_kind` remains exact on every node type with a demonstrated semantic consumer: book, unit, version_metadata.
 - Existing comparison, apparatus, translation alignment, semantic-audit, source-parity, and release-candidate tests remain green.
-- The full pinned corpus gate passes on the exact final head.
+- The exact pinned corpus and stock offline acquisition paths pass on the measured Phase 2 head.
 - Runtime documentation contains measured post-change download/disk/startup/RAM results rather than estimates.
 - Temporary benchmarking CI is removed before merge.
 - A logically independent adversarial review checks semantic preservation, low-level TF compatibility implications, and whether the measured benefit justifies the scope change.
