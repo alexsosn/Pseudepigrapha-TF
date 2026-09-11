@@ -1,0 +1,174 @@
+name: issue-141-measure
+
+on:
+  push:
+    branches:
+      - research/141-runtime-footprint
+    paths:
+      - '.github/workflows/issue-141-measure.yml'
+
+jobs:
+  measure:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: research/141-runtime-footprint
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install current branch
+        run: python -m pip install -e '.[dev]'
+      - name: Current-head unit gate
+        run: pytest
+      - name: Clone pinned OCP source
+        run: |
+          git clone https://github.com/OnlineCriticalPseudepigrapha/Online-Critical-Pseudepigrapha.git /tmp/ocp
+          git -C /tmp/ocp checkout c939dcbacad78c5d18d2c4282cad23c47e19ac07
+      - name: Build pinned full corpus
+        run: |
+          /usr/bin/time -f 'build_elapsed_s=%e\nbuild_max_rss_kb=%M' -o /tmp/build.time \
+            pseudepigrapha-tf convert /tmp/ocp/static/docs \
+              --output /tmp/pseudepigrapha-tf/0.2 \
+              --upstream-commit c939dcbacad78c5d18d2c4282cad23c47e19ac07
+          cat /tmp/build.time
+      - name: Record optimized raw feature sizes
+        run: |
+          set -euo pipefail
+          TF=/tmp/pseudepigrapha-tf/0.2
+          echo "raw_tf_bytes=$(du -sb "$TF" | cut -f1)"
+          for feature in generation_model generation_method generation_marker generated_language version_kind version_title source_ref_parts ocp_book; do
+            file="$TF/$feature.tf"
+            test -f "$file"
+            echo "${feature}_bytes=$(stat -c %s "$file")"
+          done
+      - name: Stage stock Text-Fabric transport
+        run: |
+          python - <<'PY'
+          import os
+          import shutil
+          from pathlib import Path
+          from pseudepigrapha_tf.distribution import stage_distribution_assets
+
+          destination = Path('/tmp/issue-141-release-assets')
+          shutil.rmtree(destination, ignore_errors=True)
+          assets = stage_distribution_assets(
+              Path('/tmp/pseudepigrapha-tf/0.2'),
+              destination,
+              release_tag='v0.2.0-issue-141-measure',
+              release_commit=os.environ['GITHUB_SHA'],
+              converter_version='0.2.0',
+              data_version='0.2',
+              app_directory=Path('app'),
+          )
+          print(f"complete_zip_bytes={assets['express'].stat().st_size}")
+          print(f"native_zip_bytes={assets['tf'].stat().st_size}")
+          PY
+      - name: Prime compiled cache and verify public translation API
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          from tf.advanced.app import findApp
+          from pseudepigrapha_tf import Translations
+
+          app = findApp(
+              f"app:{Path('app').resolve()}",
+              '',
+              None,
+              'github',
+              False,
+              version='0.2',
+              locations=['/tmp/pseudepigrapha-tf/0.2'],
+              modules=[''],
+              silent='deep',
+          )
+          assert app is not None and app.api is not None
+          translations = Translations(app.api)
+          versions = translations.versions()
+          assert len(versions) == 231
+          assert all(row['generation_marker'] == 'OCP-Trans' for row in versions)
+          assert all(row['generation_method'] == 'llm' for row in versions)
+          assert all(row['generation_model'] == 'openrouter/google/gemini-3.7-flash' for row in versions)
+          print('PTF_PRIME_OK')
+          PY
+          echo "compiled_tree_bytes=$(du -sb /tmp/pseudepigrapha-tf/0.2 | cut -f1)"
+      - name: Measure warm full app
+        run: |
+          /usr/bin/time -f 'warm_app_elapsed_s=%e\nwarm_app_max_rss_kb=%M' -o /tmp/warm.time \
+            python - <<'PY'
+          from pathlib import Path
+          from tf.advanced.app import findApp
+
+          app = findApp(
+              f"app:{Path('app').resolve()}",
+              '',
+              None,
+              'github',
+              False,
+              version='0.2',
+              locations=['/tmp/pseudepigrapha-tf/0.2'],
+              modules=[''],
+              silent='deep',
+          )
+          assert app is not None and app.api is not None
+          assert app.api.F.otype.maxSlot == 922922
+          print('PTF_WARM_OK')
+          PY
+          cat /tmp/warm.time
+      - name: Measure selective translation load
+        run: |
+          /usr/bin/time -f 'selective_elapsed_s=%e\nselective_max_rss_kb=%M' -o /tmp/selective.time \
+            python - <<'PY'
+          from tf.fabric import Fabric
+          from pseudepigrapha_tf import Translations
+
+          TF = Fabric(locations=['/tmp/pseudepigrapha-tf/0.2'], modules=[''], silent='deep')
+          api = TF.load(
+              'book ocp_book version_title version_kind language generated_language '
+              'generation_marker generation_method generation_model unit_id unit_index source_ref '
+              'reading_text is_primary translation_of translation_unit_of reading_of',
+              silent='deep',
+          )
+          assert api is not False and not isinstance(api, bool)
+          T = Translations(api)
+          versions = T.versions(work='1En', language='French')
+          assert versions
+          aligned = T.aligned_units(versions[0]['node'])
+          assert aligned
+          print(f'PTF_SELECTIVE_OK versions={len(versions)} aligned={len(aligned)}')
+          PY
+          cat /tmp/selective.time
+      - name: Verify representative comparison
+        run: |
+          python - <<'PY'
+          from tf.fabric import Fabric
+          from pseudepigrapha_tf.comparison import build_passage_comparison
+
+          TF = Fabric(locations=['/tmp/pseudepigrapha-tf/0.2'], modules=[''], silent='deep')
+          api = TF.loadAll(silent='deep')
+          assert api is not False and not isinstance(api, bool)
+          model = build_passage_comparison(
+              api,
+              '1En', '1', '2',
+              selected_versions=('1En__Ethiopic', '1En__Greek'),
+              selected_witnesses={'1En__Ethiopic': ('p', 'Bertalotto')},
+          )
+          assert model['work'] == '1En'
+          assert any(row['status'] == 'available' for row in model['versions'])
+          print('PTF_COMPARISON_OK')
+          PY
+      - name: Emit metrics
+        run: |
+          echo PTF_ISSUE_141_METRICS_BEGIN
+          cat /tmp/build.time
+          cat /tmp/warm.time
+          cat /tmp/selective.time
+          TF=/tmp/pseudepigrapha-tf/0.2
+          echo "final_tree_bytes=$(du -sb "$TF" | cut -f1)"
+          for feature in generation_model generation_method generation_marker generated_language version_kind version_title source_ref_parts ocp_book; do
+            echo "${feature}_bytes=$(stat -c %s "$TF/$feature.tf")"
+          done
+          echo "complete_zip_bytes=$(stat -c %s /tmp/issue-141-release-assets/complete.zip)"
+          echo "native_zip_bytes=$(find /tmp/issue-141-release-assets -maxdepth 1 -name 'tf-*.zip' -printf '%s\n' | head -1)"
+          echo PTF_ISSUE_141_METRICS_END
