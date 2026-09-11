@@ -89,3 +89,5 @@ Profiling found two large cases of accidental denormalization that could be remo
 The four generated-provenance feature files fell from about 45.8 MiB combined to roughly 23 KiB, and `version_kind.tf` fell from 21,103,140 bytes to 1,389,289 bytes. Full pinned-corpus parity, generated/source alignment, apparatus behavior, metadata-only versions, stock offline loading, browser/app loading, and representative comparison tests remain green.
 
 Further scope narrowing intentionally stops here. The remaining large features such as `version_title`, `ocp_book`, and `source_ref_parts` are upstream/source-identity and traceability data with plausible direct researcher-query value. Any future reduction there requires its own research, semantic contract, TDD gate, and measurement rather than treating smaller RAM as sufficient justification.
+
+The README intentionally carries only the short resource expectations needed for onboarding; this document is the source for the measurement method, exact figures, and interpretation caveats.
