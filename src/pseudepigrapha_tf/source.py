@@ -53,6 +53,7 @@ def validate_source_boundary(path: str | Path) -> None:
 
 def load_source_directory(path: str | Path) -> tuple[list[Book], list[str]]:
     source_dir = Path(path)
+    validate_source_boundary(source_dir)
     books: list[Book] = []
     warnings: list[str] = []
     for xml_path in sorted(source_dir.glob("*.xml")):
