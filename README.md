@@ -133,13 +133,16 @@ See [apparatus helper loading contracts](docs/apparatus.md) for selective-load d
 
 OCP marks its generated translations structurally. Pseudepigrapha-TF preserves them as `version_kind=generated_translation`, links each generated book to one source version with `translation_of`, and links generated units occurrence-by-occurrence with `translation_unit_of`.
 
-Load the additional generated-translation features and query them separately from historical apparatus:
+This workflow is standalone: it loads the exact translation-oriented feature set without assuming that the apparatus example above has already run.
 
 ```python
 app.load(
-    "generated_language generation_marker generation_method generation_model "
-    "unit_index translation_of translation_unit_of"
+    "ocp_book version_title version_kind language generated_language "
+    "generation_marker generation_method generation_model unit_id unit_index source_ref "
+    "reading_text is_primary translation_of translation_unit_of reading_of"
 )
+
+from pseudepigrapha_tf import Translations
 
 T = Translations(app.api)
 french = T.versions(work="1En", language="French")
