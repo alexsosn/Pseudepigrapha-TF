@@ -149,15 +149,16 @@ def _stamp_version_identity(builder: _Builder, start: int, version_id: str) -> N
 def _stamp_version_kind(
     builder: _Builder,
     object_start: int,
-    slot_start: int,
+    _slot_start: int,
     kind: str,
 ) -> None:
-    """Stamp version classification without changing source book-id semantics."""
+    """Stamp version classification only where runtime semantics consume it."""
 
+    semantic_kinds = {"book", "unit", "version_metadata"}
     for index in range(object_start, len(builder.objects)):
-        builder.objects[index].features["version_kind"] = kind
-    for slot in range(slot_start, builder.next_slot):
-        builder.set_slot_feature(slot, "version_kind", kind)
+        obj = builder.objects[index]
+        if obj.kind in semantic_kinds:
+            obj.features["version_kind"] = kind
 
 
 def _stamp_generated_provenance(
@@ -885,7 +886,7 @@ def build_tf_data(
         }
     if "version_kind" in data.metadata:
         data.metadata["version_kind"]["description"] = (
-            "source for critical/source versions; generated_translation for OCP machine translations"
+            "source or generated_translation classification stored on TF book, unit, and version_metadata nodes"
         )
     if "generation_marker" in data.metadata:
         data.metadata["generation_marker"]["description"] = "explicit upstream generated-translation provenance marker on the generated TF book"

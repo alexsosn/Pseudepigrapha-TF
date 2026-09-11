@@ -94,7 +94,7 @@ FEATURE_DESCRIPTIONS = {
     "verse_index": "1-based verse occurrence index within one OCP version",
     "version_fragment": "literal upstream version/@fragment value",
     "version_id": "stable converter identifier for the exact upstream version owning this node",
-    "version_kind": "source for critical/source versions; generated_translation for OCP machine translations",
+    "version_kind": "source or generated_translation classification stored on TF book, unit, and version_metadata nodes",
     "version_title": "literal upstream OCP version title",
     "w_annotated": "1 when the upstream OCP word explicitly carries annotation markup",
     "w_lang": "literal OCP <w>/@lang when present",
