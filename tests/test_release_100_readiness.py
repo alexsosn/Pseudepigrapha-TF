@@ -103,3 +103,20 @@ def test_agora_materialization_docs_do_not_deny_published_derived_corpus() -> No
 
     assert "published" in text
     assert "derived" in text
+
+
+def test_current_local_user_examples_follow_1_0_data_identity() -> None:
+    tf_app = (ROOT / "docs" / "tf-app.md").read_text(encoding="utf-8")
+    runtime = (ROOT / "docs" / "runtime-footprint.md").read_text(encoding="utf-8")
+    readme = (ROOT / "README.md").read_text(encoding="utf-8")
+
+    assert "current TF data release identity is `1.0`" in tf_app
+    assert "pseudepigrapha-tf browse tf/1.0 --app app" in tf_app
+
+    selective = runtime.split("## Lower-memory selective loading", 1)[1]
+    assert 'Fabric(locations=["tf/1.0"]' in selective
+    assert 'Fabric(locations=["tf/0.2"]' not in selective
+
+    rebuild = readme.split("## Rebuild from OCP", 1)[1]
+    assert "--output tf/1.0" in rebuild
+    assert "--output tf/0.2" not in rebuild
