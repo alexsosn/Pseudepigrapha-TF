@@ -51,6 +51,43 @@ def test_exact_evidenced_snapshot_exposes_generation_method_and_model() -> None:
     assert data.node_features["generation_model"][node] == PINNED_GENERATION_MODEL
 
 
+def test_generation_provenance_is_owned_by_generated_book_not_denormalized_to_descendants() -> None:
+    data = build_tf_data([_book()], upstream_commit=PINNED_OCP_COMMIT)
+    generated_book = _generated_book(data)
+
+    expected = {
+        "generation_marker": "OCP-Trans",
+        "generated_language": "French",
+        "generation_method": "llm",
+        "generation_model": PINNED_GENERATION_MODEL,
+    }
+    for feature, value in expected.items():
+        assert data.node_features[feature] == {generated_book: value}
+
+    # Unit-level generated/source classification remains a separate semantic
+    # contract used by alignment and apparatus helpers.
+    generated_units = [
+        node
+        for node, kind in data.node_features["otype"].items()
+        if kind == "unit" and data.node_features["version_kind"].get(node) == "generated_translation"
+    ]
+    source_units = [
+        node
+        for node, kind in data.node_features["otype"].items()
+        if kind == "unit" and data.node_features["version_kind"].get(node) == "source"
+    ]
+    assert generated_units
+    assert source_units
+    assert all(node in data.edge_features["translation_unit_of"] for node in generated_units)
+
+    synthetic = next(
+        node
+        for node, kind in data.node_features["otype"].items()
+        if kind == "manuscript" and data.node_features.get("ms_abbrev", {}).get(node) == "OCP-Trans"
+    )
+    assert data.node_features["synthetic_witness"][synthetic] == 1
+
+
 def test_unknown_snapshot_preserves_generated_status_without_inventing_generator_provenance() -> None:
     data = build_tf_data([_book()], upstream_commit="future-unresearched-snapshot")
     node = _generated_book(data)
