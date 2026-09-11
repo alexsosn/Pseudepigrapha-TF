@@ -1,0 +1,150 @@
+name: issue-104-public-consumption
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/issue-104-public-consumption.yml'
+      - 'research/issue-104/**'
+      - 'docs/runtime-footprint.md'
+
+jobs:
+  measure-public-v020:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install released researcher runtime
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install 'https://github.com/alexsosn/Pseudepigrapha-TF/archive/refs/tags/v0.2.0.zip'
+          python - <<'PY'
+          from importlib.metadata import version
+          import pseudepigrapha_tf
+          assert version('pseudepigrapha-tf') == '0.2.0'
+          assert pseudepigrapha_tf.__version__ == '0.2.0'
+          PY
+      - name: Cold acquire and load public v0.2.0
+        run: |
+          set -euo pipefail
+          rm -rf /tmp/ptf-home
+          mkdir -p /tmp/ptf-home
+          HOME=/tmp/ptf-home /usr/bin/time -f 'cold_elapsed_s=%e\ncold_max_rss_kb=%M' -o /tmp/cold.time \
+            python - <<'PY'
+          from tf.app import use
+
+          app = use(
+              'alexsosn/Pseudepigrapha-TF:v0.2.0',
+              checkout='v0.2.0',
+              version='0.2',
+              silent='deep',
+          )
+          assert app is not None and app.api is not None
+          assert app.api.F.otype.maxSlot == 922922
+          assert app.api.T.nodeFromSection(('1En__Ethiopic', '1', '2')) is not None
+          print('PTF_ACQUIRE_OK slots=922922')
+          PY
+          cat /tmp/cold.time
+      - name: Measure cache footprint
+        run: |
+          set -euo pipefail
+          CACHE=/tmp/ptf-home/text-fabric-data
+          test -d "$CACHE"
+          echo "cache_bytes=$(du -sb "$CACHE" | cut -f1)"
+          echo "cache_files=$(find "$CACHE" -type f | wc -l)"
+          echo "retained_zip_count=$(find "$CACHE" -type f -name '*.zip' | wc -l)"
+          echo "retained_zip_bytes=$(find "$CACHE" -type f -name '*.zip' -printf '%s\n' | awk '{s+=$1} END {print s+0}')"
+          find "$CACHE" -type f -printf '%s %p\n' | sort -nr | head -20
+      - name: Warm offline full-app reload
+        run: |
+          set -euo pipefail
+          HOME=/tmp/ptf-home /usr/bin/time -f 'warm_app_elapsed_s=%e\nwarm_app_max_rss_kb=%M' -o /tmp/warm-app.time \
+            python - <<'PY'
+          import socket
+          from tf.app import use
+
+          def forbidden(*args, **kwargs):
+              raise AssertionError('network access attempted during checkout=local reload')
+
+          socket.create_connection = forbidden
+          socket.socket.connect = forbidden
+          app = use(
+              'alexsosn/Pseudepigrapha-TF:local',
+              checkout='local',
+              version='0.2',
+              silent='deep',
+          )
+          assert app is not None and app.api is not None
+          assert app.api.F.otype.maxSlot == 922922
+          assert app.api.T.nodeFromSection(('1En__Ethiopic', '1', '2')) is not None
+          print('PTF_OFFLINE_RELOAD_OK')
+          PY
+          cat /tmp/warm-app.time
+      - name: Measure representative comparison
+        run: |
+          set -euo pipefail
+          HOME=/tmp/ptf-home /usr/bin/time -f 'comparison_elapsed_s=%e\ncomparison_max_rss_kb=%M' -o /tmp/comparison.time \
+            python - <<'PY'
+          from tf.app import use
+          from pseudepigrapha_tf.comparison import build_passage_comparison
+
+          app = use(
+              'alexsosn/Pseudepigrapha-TF:local',
+              checkout='local',
+              version='0.2',
+              silent='deep',
+          )
+          model = build_passage_comparison(
+              app.api,
+              '1En',
+              '1',
+              '2',
+              selected_versions=('1En__Ethiopic', '1En__Greek'),
+              selected_witnesses={'1En__Ethiopic': ('p', 'Bertalotto')},
+          )
+          assert model['work'] == '1En'
+          assert any(row['status'] == 'available' for row in model['versions'])
+          print('PTF_COMPARISON_OK')
+          PY
+          cat /tmp/comparison.time
+      - name: Measure selective translation load
+        run: |
+          set -euo pipefail
+          HOME=/tmp/ptf-home /usr/bin/time -f 'selective_elapsed_s=%e\nselective_max_rss_kb=%M' -o /tmp/selective.time \
+            python - <<'PY'
+          from pathlib import Path
+          from tf.fabric import Fabric
+          from pseudepigrapha_tf import Translations
+
+          data = Path.home() / 'text-fabric-data' / 'github' / 'alexsosn' / 'Pseudepigrapha-TF' / 'tf' / '0.2'
+          assert data.is_dir(), data
+          TF = Fabric(locations=[str(data)], modules=[''], silent='deep')
+          api = TF.load(
+              'book ocp_book version_title version_kind language generated_language '
+              'generation_marker generation_method generation_model unit_id unit_index source_ref '
+              'reading_text is_primary translation_of translation_unit_of reading_of',
+              silent='deep',
+          )
+          assert api is not False and not isinstance(api, bool)
+          T = Translations(api)
+          versions = T.versions(work='1En', language='French')
+          assert versions
+          aligned = T.aligned_units(versions[0]['node'])
+          assert aligned
+          print(f'PTF_SELECTIVE_OK versions={len(versions)} aligned={len(aligned)}')
+          PY
+          cat /tmp/selective.time
+      - name: Emit measurement summary
+        run: |
+          echo 'PTF_METRICS_BEGIN'
+          cat /tmp/cold.time
+          cat /tmp/warm-app.time
+          cat /tmp/comparison.time
+          cat /tmp/selective.time
+          CACHE=/tmp/ptf-home/text-fabric-data
+          echo "cache_bytes=$(du -sb "$CACHE" | cut -f1)"
+          echo "cache_files=$(find "$CACHE" -type f | wc -l)"
+          echo "retained_zip_count=$(find "$CACHE" -type f -name '*.zip' | wc -l)"
+          echo "retained_zip_bytes=$(find "$CACHE" -type f -name '*.zip' -printf '%s\n' | awk '{s+=$1} END {print s+0}')"
+          echo 'PTF_METRICS_END'
