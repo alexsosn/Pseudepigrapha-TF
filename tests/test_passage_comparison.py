@@ -355,6 +355,18 @@ class FakeTranslations:
         self.__class__.version_calls.append((work, language))
         return TRANSLATION_RECORDS
 
+    def aligned_to_source_units(self, generated_book, source_units):
+        generated_id = next(
+            record["id"] for record in TRANSLATION_RECORDS if record["node"] == generated_book
+        )
+        passage = TRANSLATION_PASSAGES.get(generated_id)
+        if passage is None:
+            return ()
+        wanted = set(source_units)
+        return tuple(
+            unit for unit in passage["units"] if unit["source_unit"] in wanted
+        )
+
     def passage(self, generated_book, chapter, verse):
         self.__class__.passage_calls.append((generated_book, str(chapter), str(verse)))
         if generated_book == "Work__Latin__translation__English":

@@ -46,7 +46,7 @@ class Locality:
 
     def u(self, node, otype=None):
         assert otype == "book"
-        return {100: (2,)}.get(node, ())
+        return {10: (1,), 20: (2,), 100: (2,)}.get(node, ())
 
 
 class Text:
@@ -144,6 +144,9 @@ def test_translations_returns_occurrence_aligned_source_and_translation_text():
         },
     )
     assert helper.passage("Demo__translation__French", "1", "1")["units"] == helper.aligned_units(2)
+    assert helper.aligned_to_source_units(2, (10,)) == helper.aligned_units(2)
+    with pytest.raises(ValueError, match="expected source book"):
+        helper.aligned_to_source_units(2, (20,))
 
 
 def test_apparatus_default_witness_view_excludes_synthetic_translation_witness():

@@ -81,6 +81,21 @@ class FakeTranslations:
             },
         )
 
+    def aligned_to_source_units(self, generated_book, source_units):
+        assert generated_book == 201
+        assert tuple(source_units) == (11,)
+        return (
+            {
+                "translation_unit": 301,
+                "source_unit": 999,
+                "translation_unit_id": "en-1",
+                "source_unit_id": "elsewhere",
+                "source_ref": "9:9",
+                "translation_text": "wrongly aligned",
+                "source_text": "other passage",
+            },
+        )
+
     def passage(self, generated_book, chapter, verse):
         return {
             "reference": (str(generated_book), str(chapter), str(verse)),

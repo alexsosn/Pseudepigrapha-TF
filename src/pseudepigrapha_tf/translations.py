@@ -122,6 +122,53 @@ class Translations:
             units = tuple(sorted(units, key=lambda node: (unit_index.v(node) or 0, node)))
         return tuple(self._aligned_unit(unit) for unit in units)
 
+    def aligned_to_source_units(
+        self,
+        generated_book: int,
+        source_units,
+    ) -> tuple[dict[str, object], ...]:
+        """Return this generated version's units aligned to exact source-unit nodes.
+
+        Source-unit identity, rather than a repeated section label, is the
+        authoritative occurrence key. This matters when OCP preserves duplicate
+        source citations and Text-Fabric disambiguates them with ``~N`` section
+        suffixes independently in source and generated versions.
+        """
+
+        source_book = self.source_version(generated_book)
+        translation_unit_of = self._require_edge("translation_unit_of")
+        result: list[dict[str, object]] = []
+        for source_unit in tuple(source_units):
+            source_books = tuple(self.api.L.u(source_unit, otype="book"))
+            if len(source_books) != 1:
+                raise ValueError(
+                    f"expected one containing source book for unit {source_unit}, found {source_books}"
+                )
+            if source_books[0] != source_book:
+                raise ValueError(
+                    f"source unit {source_unit} belongs to book {source_books[0]}, "
+                    f"expected source book {source_book} for generated translation {generated_book}"
+                )
+
+            candidates: list[int] = []
+            for generated_unit in translation_unit_of.t(source_unit):
+                generated_books = tuple(self.api.L.u(generated_unit, otype="book"))
+                if len(generated_books) != 1:
+                    raise ValueError(
+                        f"expected one containing generated book for unit {generated_unit}, "
+                        f"found {generated_books}"
+                    )
+                if generated_books[0] == generated_book:
+                    candidates.append(generated_unit)
+            if len(candidates) > 1:
+                raise ValueError(
+                    f"generated translation book {generated_book} has {len(candidates)} units "
+                    f"aligned to source unit {source_unit}; expected at most 1"
+                )
+            if candidates:
+                result.append(self._aligned_unit(candidates[0]))
+        return tuple(result)
+
     def passage(
         self,
         generated_book: str,
