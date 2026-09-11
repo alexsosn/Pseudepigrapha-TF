@@ -98,22 +98,8 @@ jobs:
           assert old in text, 'expected _stamp_version_kind implementation not found'
           text = text.replace(old, new, 1)
 
-          old_call = '''    _stamp_version_kind(
-              builder,
-              object_start,
-              slot_start,
-              "generated_translation",
-              generation=translation,
-          )
-          '''
-          new_call = '''    _stamp_version_kind(
-              builder,
-              object_start,
-              slot_start,
-              "generated_translation",
-          )
-              _stamp_generated_provenance(builder, object_start, translation)
-          '''
+          old_call = '        "generated_translation",\n        generation=translation,\n    )'
+          new_call = '        "generated_translation",\n    )\n    _stamp_generated_provenance(builder, object_start, translation)'
           assert old_call in text, 'expected generated stamp call not found'
           text = text.replace(old_call, new_call, 1)
 
