@@ -1,3 +1,0 @@
-# Implementation boundary
-
-The intended GREEN change is deliberately small: reuse the already-existing pinned full-corpus materialization and acceptance path, and add exact `HistoricalClassifications` API parity against the independently packaged fixture. No converter, graph schema, release, provenance, or distribution code should change unless the full-corpus acceptance run exposes a real data mismatch.
