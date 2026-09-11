@@ -3,6 +3,7 @@ from __future__ import annotations
 from html import escape
 from pathlib import Path
 import sys
+from urllib.parse import quote
 
 from tf.fabric import Fabric
 
@@ -10,6 +11,8 @@ from pseudepigrapha_tf.comparison import (
     build_passage_comparison,
     render_passage_comparison,
 )
+from pseudepigrapha_tf.release_identity import TF_DATA_VERSION
+from pseudepigrapha_tf.web import load_local_comparison_web_app
 from pinned_classification_acceptance import verify as verify_classifications
 from pinned_translation_acceptance import verify as verify_translations
 
@@ -91,6 +94,30 @@ def verify(tf_dir: Path) -> None:
     assert ethiopic_start < translation_pos < greek_start
     assert f'data-translation-id="{first_translation["id"]}"' in html
     assert f'data-version-id="{first_translation["id"]}"' not in html
+
+    # Duplicate source citations are exposed as distinct TF sections. Generated
+    # translations are aligned occurrence-by-occurrence, so the real web route
+    # must use those alignment edges rather than assuming that the generated
+    # section label selects the same duplicate occurrence as the source label.
+    flask_app = load_local_comparison_web_app(
+        tf_dir,
+        Path("app"),
+        version=TF_DATA_VERSION,
+        silent="deep",
+    )
+    client = flask_app.test_client()
+    first = client.get("/compare?work=4Ezra&chapter=10&verse=4")
+    first_html = first.get_data(as_text=True)
+    assert first.status_code == 200, first_html
+    assert 'data-version-id="4Ezra__Syriac"' in first_html
+    assert 'data-translation-id="4Ezra__Syriac__translation__English"' in first_html
+
+    second = client.get(
+        "/compare?work=4Ezra&chapter=10&verse=" + quote("4~2")
+    )
+    second_html = second.get_data(as_text=True)
+    assert second.status_code == 200, second_html
+    assert 'data-version-id="4Ezra__Syriac"' in second_html
 
     # Exhaustively close raw-source -> serialized graph -> public translation
     # API parity on this same full-corpus materialization.
