@@ -18,12 +18,19 @@ jobs:
       - name: Install released researcher runtime
         run: |
           python -m pip install --upgrade pip
-          python -m pip install 'https://github.com/alexsosn/Pseudepigrapha-TF/archive/refs/tags/v0.2.0.zip'
+          # v0.2.0 itself omitted Text-Fabric's GitHub backend. Install the
+          # explicit historical workaround while current pyproject is fixed
+          # separately by the regression test in this PR.
+          python -m pip install \
+            'text-fabric[github]>=13.1,<14' \
+            'https://github.com/alexsosn/Pseudepigrapha-TF/archive/refs/tags/v0.2.0.zip'
           python - <<'PY'
           from importlib.metadata import version
           import pseudepigrapha_tf
           assert version('pseudepigrapha-tf') == '0.2.0'
           assert pseudepigrapha_tf.__version__ == '0.2.0'
+          import github
+          assert github is not None
           PY
       - name: Cold acquire and load public v0.2.0
         run: |
