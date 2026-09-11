@@ -50,6 +50,17 @@ def _duplicate_units(data):
     )
 
 
+def _duplicate_readings(data, first_unit, second_unit):
+    reading_of = data.edge_features["reading_of"]
+    first_reading = next(
+        reading for reading, targets in reading_of.items() if targets == {first_unit}
+    )
+    second_reading = next(
+        reading for reading, targets in reading_of.items() if targets == {second_unit}
+    )
+    return first_reading, second_reading
+
+
 def test_conversion_report_rejects_swapped_duplicate_source_unit_reading_owners(
     tmp_path: Path,
 ) -> None:
@@ -65,12 +76,7 @@ def test_conversion_report_rejects_swapped_duplicate_source_unit_reading_owners(
 
     reading_text = data.node_features["reading_text"]
     reading_of = data.edge_features["reading_of"]
-    first_reading = next(
-        reading for reading, targets in reading_of.items() if targets == {first_unit}
-    )
-    second_reading = next(
-        reading for reading, targets in reading_of.items() if targets == {second_unit}
-    )
+    first_reading, second_reading = _duplicate_readings(data, first_unit, second_unit)
     assert reading_text[first_reading] == "alpha"
     assert reading_text[second_reading] == "beta"
 
@@ -85,11 +91,37 @@ def test_conversion_report_rejects_swapped_duplicate_source_unit_reading_owners(
     assert "reading_ownership" in report["failed_checks"]
 
 
+def test_reading_ownership_rejects_coordinated_owner_and_support_swap(
+    tmp_path: Path,
+) -> None:
+    """Adversarial review: oslots alone must not define occurrence identity."""
+
+    books = _source(tmp_path)
+    data = build_tf_data(books)
+    first_unit, second_unit = _duplicate_units(data)
+    first_reading, second_reading = _duplicate_readings(data, first_unit, second_unit)
+    reading_of = data.edge_features["reading_of"]
+    oslots = data.edge_features["oslots"]
+
+    # A future builder regression could conceivably carry both the wrong owner
+    # key and the wrong unit support forward together. That must still fail the
+    # ownership-specific semantic check rather than depending on reconstruction.
+    reading_of[first_reading] = {second_unit}
+    reading_of[second_reading] = {first_unit}
+    oslots[first_reading], oslots[second_reading] = (
+        set(oslots[second_reading]),
+        set(oslots[first_reading]),
+    )
+
+    report = build_conversion_report(tmp_path, books, data)
+
+    assert report["semantic_checks"]["reading_ownership"] is False
+
+
 def test_duplicate_source_units_roundtrip_with_correct_apparatus_ownership(
     tmp_path: Path,
 ) -> None:
-    tf_module = __import__("tf.fabric", fromlist=["Fabric"])
-    Fabric = tf_module.Fabric
+    from tf.fabric import Fabric
 
     books = _source(tmp_path)
     data = build_tf_data(books)
