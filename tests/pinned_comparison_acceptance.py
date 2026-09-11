@@ -11,6 +11,7 @@ from pseudepigrapha_tf.comparison import (
     render_passage_comparison,
 )
 from pinned_classification_acceptance import verify as verify_classifications
+from pinned_translation_acceptance import verify as verify_translations
 
 
 FEATURES = (
@@ -91,7 +92,11 @@ def verify(tf_dir: Path) -> None:
     assert f'data-translation-id="{first_translation["id"]}"' in html
     assert f'data-version-id="{first_translation["id"]}"' not in html
 
-    # Close the remaining scholarly-metadata parity gap on this same pinned
+    # Exhaustively close raw-source -> serialized graph -> public translation
+    # API parity on this same full-corpus materialization.
+    verify_translations(api, Path('/tmp/ocp/static/docs'))
+
+    # Close the scholarly-metadata API parity gap on this same pinned
     # full-corpus materialization rather than launching a second conversion.
     verify_classifications(tf_dir)
 

@@ -86,5 +86,20 @@ def test_pinned_full_corpus_acceptance_verifies_serialized_historical_classifica
     assert "verify_classifications(tf_dir)" in comparison
 
 
+def test_pinned_full_corpus_acceptance_verifies_all_serialized_generated_translations():
+    test_workflow = _workflow_texts()["test.yml"]
+    comparison = (ROOT / "tests" / "pinned_comparison_acceptance.py").read_text(
+        encoding="utf-8"
+    )
+
+    # Translation API parity must ride the same exact pinned materialization;
+    # do not add another conversion or workflow lane merely for this audit.
+    assert test_workflow.count(
+        f"python tests/pinned_comparison_acceptance.py {LOCAL_TF}"
+    ) == 1
+    assert "from pinned_translation_acceptance import verify as verify_translations" in comparison
+    assert "verify_translations(api, Path('/tmp/ocp/static/docs'))" in comparison
+
+
 def test_duplicate_full_app_materialization_workflow_is_removed():
     assert not (WORKFLOWS / "full-app-integration.yml").exists()
