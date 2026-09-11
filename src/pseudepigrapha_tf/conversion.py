@@ -151,29 +151,42 @@ def _stamp_version_kind(
     object_start: int,
     slot_start: int,
     kind: str,
-    *,
-    generation: GeneratedTranslation | None = None,
 ) -> None:
-    """Stamp ownership/provenance without changing source book-id semantics."""
+    """Stamp version classification without changing source book-id semantics."""
 
-    values: dict[str, str | int] = {"version_kind": kind}
-    if generation is not None:
-        values.update(
-            generation_marker=generation.marker,
-            generated_language=generation.target_language,
-        )
-        if generation.generation_method:
-            values["generation_method"] = generation.generation_method
-        if generation.generation_model:
-            values["generation_model"] = generation.generation_model
     for index in range(object_start, len(builder.objects)):
-        obj = builder.objects[index]
-        obj.features.update(values)
-        if generation is not None and obj.kind == "manuscript" and obj.features.get("ms_abbrev") == generation.marker:
-            obj.features["synthetic_witness"] = 1
+        builder.objects[index].features["version_kind"] = kind
     for slot in range(slot_start, builder.next_slot):
-        for name, value in values.items():
-            builder.set_slot_feature(slot, name, value)
+        builder.set_slot_feature(slot, "version_kind", kind)
+
+
+def _stamp_generated_provenance(
+    builder: _Builder,
+    object_start: int,
+    generation: GeneratedTranslation,
+) -> None:
+    """Attach version-owned generation provenance once, to its TF book."""
+
+    objects = builder.objects[object_start:]
+    books = [obj for obj in objects if obj.kind == "book"]
+    if len(books) != 1:
+        raise ValueError(
+            f"generated translation produced {len(books)} TF book nodes; expected exactly 1"
+        )
+
+    values: dict[str, str | int] = {
+        "generation_marker": generation.marker,
+        "generated_language": generation.target_language,
+    }
+    if generation.generation_method:
+        values["generation_method"] = generation.generation_method
+    if generation.generation_model:
+        values["generation_model"] = generation.generation_model
+    books[0].features.update(values)
+
+    for obj in objects:
+        if obj.kind == "manuscript" and obj.features.get("ms_abbrev") == generation.marker:
+            obj.features["synthetic_witness"] = 1
 
 
 def _unit_key_index(
@@ -668,8 +681,8 @@ def _add_generated_translation(
         object_start,
         slot_start,
         "generated_translation",
-        generation=translation,
     )
+    _stamp_generated_provenance(builder, object_start, translation)
 
     generated_vkey = f"book:{book_index}:version:{graph_version_index}"
     generated_book_key = f"{generated_vkey}:book"
@@ -875,13 +888,13 @@ def build_tf_data(
             "source for critical/source versions; generated_translation for OCP machine translations"
         )
     if "generation_marker" in data.metadata:
-        data.metadata["generation_marker"]["description"] = "explicit upstream generated-translation provenance marker"
+        data.metadata["generation_marker"]["description"] = "explicit upstream generated-translation provenance marker on the generated TF book"
     if "generation_method" in data.metadata:
-        data.metadata["generation_method"]["description"] = "upstream generation method recorded for this translation"
+        data.metadata["generation_method"]["description"] = "upstream generation method recorded on the generated TF book"
     if "generation_model" in data.metadata:
-        data.metadata["generation_model"]["description"] = "upstream model recorded for the pinned generated translation layer"
+        data.metadata["generation_model"]["description"] = "upstream model recorded on the generated TF book for the pinned generated translation layer"
     if "generated_language" in data.metadata:
-        data.metadata["generated_language"]["description"] = "target language of an upstream generated translation"
+        data.metadata["generated_language"]["description"] = "target language recorded on the generated translation TF book"
     data.metadata["translation_of"] = {
         "valueType": "str",
         "description": "generated translation TF book to its exact source-version TF book",
