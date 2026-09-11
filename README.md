@@ -96,7 +96,7 @@ app.load(
     "reading_of witness manuscript_of"
 )
 
-from pseudepigrapha_tf import Apparatus, Translations
+from pseudepigrapha_tf import Apparatus
 
 A = Apparatus(app.api)
 passage = A.passage("1En__Ethiopic", "1", "2")
