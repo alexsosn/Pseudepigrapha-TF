@@ -16,40 +16,44 @@ A mutation with occurrence 1 reading `alpha` and occurrence 2 reading `beta` cou
 
 The first GREEN design independently re-read the XML and rebuilt a source-order unit→reading inventory. It caught the corruption without adding TF features, but it read every XML document twice during semantic audit.
 
-The existing performance contract `test_semantic_audit_reads_special_structure_source_once` rejected that design: CI observed two reads of the same source file. Duplicating the complete XML traversal is disproportionate for a relation invariant that is already encoded structurally in TF.
+The existing performance contract `test_semantic_audit_reads_special_structure_source_once` rejected that design: CI observed two reads of the same source file. Duplicating the complete XML traversal is disproportionate for an ownership relation that already carries independent structural/order signals in TF.
 
-## Structural occurrence invariant
+## Available occurrence signals
 
-The graph builder gives every `reading` node exactly the same `oslots` support as the `unit` that structurally contains it. Different unit occurrences have different support sets because each primary occurrence owns its own word slots; an empty primary receives its own gap slot. This remains true when two units have identical upstream reference/id values.
+Three graph facts are created independently of the final `reading_of` target:
 
-Consequently an occurrence-aware ownership check can require all of the following:
+1. `unit_index` is the 1-based source-order unit occurrence inside one version;
+2. reading nodes preserve source creation order inside their Text-Fabric node-type block, while `reading_index` resets to 1 for the first reading of every unit and increments within that unit;
+3. every reading receives the same non-empty `oslots` support as the unit structurally containing it; distinct unit occurrences have distinct primary/gap support.
 
-1. `reading_of` has exactly one target;
-2. source and target belong to the same exact version and retain the same source identity fields (the pre-existing ownership checks);
-3. the reading and its claimed unit owner have the same non-empty `oslots` support.
+The builder's finalization groups objects by node type but explicitly preserves creation order within each type. Therefore, for each exact `(ocp_book, version_id)`, the audit can independently reconstruct reading groups from node order plus `reading_index`, pair those groups with units ordered by `unit_index`, and require `reading_of` to point to that expected occurrence. `oslots` equality is then a second independent structural check.
 
-A relation-only swap between duplicate occurrences now fails condition 3. This check is independent of `reading_of`: the support was created from structural containment before the ownership edge is consulted.
+This uses no synthetic source identifier and adds no serialized feature.
 
-The surrounding semantic report still reads the raw XML once and independently compares source reading payloads, units, versions, source hashes, and reconstruction semantics. The new invariant supplies the missing occurrence binding without another source pass.
+## Adversarial refinement
+
+An intermediate implementation used only the `oslots` equality check. Independent review constructed a coordinated mutation that swapped both duplicate units' `reading_of` targets and the two reading support sets. In that state the ownership-specific predicate incorrectly remained green. RED was observed on commit `0cac85223879eb1300dce0ce06ef15e87f79a61d` with 566 other tests passing.
+
+The final design therefore derives the expected occurrence from `unit_index` plus reading creation order/`reading_index` and separately checks support equality. Rewriting both the owner edge and support no longer changes the independently reconstructed expected owner.
+
+The surrounding semantic report still reads the raw XML once and independently compares source reading payloads, units, versions, source hashes, and reconstruction semantics. The occurrence predicate supplies the missing ownership binding without another source pass.
 
 ## User-visible acceptance
 
-A real Text-Fabric serialization/load regression must preserve both duplicate upstream ids and expose the correct readings through `Apparatus.unit_readings()`:
+A real Text-Fabric serialization/load regression preserves both duplicate upstream ids and exposes the correct readings through `Apparatus.unit_readings()`:
 
 - occurrence 1 → `alpha`;
 - occurrence 2 → `beta`.
 
-This verifies the API researchers actually use rather than only inspecting the in-memory builder representation.
+This exercises the public researcher API rather than relying only on the in-memory builder graph.
 
 ## Performance and footprint
 
-The final occurrence check is O(readings), performs no XML I/O, no sorting, and adds no TF feature values or files. It therefore does not increase corpus download size or ordinary Text-Fabric load memory.
+The final check is linear apart from sorting each version's units by already-present `unit_index`. It performs no XML I/O and adds no TF feature values or files, so it does not increase researcher download or ordinary load memory.
 
-## Adversarial review scope
+## Adversarial review coverage
 
-The final review should attempt to falsify the implementation with duplicate ref/id swaps, missing or multiple owners, cross-version targets with matching local identity, empty/gap readings, generated-translation readings, malformed/missing oslots, and accidental changes to public source identifiers. It should also verify the audit still reads each XML file once and that the new API regression uses stock Text-Fabric.
-
-A coordinated corruption that rewrites both an ownership edge and the reading's structural support is outside the single-edge regression that motivated this ticket; existing raw payload/reconstruction and graph validation checks still provide additional defenses. If review finds a practical converter path that can create such coordinated corruption while all existing gates remain green, it should become a separate focused correctness ticket rather than expanding this fix into a second source parser.
+Review covers relation-only duplicate swaps, coordinated owner+support swaps, missing/multiple owners, cross-version targets, malformed/missing support, invalid `unit_index`/`reading_index` sequences, empty/gap readings, generated-translation readings, public identifier stability, and single-pass source I/O. Existing ownership tests already cover missing, multiple, wrong-type, and wrong-version owner classes.
 
 ## Scope conclusion
 
