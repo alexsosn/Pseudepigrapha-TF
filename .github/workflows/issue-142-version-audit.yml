@@ -1,0 +1,21 @@
+name: issue-142-version-audit
+
+on:
+  push:
+    branches: [research/142-release-readiness]
+    paths: [.github/workflows/issue-142-version-audit.yml]
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: research/142-release-readiness
+      - name: List tracked 0.2 references
+        run: |
+          set -o pipefail
+          git grep -n -E '0\.2(\.0)?|v0\.2\.0|tf/0\.2' -- ':!research/issue-142/RESEARCH_PLAN.md' ':!research/issue-142/RELEASE_NOTES.md' || true
