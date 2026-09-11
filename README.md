@@ -22,6 +22,12 @@ For development and the test suite, use the editable development install instead
 pip install -e '.[dev]'
 ```
 
+### Runtime footprint
+
+Reference measurements for the post-#141 corpus on a GitHub-hosted Ubuntu 24.04 / Python 3.12 / Text-Fabric 13.1 runner are: about **9.20 MiB** for stock `complete.zip`, **145.4 MiB** for the populated Text-Fabric cache with no retained ZIP archive, and about **1.34 GiB peak RSS** for a warm full-app load. A translation-oriented selective `Fabric.load()` measured about **1023 MiB peak RSS**. These are CI reference measurements, not hardware requirements.
+
+If a workflow only needs generated/source translation alignment, selective feature loading avoids paying for the full advanced-app feature set; see [Researcher runtime footprint](docs/runtime-footprint.md) for the measured feature list, first-load behavior, installation footprint, methodology, and caveats.
+
 ## Convert OCP
 
 For a reproducible conversion, clone OCP and check out the revision used by CI:
