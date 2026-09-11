@@ -1,59 +1,51 @@
 # Issue 145 plan — preserve source occurrence ownership
 
-## 1. RED
+## 1. RED — completed
 
-Add a focused semantic-audit fixture with one source version containing two consecutive units that deliberately share the same `source_ref` and `unit_id` but have distinguishable primary reading text.
+Add a fixture with two consecutive source units that deliberately share the same `source_ref` and `unit_id` but have distinguishable readings. Build valid TF, swap only their `reading_of` targets, and require the semantic report to fail `reading_ownership`.
 
-Build TF data and first assert the normal report is green. Then swap only the two `reading_of` edge targets while leaving all node features and reading payloads untouched. Re-run the report and assert `reading_ownership` becomes false.
+RED was observed on `588f349559de0c269f7b612c4e396fa4e7023a89`: the previous audit remained green after the mutation.
 
-RED has been observed on commit `588f349559de0c269f7b612c4e396fa4e7023a89`: the existing report remained green after the mutation, so the new assertion failed.
+## 2. Initial GREEN attempt — rejected by performance gate
 
-## 2. GREEN implementation
+The first implementation rebuilt occurrence ownership from a second direct XML traversal. It caught the mutation but failed the established single-pass source-audit contract because every XML file was read twice. Do not retain this approach.
 
-Keep the literal source identity untouched and avoid adding per-reading serialized features.
+## 3. Final GREEN implementation
 
-Add a compact independent occurrence-audit module that:
+Keep literal upstream identity untouched and use the existing structural TF invariant:
 
-- re-reads XML directly;
-- reconstructs textual versions, source refs, and per-version 1-based unit order;
-- records the direct reading payloads belonging to each raw unit occurrence;
-- groups TF units by exact version ownership and sorts them by existing `unit_index`;
-- resolves actual graph readings through `reading_of`;
-- compares each graph occurrence and its attached reading payloads with the corresponding raw XML occurrence.
+- retain the existing exact-version/cardinality/source-identity `reading_of` checks;
+- independently require every reading's non-empty `oslots` support to equal its claimed unit owner's `oslots` support;
+- rely on the surrounding one-pass raw XML parity and reconstruction checks for source payload correctness;
+- add no new serialized features and no additional source read.
 
-Fold this source-grounded predicate into the existing `reading_ownership` semantic check so the report shape stays stable.
+The mutation regression must become green while `test_semantic_audit_reads_special_structure_source_once` remains green.
 
-Do not add a new feature, enlarge the corpus for audit-only metadata, or synthesize uniqueness into `unit_id`/`source_ref`.
+## 4. Researcher-facing regression
 
-## 3. Public API regression
+Serialize the duplicate fixture with the normal writer, load it through stock Text-Fabric, and verify:
 
-For the same duplicate fixture, serialize/load through stock Text-Fabric and verify the two unit nodes retain identical upstream ids but `Apparatus.unit_readings()` / passage apparatus returns the first unit's reading before the second unit's reading with the correct payloads.
+- both unit occurrences retain literal `source_ref=1:1` and `unit_id=7`;
+- ordering by `unit_index` identifies the two occurrences;
+- `Apparatus.unit_readings()` returns `alpha` for occurrence 1 and `beta` for occurrence 2.
 
-If an existing lightweight fake API gives equivalent coverage without bypassing TF relation semantics, it may supplement but not replace at least one real TF load regression.
+## 5. Test gates
 
-## 4. Test gates
+Run the complete repository CI. In particular verify the focused mutation/API tests, single-pass audit test, ownership/audit tests, apparatus/TF integration tests, generated-translation tests, and the full pinned-OCP conversion/reload/advanced-app/comparison path.
 
-Run:
+## 6. Logically independent adversarial review
 
-- the new focused semantic-audit RED/GREEN regression;
-- direct tests of modern nested and wrapped-legacy raw occurrence traversal;
-- existing audit tests;
-- apparatus and Text-Fabric integration tests;
-- generated-translation tests;
-- the full repository CI including pinned OCP conversion/audit and researcher interface checks.
-
-## 5. Logically independent adversarial review
-
-Review the final diff as a hostile data-integrity check. Attempt to falsify it with:
+Review the final diff from a falsification perspective. Attempt:
 
 - duplicate ref/id owner swap;
-- cross-version owner with same local identity;
-- missing/multiple owner edge;
-- corrupted `unit_index` with otherwise correct edge;
-- duplicate or reordered source identities that are legitimately preserved;
-- nested and wrapped-legacy traversal order;
-- generated translation occurrence accounting;
-- accidental changes to public upstream ids or TF section addressing;
-- hidden quadratic scans or avoidable corpus-size expansion.
+- missing or multiple owner edge;
+- cross-version target with matching local identity;
+- missing, empty, or mismatched reading/unit oslots;
+- empty-primary/gap-slot occurrences;
+- generated-translation readings using the same structural invariant;
+- accidental changes to upstream ids or section addressing;
+- extra XML reads, corpus-size growth, or hidden super-linear scans.
 
-Add a regression for any material bypass. Merge only after both CI jobs are green and the independent review has no blocking finding.
+Also assess coordinated edge+support corruption separately. If it exposes a realistic converter failure not covered by the existing raw parity/reconstruction/validation gates, file a focused follow-up rather than growing this ticket into duplicate parser infrastructure.
+
+Merge only after both CI jobs are green and the independent review has no blocking finding.
