@@ -252,7 +252,7 @@ def _translation_view(
     chapter: str,
     verse: str,
     *,
-    expected_source_units: frozenset[object] | None = None,
+    source_units: tuple[object, ...] | None = None,
     source_passage_present: bool = True,
 ) -> dict[str, object]:
     generated_id = str(record.get("id", ""))
@@ -267,55 +267,44 @@ def _translation_view(
         "generation_method": str(record.get("generation_method", "")),
         "generation_model": str(record.get("generation_model", "")),
     }
-    try:
-        passage = translations.passage(generated_id, chapter, verse)
-    except KeyError:
-        return {
-            **base,
-            "status": "not_present",
-            "units": (),
-            "text": "",
-        }
 
     if not source_passage_present:
+        try:
+            translations.passage(generated_id, chapter, verse)
+        except KeyError:
+            return {**base, "status": "not_present", "units": (), "text": ""}
         raise ValueError(
             f"generated translation {generated_id!r} has a passage but source passage is not present"
         )
 
-    source_book_node = passage.get("source_book_node")
-    expected_source_node = record.get("source_node")
-    if (
-        expected_source_node is not None
-        and source_book_node is not None
-        and source_book_node != expected_source_node
-    ):
+    if source_units is None:
         raise ValueError(
-            f"generated translation {generated_id!r} passage points to source node "
-            f"{source_book_node}, expected {expected_source_node}"
+            f"available source passage for generated translation {generated_id!r} has no source units"
         )
+    generated_node = record.get("node")
+    if not isinstance(generated_node, int):
+        raise ValueError(f"generated translation {generated_id!r} has invalid book node {generated_node!r}")
 
     units = tuple(
-        dict(unit) for unit in passage.get("units", ()) if isinstance(unit, Mapping)
+        dict(unit)
+        for unit in translations.aligned_to_source_units(generated_node, source_units)
+        if isinstance(unit, Mapping)
     )
-    if expected_source_units is not None:
-        for unit in units:
-            source_unit = unit.get("source_unit")
-            if source_unit not in expected_source_units:
-                raise ValueError(
-                    f"generated translation {generated_id!r} source unit {source_unit!r} "
-                    "is outside requested source passage"
-                )
+    expected_source_units = frozenset(source_units)
+    for unit in units:
+        source_unit = unit.get("source_unit")
+        if source_unit not in expected_source_units:
+            raise ValueError(
+                f"generated translation {generated_id!r} source unit {source_unit!r} "
+                "is outside requested source passage"
+            )
+    if not units:
+        return {**base, "status": "not_present", "units": (), "text": ""}
+
     text = " ".join(
-        chunk
-        for unit in units
-        if (chunk := str(unit.get("translation_text") or ""))
+        chunk for unit in units if (chunk := str(unit.get("translation_text") or ""))
     )
-    return {
-        **base,
-        "status": "available",
-        "units": units,
-        "text": text,
-    }
+    return {**base, "status": "available", "units": units, "text": text}
 
 
 def build_passage_comparison(
@@ -422,7 +411,7 @@ def build_passage_comparison(
         primary_text = ""
         witness_choices: tuple[dict[str, object], ...] = ()
         witness_rows: tuple[dict[str, object], ...] = ()
-        expected_source_units: frozenset[object] | None = None
+        passage_source_units: tuple[object, ...] | None = None
 
         if status == "available":
             if not isinstance(passage, Mapping):
@@ -434,7 +423,7 @@ def build_passage_comparison(
             source_units = tuple(
                 unit for unit in passage.get("units", ()) if isinstance(unit, Mapping)
             )
-            expected_source_units = frozenset(
+            passage_source_units = tuple(
                 unit.get("node") for unit in source_units if unit.get("node") is not None
             )
 
@@ -501,7 +490,7 @@ def build_passage_comparison(
                 record,
                 chapter,
                 verse,
-                expected_source_units=expected_source_units,
+                source_units=passage_source_units,
                 source_passage_present=status == "available",
             )
             for record in generated_by_source.get(version_id, ())
