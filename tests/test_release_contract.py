@@ -23,11 +23,16 @@ def test_release_versions_and_default_dataset_path_are_consistent() -> None:
     assert args.output == Path("tf/0.2")
 
 
-def test_readme_documents_noneditable_runtime_install() -> None:
+def test_readme_documents_noneditable_runtime_install_before_rebuild() -> None:
     readme = Path("README.md").read_text(encoding="utf-8")
-    install_section = readme.split("## Install", 1)[1].split("## Convert OCP", 1)[0]
+    researcher_section = readme.split("## Get and load the published corpus", 1)[1].split(
+        "## Rebuild from OCP", 1
+    )[0]
 
-    assert "pip install ." in install_section
+    # The normal path may install directly from GitHub or from a lightweight
+    # repository checkout, but it must not require editable/developer mode.
+    assert "python -m pip install ." in researcher_section
+    assert "pip install -e '.[dev]'" not in researcher_section
 
 
 def test_release_source_identity_is_consistent_across_current_contract() -> None:
