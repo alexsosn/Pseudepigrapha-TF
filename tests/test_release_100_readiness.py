@@ -89,3 +89,17 @@ def test_historical_v0_2_public_release_verification_is_retained() -> None:
 
     assert "published-release verifier" in text
     assert "v0.2.0" in readme
+
+
+def test_agora_materialization_docs_do_not_deny_published_derived_corpus() -> None:
+    text = (ROOT / "docs" / "agora-materialization.md").read_text(encoding="utf-8").lower()
+
+    obsolete_claims = (
+        "without redistributing ocp source xml or a generated text-fabric corpus",
+        "not ocp xml and not generated tf data",
+    )
+    for claim in obsolete_claims:
+        assert claim not in text
+
+    assert "published" in text
+    assert "derived" in text
