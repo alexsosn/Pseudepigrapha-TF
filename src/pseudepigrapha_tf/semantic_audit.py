@@ -7,6 +7,7 @@ from . import audit as base
 from .graph import TFData
 from .model import Book
 from .provenance import corpus_license_provenance_is_consistent, report_provenance
+from .source_occurrence_audit import reading_occurrence_ownership_ok
 
 
 def _metadata_version_inventory(
@@ -532,6 +533,17 @@ def build_conversion_report(source_dir: str | Path, books: list[Book], data: TFD
             str(data.metadata.get("", {}).get("upstreamCommit", "")),
         )
     )
+    reading_ownership_ok = (
+        _ownership_edge_ok(
+            data,
+            source_type="reading",
+            edge_name="reading_of",
+            target_types=frozenset({"unit"}),
+            identity_features=("ocp_book", "version_title", "source_ref", "unit_id"),
+            node_index=node_index,
+        )
+        and reading_occurrence_ownership_ok(source_dir, data, node_index)
+    )
 
     checks = {
         "source_hashes": source_hashes == model_hashes,
@@ -560,14 +572,7 @@ def build_conversion_report(source_dir: str | Path, books: list[Book], data: TFD
         "primary_reconstruction": primary_ok,
         "alternative_reconstruction": alternative_ok,
         "unit_parent_linkage": base._parent_linkage_ok(data, node_index),
-        "reading_ownership": _ownership_edge_ok(
-            data,
-            source_type="reading",
-            edge_name="reading_of",
-            target_types=frozenset({"unit"}),
-            identity_features=("ocp_book", "version_title", "source_ref", "unit_id"),
-            node_index=node_index,
-        ),
+        "reading_ownership": reading_ownership_ok,
         "manuscript_ownership": _ownership_edge_ok(
             data,
             source_type="manuscript",
