@@ -14,7 +14,7 @@ Two states are distinguished below:
 1. the published `v0.2.0` corpus, which provides the pre-optimization baseline; and
 2. the post-#141 corpus generated from the current converter branch, which is the shape intended for the next corpus publication.
 
-The post-#141 corpus is not yet a published GitHub release, so its remote network-acquisition latency cannot be measured honestly. The optimized measurements therefore separate transport size, first local load immediately after unpacking the stock `complete.zip`, and warm offline reuse.
+The post-#141 corpus is not yet a published GitHub release, so its remote network-acquisition latency cannot be measured honestly. The optimized measurements therefore separate transport size, first local load immediately after unpacking the stock `complete.zip`, warm offline reuse, and actual browser-server startup from a warm compiled corpus.
 
 ## Installation footprint
 
@@ -43,8 +43,11 @@ The small change in compressed transport size relative to the much larger extrac
 | --- | ---: | ---: |
 | first load after transport is present locally | n/a as a separate measurement | 46.35 s / 2,179,456 KiB RSS (~2.08 GiB) |
 | warm offline full app | 4.01 s / 1,767,192 KiB (~1.69 GiB) | 3.63 s / 1,407,908 KiB (~1.34 GiB) |
+| actual `pseudepigrapha-tf browse` startup to HTTP-ready `/compare` | not measured separately | **2.895 s / 1,418,508 KiB process-tree RSS (~1.35 GiB)** |
 | warm full app + representative 1 Enoch comparison | 3.95 s / 1,769,268 KiB (~1.69 GiB) | 3.74 s / 1,410,164 KiB (~1.34 GiB) |
 | selective translation-oriented `Fabric.load()` | 3.05 s / 1,397,648 KiB (~1.33 GiB) | 2.86 s / 1,047,596 KiB (~1023 MiB) |
+
+The browser-server measurement launched the supported CLI path against a previously compiled corpus, polled the real Flask/Text-Fabric `/compare` endpoint until HTTP 200, measured the whole server process tree, and then successfully served `/compare?work=1En&chapter=1&verse=2` before shutdown. It therefore measures actual local server startup rather than merely constructing a `TfApp` object.
 
 The published baseline's combined **remote acquisition + first full app load** was 59.71 s / 2,347,328 KiB (~2.24 GiB). The optimized corpus is not yet published, so that network-inclusive number must not be compared directly with the 46.35-second local-first-load measurement above.
 
