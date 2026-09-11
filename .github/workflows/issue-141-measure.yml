@@ -10,6 +10,7 @@ on:
       - 'src/pseudepigrapha_tf/graph.py'
       - 'tests/test_generation_provenance_scope.py'
       - 'docs/features/version_kind.md'
+      - 'research/issue-141/RESEARCH_PLAN.md'
 
 jobs:
   measure:
