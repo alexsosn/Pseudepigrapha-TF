@@ -111,6 +111,8 @@ def test_published_release_verifier_binds_express_check_to_requested_latest_rele
 
 def test_published_release_verifier_exercises_stock_complete_zip_express_path():
     text = VERIFY_WORKFLOW.read_text(encoding="utf-8")
+
+    assert EXPRESS_STEP in text
     express = text.split(EXPRESS_STEP, 1)[1]
     assert EXPRESS_HOME in express
 
