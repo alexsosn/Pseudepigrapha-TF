@@ -2,9 +2,11 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from pseudepigrapha_tf import Apparatus
 from pseudepigrapha_tf.conversion import build_tf_data
 from pseudepigrapha_tf.semantic_audit import build_conversion_report
 from pseudepigrapha_tf.source import load_source_directory
+from pseudepigrapha_tf.writer import write_tf
 
 
 XML = '''<?xml version="1.0"?>
@@ -31,23 +33,12 @@ def _source(tmp_path: Path):
     return books
 
 
-def test_conversion_report_rejects_swapped_duplicate_source_unit_reading_owners(
-    tmp_path: Path,
-) -> None:
-    books = _source(tmp_path)
-    data = build_tf_data(books)
-
-    baseline = build_conversion_report(tmp_path, books, data)
-    assert baseline["status"] == "ok", baseline["failed_checks"]
-
+def _duplicate_units(data):
     otype = data.node_features["otype"]
     source_ref = data.node_features["source_ref"]
     unit_id = data.node_features["unit_id"]
     unit_index = data.node_features["unit_index"]
-    reading_text = data.node_features["reading_text"]
-    reading_of = data.edge_features["reading_of"]
-
-    duplicates = sorted(
+    return sorted(
         (
             node
             for node, node_type in otype.items()
@@ -57,9 +48,23 @@ def test_conversion_report_rejects_swapped_duplicate_source_unit_reading_owners(
         ),
         key=lambda node: unit_index[node],
     )
+
+
+def test_conversion_report_rejects_swapped_duplicate_source_unit_reading_owners(
+    tmp_path: Path,
+) -> None:
+    books = _source(tmp_path)
+    data = build_tf_data(books)
+
+    baseline = build_conversion_report(tmp_path, books, data)
+    assert baseline["status"] == "ok", baseline["failed_checks"]
+
+    duplicates = _duplicate_units(data)
     assert len(duplicates) == 2
     first_unit, second_unit = duplicates
 
+    reading_text = data.node_features["reading_text"]
+    reading_of = data.edge_features["reading_of"]
     first_reading = next(
         reading for reading, targets in reading_of.items() if targets == {first_unit}
     )
@@ -78,3 +83,40 @@ def test_conversion_report_rejects_swapped_duplicate_source_unit_reading_owners(
 
     assert report["semantic_checks"]["reading_ownership"] is False
     assert "reading_ownership" in report["failed_checks"]
+
+
+def test_duplicate_source_units_roundtrip_with_correct_apparatus_ownership(
+    tmp_path: Path,
+) -> None:
+    tf_module = __import__("tf.fabric", fromlist=["Fabric"])
+    Fabric = tf_module.Fabric
+
+    books = _source(tmp_path)
+    data = build_tf_data(books)
+    output = tmp_path / "tf"
+    assert write_tf(data, output)
+
+    tf = Fabric(locations=[str(output)], modules=[""], silent="deep")
+    api = tf.load(
+        "unit_id source_ref unit_index reading_text reading_of",
+        silent="deep",
+    )
+    assert api is not None
+
+    units = sorted(
+        (
+            unit
+            for unit in api.F.otype.s("unit")
+            if api.F.source_ref.v(unit) == "1:1" and api.F.unit_id.v(unit) == "7"
+        ),
+        key=lambda unit: api.F.unit_index.v(unit),
+    )
+    assert len(units) == 2
+    assert [api.F.unit_id.v(unit) for unit in units] == ["7", "7"]
+    assert [api.F.source_ref.v(unit) for unit in units] == ["1:1", "1:1"]
+
+    apparatus = Apparatus(api)
+    first_readings = apparatus.unit_readings(units[0])
+    second_readings = apparatus.unit_readings(units[1])
+    assert [apparatus.reading_text(reading) for reading in first_readings] == ["alpha"]
+    assert [apparatus.reading_text(reading) for reading in second_readings] == ["beta"]
