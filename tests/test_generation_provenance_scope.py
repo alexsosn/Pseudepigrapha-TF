@@ -31,6 +31,7 @@ def _metadata_only_book():
   <version title="Coptic" author="Editor" language="Coptic">
     <divisions><division label="Chapter" delimiter=":"/><division label="Verse"/></divisions>
     <manuscripts><ms abbrev="C" language="Coptic" show="yes"><name>Coptic</name></ms></manuscripts>
+    <text/>
   </version>
 </book>
 '''
