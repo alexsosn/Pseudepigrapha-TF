@@ -6,6 +6,10 @@ on:
       - research/141-runtime-footprint
     paths:
       - '.github/workflows/issue-141-measure.yml'
+      - 'src/pseudepigrapha_tf/conversion.py'
+      - 'src/pseudepigrapha_tf/graph.py'
+      - 'tests/test_generation_provenance_scope.py'
+      - 'docs/features/version_kind.md'
 
 jobs:
   measure:
@@ -65,6 +69,36 @@ jobs:
           print(f"complete_zip_bytes={assets['express'].stat().st_size}")
           print(f"native_zip_bytes={assets['tf'].stat().st_size}")
           PY
+      - name: Measure stock cache after local app load
+        run: |
+          set -euo pipefail
+          rm -rf /tmp/issue-141-stock-home
+          mkdir -p /tmp/issue-141-stock-home/text-fabric-data/github
+          unzip -q /tmp/issue-141-release-assets/complete.zip \
+            -d /tmp/issue-141-stock-home/text-fabric-data/github
+          HOME=/tmp/issue-141-stock-home python - <<'PY'
+          import socket
+          from tf.app import use
+
+          def network_forbidden(*args, **kwargs):
+              raise AssertionError('network access attempted during stock-cache local load')
+
+          socket.create_connection = network_forbidden
+          socket.socket.connect = network_forbidden
+          app = use(
+              'alexsosn/Pseudepigrapha-TF:local',
+              checkout='local',
+              version='0.2',
+              silent='deep',
+          )
+          assert app is not None and app.api is not None
+          assert app.api.F.otype.maxSlot == 922922
+          print('PTF_STOCK_CACHE_OK')
+          PY
+          CACHE=/tmp/issue-141-stock-home/text-fabric-data
+          echo "stock_cache_bytes=$(du -sb "$CACHE" | cut -f1)"
+          echo "stock_cache_files=$(find "$CACHE" -type f | wc -l)"
+          echo "stock_cache_zip_count=$(find "$CACHE" -type f -name '*.zip' | wc -l)"
       - name: Prime compiled cache and verify public translation API
         run: |
           python - <<'PY'
@@ -171,4 +205,8 @@ jobs:
           done
           echo "complete_zip_bytes=$(stat -c %s /tmp/issue-141-release-assets/complete.zip)"
           echo "native_zip_bytes=$(find /tmp/issue-141-release-assets -maxdepth 1 -name 'tf-*.zip' -printf '%s\n' | head -1)"
+          CACHE=/tmp/issue-141-stock-home/text-fabric-data
+          echo "stock_cache_bytes=$(du -sb "$CACHE" | cut -f1)"
+          echo "stock_cache_files=$(find "$CACHE" -type f | wc -l)"
+          echo "stock_cache_zip_count=$(find "$CACHE" -type f -name '*.zip' | wc -l)"
           echo PTF_ISSUE_141_METRICS_END
