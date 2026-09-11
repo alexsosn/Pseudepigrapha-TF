@@ -2,67 +2,55 @@
 
 ## Question
 
-Can the independent source→TF semantic audit prove that readings remain owned by the correct source occurrence when two units in one version share the same upstream `(source_ref, unit_id)`?
+Can the source→TF semantic audit prove that readings remain owned by the correct source occurrence when two units in one version share the same upstream `(source_ref, unit_id)`?
 
-## Source and graph representation
+## Concrete failure
 
-OCP permits repeated unit identities. The converter intentionally preserves the literal upstream `source_ref` and `unit_id`; it does not synthesize uniqueness into either field.
+OCP can contain repeated unit identities. Pseudepigrapha-TF deliberately preserves literal `source_ref` and `unit_id`, so two distinct source occurrences may legitimately have the same values.
 
-The core graph builder has a source-order identity: `_add_version()` increments one `unit_counter` through the complete version traversal, and `_add_unit()` writes that 1-based value as the unit node's `unit_index`. Each reading is created inside that exact `_add_unit()` call and immediately linked to the unit with `reading_of`.
+`Apparatus.unit_readings()` resolves ownership through the `reading_of` edge. Before this ticket, the semantic audit required every reading to have exactly one unit owner in the same version with matching work, version, source ref, and unit id. Two duplicate occurrences therefore remained interchangeable to that check.
 
-Researcher-facing apparatus access relies on `reading_of`: `Apparatus.unit_readings()` reverse-resolves that edge, and passage/apparatus methods assemble each unit's readings from it. A wrong edge therefore changes which reading researchers see for the first versus second duplicate occurrence.
+A mutation with occurrence 1 reading `alpha` and occurrence 2 reading `beta` could swap only the two `reading_of` targets while keeping every payload and identity feature unchanged. The pre-fix report stayed green even though researcher-facing apparatus results were reversed. RED was observed on commit `588f349559de0c269f7b612c4e396fa4e7023a89`.
 
-## Independent audit gap
+## First implementation attempt and rejected trade-off
 
-The existing raw XML inventory records units and readings using work/version/source ref/unit id plus payload values, but not the source-order unit occurrence. The graph inventory mirrors those records. Both inventories are canonicalized as unordered JSON records before equality comparison.
+The first GREEN design independently re-read the XML and rebuilt a source-order unit→reading inventory. It caught the corruption without adding TF features, but it read every XML document twice during semantic audit.
 
-`semantic_audit._ownership_edge_ok()` verifies every reading has exactly one `reading_of` target in the same exact source version and with equal `ocp_book`, `version_title`, `source_ref`, and `unit_id` features. When two units share those values, swapping their reading owners preserves all current predicates. The reading payload itself remains stamped on the reading node, so unordered raw↔graph payload parity also remains unchanged.
+The existing performance contract `test_semantic_audit_reads_special_structure_source_once` rejected that design: CI observed two reads of the same source file. Duplicating the complete XML traversal is disproportionate for a relation invariant that is already encoded structurally in TF.
 
-Minimal counterexample:
+## Structural occurrence invariant
 
-- unit occurrence 1: `(1:1, 7)`, reading text `alpha`;
-- unit occurrence 2: `(1:1, 7)`, reading text `beta`.
+The graph builder gives every `reading` node exactly the same `oslots` support as the `unit` that structurally contains it. Different unit occurrences have different support sets because each primary occurrence owns its own word slots; an empty primary receives its own gap slot. This remains true when two units have identical upstream reference/id values.
 
-After conversion, swap only the two `reading_of` targets. The corpus still contains one `alpha` and one `beta` record with identical work/version/ref/id metadata, but `Apparatus.unit_readings(first_unit)` now exposes `beta`.
+Consequently an occurrence-aware ownership check can require all of the following:
 
-## Preferred source-grounded fix
+1. `reading_of` has exactly one target;
+2. source and target belong to the same exact version and retain the same source identity fields (the pre-existing ownership checks);
+3. the reading and its claimed unit owner have the same non-empty `oslots` support.
 
-Do not enlarge the serialized corpus solely for auditing. Instead add a small independent raw-occurrence audit path:
+A relation-only swap between duplicate occurrences now fails condition 3. This check is independent of `reading_of`: the support was created from structural containment before the ownership edge is consulted.
 
-1. Re-read each XML file directly and walk textual versions in document order.
-2. Reconstruct the same literal source references from raw division declarations and assign a 1-based unit index per version while walking units in source order.
-3. For every raw unit occurrence, retain an ordered/canonical signature of its direct `<reading>` children (reading index, literal option/witness string, text/XML payload, linebreak/indent, and primary selection semantics).
-4. On the TF side, group unit nodes by exact `version_id`, sort by the existing `unit_index`, and obtain their actual readings through `reading_of` rather than from duplicated ownership features.
-5. Compare raw occurrence records with graph occurrence records after resolving the version's source-file/work/title/language/kind metadata.
-6. Fold this predicate into the existing `reading_ownership` semantic check, preserving the public report shape.
+The surrounding semantic report still reads the raw XML once and independently compares source reading payloads, units, versions, source hashes, and reconstruction semantics. The new invariant supplies the missing occurrence binding without another source pass.
 
-This design independently proves both unit occurrence ordering and reading ownership from XML while adding zero serialized per-reading feature entries. It is preferable to stamping `unit_index` onto every reading because #141 is simultaneously trying to keep local install/runtime footprint lean.
+## User-visible acceptance
 
-The existing broad raw↔graph reading payload parity remains useful and independent; the occurrence audit adds only the missing binding between those payloads and their source unit occurrence.
+A real Text-Fabric serialization/load regression must preserve both duplicate upstream ids and expose the correct readings through `Apparatus.unit_readings()`:
 
-## Traversal equivalence
+- occurrence 1 → `alpha`;
+- occurrence 2 → `beta`.
 
-For modern nested `<div>` sources, both parser/model conversion and the raw audit traverse divisions depth-first in document order and emit a unit when encountered. For wrapped legacy `<chapter>/<verse>` sources, both traverse chapters, then verses, then units in document order. A per-version raw counter therefore matches the public `unit_index` semantics without relying on `reading_of`.
+This verifies the API researchers actually use rather than only inspecting the in-memory builder representation.
 
-Generated translations use the same core builder and are source-declared XML versions, so the occurrence audit can cover them too. Metadata-only versions contain no units and contribute no occurrence records.
+## Performance and footprint
 
-## Performance and compatibility
+The final occurrence check is O(readings), performs no XML I/O, no sorting, and adds no TF feature values or files. It therefore does not increase corpus download size or ordinary Text-Fabric load memory.
 
-The extra audit is linear in XML elements and graph units/readings, apart from sorting unit nodes by an already-small integer key within each version. It performs no all-pairs scans and changes no TF feature files or researcher identifiers.
+## Adversarial review scope
 
-## Adversarial cases for review
+The final review should attempt to falsify the implementation with duplicate ref/id swaps, missing or multiple owners, cross-version targets with matching local identity, empty/gap readings, generated-translation readings, malformed/missing oslots, and accidental changes to public source identifiers. It should also verify the audit still reads each XML file once and that the new API regression uses stock Text-Fabric.
 
-The final review must attempt:
-
-- swapping owners of duplicate units with distinguishable reading payloads;
-- swapping owners while keeping source ref/id/version identical;
-- corrupting `unit_index` without changing the edge;
-- pointing a reading at another source version with matching local identity;
-- missing or multiple owners;
-- valid duplicate units retaining their literal upstream ids and appearing in source order through the public apparatus API;
-- legacy and nested source traversal retaining monotonic per-version indexes;
-- generated translation readings continuing to pass the same source-grounded occurrence accounting.
+A coordinated corruption that rewrites both an ownership edge and the reading's structural support is outside the single-edge regression that motivated this ticket; existing raw payload/reconstruction and graph validation checks still provide additional defenses. If review finds a practical converter path that can create such coordinated corruption while all existing gates remain green, it should become a separate focused correctness ticket rather than expanding this fix into a second source parser.
 
 ## Scope conclusion
 
-This is a bounded scholarly-data ownership fix under #137. It does not require release attestations, historical corpus snapshots, or generic certification infrastructure.
+This is a bounded scholarly-data correctness fix under #137. It changes no upstream identifiers and introduces no release/certification machinery.
