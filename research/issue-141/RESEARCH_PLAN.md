@@ -80,6 +80,12 @@ Investigate, in this order, without assuming they should be changed:
 
 Any Phase 2 change requires its own RED semantic contract and before/after measurement on this branch.
 
+## TDD execution evidence
+
+The test-only head `a329823d24e7a91551cd0a783ac0b6683df189f4` produced the intended RED result: **1 failed, 580 passed**. The sole failure was `test_generation_provenance_is_owned_by_generated_book_not_denormalized_to_descendants`; the fixture showed `generation_marker` on eight extra generated descendants/slots in addition to the generated book.
+
+The Phase 1 implementation then split `version_kind` stamping from generated provenance. The four generated-version provenance fields are now attached once to the generated TF book; `version_kind` stamping remains unchanged for all generated/source descendants and slots, and the synthetic provenance manuscript remains independently marked with `synthetic_witness=1`.
+
 ## Acceptance
 
 - No upstream scholarly value is deleted; generated provenance remains losslessly available through the generated book and `Translations` API.
