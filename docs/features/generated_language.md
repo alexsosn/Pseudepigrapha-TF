@@ -6,6 +6,6 @@
 
 **Category:** Generated-translation features/relations
 
-target language of an upstream generated translation
+target language recorded on the generated translation TF book
 
 **Observed node types in render graph:** none in this render graph
