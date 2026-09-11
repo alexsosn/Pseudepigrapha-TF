@@ -10,6 +10,7 @@ from pseudepigrapha_tf.comparison import (
     build_passage_comparison,
     render_passage_comparison,
 )
+from pinned_classification_acceptance import verify as verify_classifications
 
 
 FEATURES = (
@@ -89,6 +90,10 @@ def verify(tf_dir: Path) -> None:
     assert ethiopic_start < translation_pos < greek_start
     assert f'data-translation-id="{first_translation["id"]}"' in html
     assert f'data-version-id="{first_translation["id"]}"' not in html
+
+    # Close the remaining scholarly-metadata parity gap on this same pinned
+    # full-corpus materialization rather than launching a second conversion.
+    verify_classifications(tf_dir)
 
 
 if __name__ == "__main__":

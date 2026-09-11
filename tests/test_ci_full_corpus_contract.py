@@ -71,5 +71,20 @@ def test_surviving_full_corpus_job_keeps_tracked_advanced_app_startup_coverage()
     assert 'app.api.T.nodeFromSection(("1En__Ethiopic", "1", "1"))' in test_workflow
 
 
+def test_pinned_full_corpus_acceptance_verifies_serialized_historical_classification_api():
+    test_workflow = _workflow_texts()["test.yml"]
+    comparison = (ROOT / "tests" / "pinned_comparison_acceptance.py").read_text(
+        encoding="utf-8"
+    )
+
+    # Reuse the existing acceptance invocation and its already-materialized
+    # full corpus instead of creating another expensive pinned conversion.
+    assert test_workflow.count(
+        f"python tests/pinned_comparison_acceptance.py {LOCAL_TF}"
+    ) == 1
+    assert "from pinned_classification_acceptance import verify as verify_classifications" in comparison
+    assert "verify_classifications(tf_dir)" in comparison
+
+
 def test_duplicate_full_app_materialization_workflow_is_removed():
     assert not (WORKFLOWS / "full-app-integration.yml").exists()
