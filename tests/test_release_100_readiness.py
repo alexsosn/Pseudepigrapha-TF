@@ -132,3 +132,22 @@ def test_primary_public_acquisition_is_not_frozen_to_previous_release() -> None:
     assert '"alexsosn/Pseudepigrapha-TF:v0.2.0"' not in acquisition
     assert 'checkout="v0.2.0"' not in acquisition
     assert "latest public release" in acquisition.lower()
+
+
+def test_release_ready_readme_uses_1_0_for_current_local_workflows() -> None:
+    readme = (ROOT / "README.md").read_text(encoding="utf-8")
+
+    browse = readme.split("## Browse and compare", 1)[1].split("## Resource expectations", 1)[0]
+    resources = readme.split("## Resource expectations", 1)[1].split(
+        "## Metadata and feature reference", 1
+    )[0]
+
+    assert "tf-1.0.zip" in browse
+    assert "/tmp/pseudepigrapha-tf/1.0" in browse
+    assert "tf-0.2.zip" not in browse
+    assert "/tmp/pseudepigrapha-tf/0.2" not in browse
+
+    assert "currently published `v0.2.0`" not in resources
+    assert "intended for the next publication" not in resources
+    assert "v0.2.0" in resources
+    assert "1.0" in resources
