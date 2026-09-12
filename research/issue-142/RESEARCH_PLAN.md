@@ -2,7 +2,7 @@
 
 ## Goal
 
-Close the already-defined 1.0 gate without creating another certification phase. All six researcher-facing blockers (#104, #137, #138, #139, #140, #141) are complete; this ticket now owns only the minimum coherent release identity needed to publish the proven corpus as 1.0.
+Close the already-defined 1.0 gate without creating another certification phase. All six researcher-facing blockers (#104, #137, #138, #139, #140, #141) are complete; this ticket now owns the minimum coherent release identity and publication/distribution handoff needed to publish the proven corpus as 1.0.
 
 ## Research findings
 
@@ -29,6 +29,8 @@ A final release-readiness pass found a distinct publication-time problem in the 
 
 The same audit confirmed that the remaining `0.2` references are historical v0.2 release/research evidence, synthetic distribution-test identities, or published-v0.2 baseline measurements and should remain unchanged.
 
+The logically independent release-distribution review also checked Agora's external registry. `alexsosn/Agora` currently pins `pseudepigrapha-tf` to version `0.2.0` at immutable commit `317e960e05ca7f36f35a11fcf567285312951095`. This is intentional before publication: Agora's `release_tracking: github-releases` policy passively discovers only published, non-draft, non-prerelease SemVer releases and never changes runtime pins automatically. After v1.0.0 is public, the existing tracker may propose a PR that changes only the registered `version` and immutable `ref`; that PR still requires review and merge. Because #142 explicitly includes the current Agora entry in the 1.0 consumption path, the umbrella closes only after that reviewed registry promotion is complete.
+
 ## Release identity decision
 
 Use semantic package/release version **1.0.0** and Text-Fabric data version **1.0**:
@@ -49,6 +51,7 @@ This follows the repository's existing package-tag and TF-data conventions rathe
 5. Update Agora's local materializer plugin version to match the package.
 6. Update only current/local user examples that are now 1.0-owned; keep historical public-v0.2 verification and measurements explicitly historical.
 7. Make the primary public-acquisition instructions release-stable: load the latest public release through stock Text-Fabric rather than pinning the README's normal path to the previous release.
+8. Preserve Agora's existing immutable reviewed pin until the public v1.0.0 release exists; then use Agora's existing stable-release tracking/review path to promote the registry entry rather than pre-pointing it at an unpublished commit.
 
 ## TDD contract
 
@@ -97,7 +100,7 @@ Temporary patch/version-audit workflows were used only to perform guarded edits 
 
 ## Implementation boundaries
 
-Do not change scholarly data, source pin, feature schema, apparatus/translation semantics, provenance model, or release architecture. Do not revisit immutable-release/attestation work. Versioned paths and release identity are the intended production change.
+Do not change scholarly data, source pin, feature schema, apparatus/translation semantics, provenance model, or release architecture. Do not revisit immutable-release/attestation work. Versioned paths and release identity are the intended production change. Do not bypass Agora's existing immutable-pin review model by editing its registry to an unpublished branch or pre-release commit.
 
 ## Final gates
 
@@ -105,12 +108,15 @@ Do not change scholarly data, source pin, feature schema, apparatus/translation 
 2. Implement only the frozen identity/release-note/current-doc changes. **Complete.**
 3. Ordinary suite GREEN on the exact final head.
 4. Existing pinned full-corpus conversion/audit/reload/comparison gate GREEN on the exact final head.
-5. Logically independent adversarial review of exact final SHA, specifically challenging stale 0.2 current-version surfaces, accidental rewriting of historical v0.2 evidence, package/data/tag coherence, release-note accuracy, temporary-workflow cleanup, README publication-time correctness, and whether any unrelated release machinery crept in.
+5. Logically independent adversarial review of exact final SHA, specifically challenging stale 0.2 current-version surfaces, accidental rewriting of historical v0.2 evidence, package/data/tag coherence, release-note accuracy, temporary-workflow cleanup, README publication-time correctness, Agora registry handoff, and whether any unrelated release machinery crept in.
 6. Merge with expected-head protection.
 
-Actual GitHub tag/release publication is a post-merge action against the exact merge commit because the existing publisher requires the release tag to resolve to that commit. The available GitHub connector exposes no tag-creation or workflow-dispatch mutation. Therefore the PR must make `main` release-ready but must **not** pretend the public v1.0.0 release exists. After merge, the remaining external release actions are exactly:
+Actual GitHub tag/release publication is a post-merge action against the exact merge commit because the existing publisher requires the release tag to resolve to that commit. The available GitHub connector exposes no tag-creation or workflow-dispatch mutation. Therefore the PR must make `main` release-ready but must **not** pretend the public v1.0.0 release exists.
+
+After merge, the remaining release/distribution sequence is:
 
 1. create tag `v1.0.0` at the exact merge commit;
-2. dispatch `.github/workflows/publish-corpus-release.yml` from that exact commit with `release_tag=v1.0.0` and `release_commit=<exact merge SHA>`.
+2. dispatch `.github/workflows/publish-corpus-release.yml` from that exact commit with `release_tag=v1.0.0` and `release_commit=<exact merge SHA>` and require its existing live verification to succeed;
+3. once the public non-prerelease v1.0.0 release exists, let Agora's existing stable-release tracker propose the `pseudepigrapha-tf` registry update to version `1.0.0` and the exact immutable release commit, then review and merge that Agora PR.
 
-The existing publisher then owns candidate construction, draft-byte validation, public promotion, live tagged Text-Fabric acquisition, and network-blocked local reload. Issue #142 should close only after that publication succeeds.
+The existing Pseudepigrapha-TF publisher owns candidate construction, draft-byte validation, public promotion, live tagged Text-Fabric acquisition, and network-blocked local reload. Agora's existing release tracker owns passive candidate discovery but never auto-merges trust changes. Issue #142 closes only after publication/live verification and the reviewed Agora registry pin are both current.
