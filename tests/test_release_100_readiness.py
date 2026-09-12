@@ -151,3 +151,14 @@ def test_release_ready_readme_uses_1_0_for_current_local_workflows() -> None:
     assert "intended for the next publication" not in resources
     assert "v0.2.0" in resources
     assert "1.0" in resources
+
+
+def test_runtime_measurement_note_is_timeless_after_1_0_publication() -> None:
+    runtime = (ROOT / "docs" / "runtime-footprint.md").read_text(encoding="utf-8")
+    lowered = runtime.lower()
+
+    assert "1.0 corpus" in lowered
+    assert "not yet a published github release" not in lowered
+    assert "intended for the next corpus publication" not in lowered
+    assert "optimized corpus is not yet published" not in lowered
+    assert "measured before" in lowered or "pre-publication" in lowered
