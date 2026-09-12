@@ -18,12 +18,14 @@ The pre-1.0 `main` was functionally ready but still identified the current produ
 
 The reusable asset builder already derives package/data identity from `pyproject.toml` and `app/config.yaml`; no new release machinery is needed. The read-only published-release verifier also derives identity from the manifest and remains generic.
 
-Public `v0.2.0` verification is historical evidence and must not be rewritten as if that release never existed. Documentation that explicitly compares the published v0.2.0 baseline with the post-#141 candidate keeps those historical values until v1.0.0 is actually published.
+Public `v0.2.0` verification is historical evidence and must not be rewritten as if that release never existed. Documentation that explicitly compares the published v0.2.0 baseline with the 1.0 corpus may keep those historical values.
 
 A systematic tracked-file version audit found two additional classes of current-documentation drift:
 
 - `docs/tf-app.md`, the README rebuild example, and the post-#141 selective-load example still used the old `0.2` local data path;
 - `docs/agora-materialization.md` still said Pseudepigrapha-TF did not redistribute a generated TF corpus, contradicting the already-public v0.2.0 derived corpus.
+
+A final release-readiness pass found a distinct publication-time problem in the README: its primary public-acquisition example was hard-pinned to `v0.2.0`, its local comparison recipe still materialized `tf/0.2`, and its resource section described v0.2.0 as "currently published". Those statements were true before 1.0 publication but would become false or misleading at the instant the v1.0.0 tag/release was published. The stable researcher-facing acquisition contract is therefore the stock Text-Fabric latest-public-release path; explicit v0.2.0 references are retained only where they are historical baselines/evidence.
 
 The same audit confirmed that the remaining `0.2` references are historical v0.2 release/research evidence, synthetic distribution-test identities, or published-v0.2 baseline measurements and should remain unchanged.
 
@@ -46,6 +48,7 @@ This follows the repository's existing package-tag and TF-data conventions rathe
 4. Add concise 1.0 release notes describing researcher-visible changes since v0.2.0.
 5. Update Agora's local materializer plugin version to match the package.
 6. Update only current/local user examples that are now 1.0-owned; keep historical public-v0.2 verification and measurements explicitly historical.
+7. Make the primary public-acquisition instructions release-stable: load the latest public release through stock Text-Fabric rather than pinning the README's normal path to the previous release.
 
 ## TDD contract
 
@@ -57,7 +60,9 @@ The focused 1.0 readiness contract proves:
 - the new release notes name v1.0.0 and summarize the six completed researcher-facing gates;
 - historical v0.2 verification remains available rather than being deleted;
 - current/local researcher examples use the 1.0 data identity;
-- Agora documentation no longer falsely denies publication of the derived corpus.
+- Agora documentation no longer falsely denies publication of the derived corpus;
+- the README's primary public-acquisition path follows the latest public release rather than freezing v0.2.0;
+- the release-specific local comparison recipe and current resource guidance use 1.0 while v0.2.0 remains explicitly historical.
 
 Do not add another network/release-certification lane. Existing unit + pinned full-corpus CI is the GREEN gate.
 
@@ -69,9 +74,11 @@ After implementing 1.0 identity, the first ordinary GREEN attempt exposed one st
 
 Documentation audit RED: Actions run `34659185382`, unit job `103457989562` — **2 failed, 590 passed**. The failures were exactly the obsolete Agora no-redistribution claim and current/local examples still pointing at 0.2. No product/API test failed.
 
+Release-time README RED: Actions run `34701136399`, unit job `103572993148` — **2 failed, 592 passed**. The failures were exactly the primary acquisition path frozen to v0.2.0 and the current local comparison/resource guidance still using the previous release identity. The same run's pinned full-corpus lane continued successfully through the real 1.0 package/corpus path, confirming these were documentation-release failures rather than scholarly/runtime regressions.
+
 ## Implementation
 
-The implementation intentionally changes release identity, not scholarly semantics:
+The implementation intentionally changes release identity and release-facing documentation, not scholarly semantics:
 
 - package/converter identity: `1.0.0`;
 - TF/app data identity and CLI default: `1.0` / `tf/1.0`;
@@ -79,7 +86,10 @@ The implementation intentionally changes release identity, not scholarly semanti
 - ordinary full-corpus CI: 1.0.0 wheel, `/tmp/pseudepigrapha-tf/1.0`, `v1.0.0-ci`, 1.0 app/data assertions;
 - existing publisher: expected 1.0.0/1.0 identities and issue-142 release notes, with no architectural changes;
 - `research/issue-142/RELEASE_NOTES.md`: researcher-visible 1.0 changes;
-- current TF-app/rebuild/selective-load/Agora materialization docs aligned to 1.0 and the actual derived-corpus distribution policy.
+- current TF-app/rebuild/selective-load/Agora materialization docs aligned to 1.0 and the actual derived-corpus distribution policy;
+- README primary corpus loading now uses stock Text-Fabric's latest-public-release path instead of hard-pinning v0.2.0;
+- README local comparison instructions target the v1.0.0 native `tf-1.0.zip` release asset and 1.0 app/data paths;
+- README resource figures retain v0.2.0 only as an explicitly historical baseline and describe the 1.0 corpus as the current release-owned output.
 
 The pinned OCP source commit, feature schema, data contents, apparatus/translation semantics, provenance model, distribution format, and publisher architecture are unchanged.
 
@@ -95,7 +105,7 @@ Do not change scholarly data, source pin, feature schema, apparatus/translation 
 2. Implement only the frozen identity/release-note/current-doc changes. **Complete.**
 3. Ordinary suite GREEN on the exact final head.
 4. Existing pinned full-corpus conversion/audit/reload/comparison gate GREEN on the exact final head.
-5. Logically independent adversarial review of exact final SHA, specifically challenging stale 0.2 current-version surfaces, accidental rewriting of historical v0.2 evidence, package/data/tag coherence, release-note accuracy, temporary-workflow cleanup, and whether any unrelated release machinery crept in.
+5. Logically independent adversarial review of exact final SHA, specifically challenging stale 0.2 current-version surfaces, accidental rewriting of historical v0.2 evidence, package/data/tag coherence, release-note accuracy, temporary-workflow cleanup, README publication-time correctness, and whether any unrelated release machinery crept in.
 6. Merge with expected-head protection.
 
 Actual GitHub tag/release publication is a post-merge action against the exact merge commit because the existing publisher requires the release tag to resolve to that commit. The available GitHub connector exposes no tag-creation or workflow-dispatch mutation. Therefore the PR must make `main` release-ready but must **not** pretend the public v1.0.0 release exists. After merge, the remaining external release actions are exactly:
