@@ -20,7 +20,7 @@ The corpus preserves the parts of OCP needed for research rather than flattening
 
 Generated translations are **not** treated as historical witnesses. Source/critical evidence belongs to `Apparatus`; generated parallel text belongs to `Translations`.
 
-The public `v0.2.0` release contains the derived Text-Fabric corpus (`complete.zip` for stock Text-Fabric acquisition and `tf-0.2.zip` as a native feature archive), its conversion report, and its dataset manifest. The upstream OCP XML remains in the OCP repository. See [data licensing and attribution](DATA_LICENSE.md) for the exact source/license boundary.
+Public corpus releases contain the derived Text-Fabric corpus (`complete.zip` for stock Text-Fabric acquisition and a versioned native `tf-<data-version>.zip` feature archive), its conversion report, and its dataset manifest. The upstream OCP XML remains in the OCP repository. See [data licensing and attribution](DATA_LICENSE.md) for the exact source/license boundary.
 
 ## Get and load the published corpus
 
@@ -32,20 +32,19 @@ source .venv/bin/activate        # Windows: .venv\Scripts\activate
 python -m pip install "text-fabric[github]>=13.1,<14"
 ```
 
-Then load the published release:
+Then load the latest public release:
 
 ```python
 from tf.app import use
 
 app = use(
-    "alexsosn/Pseudepigrapha-TF:v0.2.0",
-    checkout="v0.2.0",
+    "alexsosn/Pseudepigrapha-TF",
     silent="deep",
 )
 api = app.api
 ```
 
-The first call obtains the release's stock Text-Fabric `complete.zip` and populates the Text-Fabric cache. After that acquisition, an offline/local reload is:
+The first call resolves the latest public release, obtains its stock Text-Fabric `complete.zip`, and populates the Text-Fabric cache. After that acquisition, an offline/local reload is:
 
 ```python
 from tf.app import use
@@ -58,7 +57,7 @@ app = use(
 api = app.api
 ```
 
-Both the fresh tagged acquisition and a network-blocked `checkout="local"` reload are exercised by the repository's published-release verification workflow.
+Both the fresh latest-release acquisition and a network-blocked `checkout="local"` reload are exercised by the repository's published-release verification workflow.
 
 For the Pseudepigrapha-TF helper APIs used below, install the current package as well:
 
@@ -165,16 +164,16 @@ The comparison server takes a **local materialized TF feature directory**; it do
 
 ```bash
 curl -L \
-  -o /tmp/tf-0.2.zip \
-  https://github.com/alexsosn/Pseudepigrapha-TF/releases/download/v0.2.0/tf-0.2.zip
+  -o /tmp/tf-1.0.zip \
+  https://github.com/alexsosn/Pseudepigrapha-TF/releases/download/v1.0.0/tf-1.0.zip
 
-mkdir -p /tmp/pseudepigrapha-tf/0.2
-python -m zipfile -e /tmp/tf-0.2.zip /tmp/pseudepigrapha-tf/0.2
+mkdir -p /tmp/pseudepigrapha-tf/1.0
+python -m zipfile -e /tmp/tf-1.0.zip /tmp/pseudepigrapha-tf/1.0
 
-git clone --depth 1 https://github.com/alexsosn/Pseudepigrapha-TF.git
+git clone --depth 1 --branch v1.0.0 https://github.com/alexsosn/Pseudepigrapha-TF.git
 cd Pseudepigrapha-TF
 python -m pip install .
-pseudepigrapha-tf browse /tmp/pseudepigrapha-tf/0.2 --app app
+pseudepigrapha-tf browse /tmp/pseudepigrapha-tf/1.0 --app app
 ```
 
 Open `http://127.0.0.1:8000/compare`. The stock Text-Fabric browser remains available at `/`; the comparison route is an addition, not a replacement server.
@@ -191,9 +190,9 @@ The real pinned-corpus acceptance gate exercises, among other cases:
 
 Resource measurements are reference measurements from GitHub-hosted Ubuntu runners, **not hardware requirements**.
 
-For the currently published `v0.2.0` corpus, the stock `complete.zip` is about **9.36 MiB**, the populated stock Text-Fabric cache measured about **216.6 MiB**, and a warm full-app load measured about **1.69 GiB peak RSS**.
+For the published `v0.2.0` baseline, the stock `complete.zip` is about **9.36 MiB**, the populated stock Text-Fabric cache measured about **216.6 MiB**, and a warm full-app load measured about **1.69 GiB peak RSS**.
 
-Current post-#141 corpus output intended for the next publication is smaller: about **9.20 MiB** compressed, **145.4 MiB** in the populated stock cache, about **1.34 GiB peak RSS** for a warm full-app load, and about **1023 MiB peak RSS** for the measured translation-oriented selective load. Text-Fabric retained no ZIP archive in the populated cache in either measurement.
+The 1.0 corpus output is smaller: about **9.20 MiB** compressed, **145.4 MiB** in the populated stock cache, about **1.34 GiB peak RSS** for a warm full-app load, and about **1023 MiB peak RSS** for the measured translation-oriented selective load. Text-Fabric retained no ZIP archive in the populated cache in either measurement.
 
 The first local load is more expensive because Text-Fabric compiles/cache-materializes features. On the reference runner the post-#141 first local load took about 46 seconds and peaked around 2.08 GiB; a warm full-app load took about 3.6 seconds. Hosted-runner wall-clock values fluctuate, so the disk/RSS deltas are more meaningful than the exact seconds.
 
@@ -261,7 +260,7 @@ git -C Online-Critical-Pseudepigrapha checkout c939dcbacad78c5d18d2c4282cad23c47
 
 pseudepigrapha-tf convert \
   Online-Critical-Pseudepigrapha/static/docs \
-  --output tf/0.2
+  --output tf/1.0
 ```
 
 Conversion auto-detects and records source Git identity where possible. The supported pinned source receives the researched verified content-license profile; arbitrary source tuples are convertible but remain explicitly unverified rather than inheriting that claim.

@@ -4,10 +4,10 @@ Pseudepigrapha-TF uses Text-Fabric's generic advanced application and Flask brow
 
 ## Loading a local materialization
 
-The current TF data release identity is `0.2`. For a checkout containing the tracked `app/` directory and a local materialization, run:
+The current TF data release identity is `1.0`. For a checkout containing the tracked `app/` directory and a local materialization, run:
 
 ```bash
-pseudepigrapha-tf browse tf/0.2 --app app
+pseudepigrapha-tf browse tf/1.0 --app app
 ```
 
 The `--version` default follows the package's authoritative `TF_DATA_VERSION`; it is not maintained as a separate browser constant. `--port` defaults to `8000`, and `--debug` enables the underlying Text-Fabric/Flask debug mode.

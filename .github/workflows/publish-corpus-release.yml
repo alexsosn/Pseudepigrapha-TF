@@ -97,10 +97,10 @@ jobs:
               app_directory=Path('app'),
               expected_release_tag=os.environ['RELEASE_TAG'],
               expected_release_commit=os.environ['RELEASE_COMMIT'],
-              expected_converter_version='0.2.0',
-              expected_data_version='0.2',
+              expected_converter_version='1.0.0',
+              expected_data_version='1.0',
           )
-          if data_version != '0.2':
+          if data_version != '1.0':
               raise SystemExit(f'unexpected TF data version: {data_version!r}')
           with open(os.environ['GITHUB_ENV'], 'a', encoding='utf-8') as fh:
               fh.write(f'DATA_VERSION={data_version}\n')
@@ -149,7 +149,7 @@ jobs:
             --verify-tag \
             --draft \
             --title "Pseudepigrapha-TF ${RELEASE_TAG}" \
-            --notes-file research/issue-104/RELEASE_NOTES.md
+            --notes-file research/issue-142/RELEASE_NOTES.md
 
       - name: Verify published asset-name set while release is still draft
         run: |
@@ -223,8 +223,8 @@ jobs:
               app_directory=Path('app'),
               expected_release_tag=os.environ['RELEASE_TAG'],
               expected_release_commit=os.environ['RELEASE_COMMIT'],
-              expected_converter_version='0.2.0',
-              expected_data_version='0.2',
+              expected_converter_version='1.0.0',
+              expected_data_version='1.0',
           )
           PY
 
@@ -300,8 +300,8 @@ jobs:
               app_directory=Path('app'),
               expected_release_tag=os.environ['RELEASE_TAG'],
               expected_release_commit=os.environ['RELEASE_COMMIT'],
-              expected_converter_version='0.2.0',
-              expected_data_version='0.2',
+              expected_converter_version='1.0.0',
+              expected_data_version='1.0',
           )
           PY
 
@@ -328,8 +328,8 @@ jobs:
           if app is None or app.api is None:
               raise SystemExit('fresh tagged Text-Fabric load failed')
           generic = app.api.TF.features['otype'].metaData
-          assert generic['version'] == '0.2'
-          assert generic['converterVersion'] == '0.2.0'
+          assert generic['version'] == '1.0'
+          assert generic['converterVersion'] == '1.0.0'
           assert generic['upstreamCommit'] == expected_upstream
           assert generic['sourceIdentityStatus'] == 'verified'
           assert generic['contentLicenseStatus'] == 'verified'
@@ -349,8 +349,8 @@ jobs:
           if local_app is None or local_app.api is None:
               raise SystemExit('network-free local Text-Fabric reload failed')
           local_generic = local_app.api.TF.features['otype'].metaData
-          assert local_generic['version'] == '0.2'
-          assert local_generic['converterVersion'] == '0.2.0'
+          assert local_generic['version'] == '1.0'
+          assert local_generic['converterVersion'] == '1.0.0'
           assert local_generic['upstreamCommit'] == expected_upstream
           assert local_app.api.F.otype.maxSlot == 922922
           PY

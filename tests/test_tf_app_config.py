@@ -97,8 +97,8 @@ def test_app_does_not_claim_remote_paths_or_single_writing_system():
     provenance = cfg["provenanceSpec"]
 
     # Text-Fabric composes provenance paths from strings; an unquoted YAML
-    # 0.2 becomes a float and crashes advanced-app startup in TF 13.1.0.
-    assert provenance["version"] == "0.2"
+    # 1.0 becomes a float and crashes advanced-app startup in TF 13.1.0.
+    assert provenance["version"] == "1.0"
     assert not ({"org", "repo", "relative"} & set(provenance))
     assert not ({"webBase", "webUrl", "webUrlLex"} & set(provenance))
     assert "writing" not in cfg

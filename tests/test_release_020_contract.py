@@ -14,10 +14,10 @@ from pseudepigrapha_tf.parser import parse_file
 
 ROOT = Path(__file__).resolve().parents[1]
 FIXTURES = ROOT / "tests" / "fixtures"
-EXPECTED_PACKAGE_VERSION = "0.2.0"
-EXPECTED_DATA_VERSION = "0.2"
-EXPECTED_RELEASE_TAG = "v0.2.0"
-EXPECTED_TF_ASSET = "tf-0.2.zip"
+EXPECTED_PACKAGE_VERSION = "1.0.0"
+EXPECTED_DATA_VERSION = "1.0"
+EXPECTED_RELEASE_TAG = "v1.0.0"
+EXPECTED_TF_ASSET = "tf-1.0.zip"
 PUBLISH_WORKFLOW = ROOT / ".github" / "workflows" / "publish-corpus-release.yml"
 
 
@@ -120,8 +120,8 @@ def test_draft_release_bytes_are_revalidated_before_public_promotion():
     assert "validate_distribution" in validation_block
     assert "expected_release_tag=os.environ['RELEASE_TAG']" in validation_block
     assert "expected_release_commit=os.environ['RELEASE_COMMIT']" in validation_block
-    assert "expected_converter_version='0.2.0'" in validation_block
-    assert "expected_data_version='0.2'" in validation_block
+    assert "expected_converter_version='1.0.0'" in validation_block
+    assert "expected_data_version='1.0'" in validation_block
 
 
 def test_release_publisher_exports_exact_canonical_asset_generation():
