@@ -9,12 +9,12 @@ This note records reference measurements for the normal researcher consumption p
 - Text-Fabric 13.1.0
 - pinned OCP commit `c939dcbacad78c5d18d2c4282cad23c47e19ac07`
 
-Two states are distinguished below:
+Two measured states are distinguished below:
 
 1. the published `v0.2.0` corpus, which provides the pre-optimization baseline; and
-2. the post-#141 corpus generated from the current converter branch, which is the shape intended for the next corpus publication.
+2. the **1.0 corpus**, measured after the #141 runtime-footprint optimization and before its public release.
 
-The post-#141 corpus is not yet a published GitHub release, so its remote network-acquisition latency cannot be measured honestly. The optimized measurements therefore separate transport size, first local load immediately after unpacking the stock `complete.zip`, warm offline reuse, and actual browser-server startup from a warm compiled corpus.
+The 1.0 measurements were taken before publication, so no network-inclusive v1.0 acquisition latency was recorded in this benchmark. The measurements therefore separate transport size, first local load immediately after unpacking the stock `complete.zip`, warm offline reuse, and actual browser-server startup from a warm compiled corpus.
 
 ## Installation footprint
 
@@ -22,11 +22,11 @@ A clean Python 3.12 virtual environment occupied 11,120,805 bytes on the referen
 
 Relative to the post-`pip` baseline, Pseudepigrapha-TF plus its runtime dependency closure therefore added **99,677,218 bytes (about 95.1 MiB)**. The project wheel itself was **109,919 bytes**; nearly all installation footprint belongs to Text-Fabric and its runtime dependencies rather than this package's own Python code.
 
-`v0.2.0` had a packaging defect: it requested plain `text-fabric` even though public GitHub release acquisition requires Text-Fabric's `github` extra. Current project metadata fixes this by depending on `text-fabric[github]>=13.1,<14` directly.
+`v0.2.0` had a packaging defect: it requested plain `text-fabric` even though public GitHub release acquisition requires Text-Fabric's `github` extra. The 1.0 project metadata fixes this by depending on `text-fabric[github]>=13.1,<14` directly.
 
 ## Corpus transport and cache
 
-| Measurement | Published `v0.2.0` | Post-#141 corpus |
+| Measurement | Published `v0.2.0` | 1.0 corpus (measured pre-publication) |
 | --- | ---: | ---: |
 | stock `complete.zip` | 9,816,530 B (9.36 MiB) | 9,643,396 B (9.20 MiB) |
 | populated stock Text-Fabric cache | 227,070,492 B (216.6 MiB) | 152,510,275 B (145.4 MiB) |
@@ -39,7 +39,7 @@ The small change in compressed transport size relative to the much larger extrac
 
 ## Load and memory measurements
 
-| Operation | Published `v0.2.0` | Post-#141 corpus |
+| Operation | Published `v0.2.0` | 1.0 corpus (measured pre-publication) |
 | --- | ---: | ---: |
 | first load after transport is present locally | n/a as a separate measurement | 46.35 s / 2,179,456 KiB RSS (~2.08 GiB) |
 | warm offline full app | 4.01 s / 1,767,192 KiB (~1.69 GiB) | 3.63 s / 1,407,908 KiB (~1.34 GiB) |
@@ -49,11 +49,11 @@ The small change in compressed transport size relative to the much larger extrac
 
 The browser-server measurement launched the supported CLI path against a previously compiled corpus, polled the real Flask/Text-Fabric `/compare` endpoint until HTTP 200, measured the whole server process tree, and then successfully served `/compare?work=1En&chapter=1&verse=2` before shutdown. It therefore measures actual local server startup rather than merely constructing a `TfApp` object.
 
-The published baseline's combined **remote acquisition + first full app load** was 59.71 s / 2,347,328 KiB (~2.24 GiB). The optimized corpus is not yet published, so that network-inclusive number must not be compared directly with the 46.35-second local-first-load measurement above.
+The published v0.2.0 baseline's combined **remote acquisition + first full app load** was 59.71 s / 2,347,328 KiB (~2.24 GiB). No network-inclusive 1.0 benchmark was recorded during the pre-publication measurement, so that baseline number must not be compared directly with the 46.35-second 1.0 local-first-load measurement above.
 
 The first local load is expensive because Text-Fabric compiles/cache-materializes feature data. Subsequent loads reuse that compiled state. Wall-clock timings fluctuate between hosted runners; the byte and peak-RSS reductions are the more stable evidence.
 
-Compared with published `v0.2.0`, post-#141 measurements show approximately:
+Compared with published `v0.2.0`, the measured 1.0 corpus shows approximately:
 
 - **20% lower** peak RSS for a warm full-app load;
 - **25% lower** peak RSS for the measured selective translation workflow;
