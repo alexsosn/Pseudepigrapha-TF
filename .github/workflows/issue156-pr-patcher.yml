@@ -20,11 +20,14 @@ jobs:
         run: |
           python - <<'PY'
           from pathlib import Path
-          from textwrap import dedent
 
           helper = Path('.github/workflows/issue156-patcher.yml').read_text()
           block = helper.split("python - <<'PY'\n", 1)[1].split("\n          PY", 1)[0]
-          exec(compile(dedent(block), 'issue156-patcher', 'exec'))
+          block = "\n".join(
+              line[10:] if line.startswith("          ") else line
+              for line in block.splitlines()
+          )
+          exec(compile(block, 'issue156-patcher', 'exec'))
           PY
 
           if git diff --quiet; then
