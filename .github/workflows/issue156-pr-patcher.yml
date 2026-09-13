@@ -1,0 +1,38 @@
+name: issue156 PR patcher
+
+on:
+  pull_request:
+    types: [synchronize, reopened]
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.event.pull_request.head.repo.full_name == github.repository && github.head_ref == 'issue-156-selective-feature-presets'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.head_ref }}
+      - name: Apply the planned patch from the branch helper
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          from textwrap import dedent
+
+          helper = Path('.github/workflows/issue156-patcher.yml').read_text()
+          block = helper.split("python - <<'PY'\n", 1)[1].split("\n          PY", 1)[0]
+          exec(compile(dedent(block), 'issue156-patcher', 'exec'))
+          PY
+
+          if git diff --quiet; then
+            echo "No patch needed"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/pseudepigrapha_tf/apparatus.py src/pseudepigrapha_tf/translations.py README.md docs/runtime-footprint.md docs/apparatus.md tests/test_selective_feature_presets.py
+          git commit -m "feat: expose selective feature presets for #156"
+          git push origin HEAD:${{ github.head_ref }}
