@@ -15,7 +15,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: ${{ github.head_ref }}
-      - name: Apply the planned patch and upload through the contents API
+      - name: Apply the remaining planned patch and upload through the contents API
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
@@ -33,30 +33,30 @@ jobs:
           PY
 
           files=(
-            src/pseudepigrapha_tf/apparatus.py
-            src/pseudepigrapha_tf/translations.py
-            README.md
-            docs/runtime-footprint.md
-            docs/apparatus.md
             tests/test_selective_feature_presets.py
+            docs/apparatus.md
+            docs/runtime-footprint.md
+            README.md
           )
           for file in "${files[@]}"; do
             sha=$(gh api "repos/${GITHUB_REPOSITORY}/contents/${file}?ref=${GITHUB_HEAD_REF}" --jq .sha)
             content=$(base64 -w0 "$file")
             jq -n \
-              --arg message "feat: expose selective feature presets for #156" \
+              --arg message "feat: finish selective feature preset docs for #156" \
               --arg content "$content" \
               --arg sha "$sha" \
               --arg branch "$GITHUB_HEAD_REF" \
               '{message:$message, content:$content, sha:$sha, branch:$branch}' > /tmp/payload.json
-            for attempt in 1 2 3; do
+            ok=0
+            for attempt in 1 2 3 4 5 6 7 8; do
               if gh api --method PUT "repos/${GITHUB_REPOSITORY}/contents/${file}" --input /tmp/payload.json >/tmp/result.json; then
+                ok=1
                 break
-              fi
-              if [ "$attempt" = 3 ]; then
-                exit 1
               fi
               sleep 2
             done
+            if [ "$ok" != 1 ]; then
+              exit 1
+            fi
             jq -r '.commit.sha' /tmp/result.json
           done
