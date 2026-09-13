@@ -146,3 +146,17 @@ def test_translation_preset_supports_documented_raw_fabric_workflow(tmp_path):
     assert aligned[0]["translation_text"] == "traduction"
     assert aligned[0]["source_text"] == "alpha"
     assert passage["units"] == aligned
+
+
+def test_documentation_uses_public_feature_presets():
+    root = Path(__file__).parents[1]
+    readme = (root / "README.md").read_text()
+    runtime = (root / "docs" / "runtime-footprint.md").read_text()
+    apparatus_doc = (root / "docs" / "apparatus.md").read_text()
+
+    assert '" ".join(Apparatus.PASSAGE_FEATURES)' in readme
+    assert '" ".join(Apparatus.WORK_PASSAGE_FEATURES)' in readme
+    assert '" ".join(Translations.REQUIRED_FEATURES)' in readme
+    assert '" ".join(Translations.REQUIRED_FEATURES)' in runtime
+    assert '" ".join(Apparatus.PASSAGE_FEATURES)' in apparatus_doc
+    assert '" ".join(Apparatus.WORK_PASSAGE_FEATURES)' in apparatus_doc
