@@ -35,7 +35,12 @@ class _TFInstallRollbackError(RuntimeError):
 
 
 _FORMAT_FEATURE = re.compile(r"\{([^}:]+)(?::[^}]*)?\}")
-_ALWAYS_SERIALIZED_NODE_FEATURES = frozenset({"undefined_manuscript"})
+_ALWAYS_SERIALIZED_NODE_FEATURES = frozenset(
+    {"undefined_manuscript", "synthetic_witness"}
+)
+_GENERATED_LAYER_OPTIONAL_NODE_FEATURES = frozenset(
+    {"generation_method", "generation_model"}
+)
 _ALWAYS_SERIALIZED_EDGE_FEATURES = frozenset({"witness", "manuscript_of"})
 
 
@@ -77,10 +82,12 @@ def _node_features_with_format_dependencies(
     only writes files for keys present in ``nodeFeatures``, so ensure those keys
     exist here rather than weakening the graph model with fake values.
 
-    The high-level Apparatus API also needs ``undefined_manuscript`` to exist in
-    every serialized corpus so it can distinguish an explicitly synthesized
-    citation-only witness from a declared upstream manuscript without guessing
-    when the corpus happens to contain no synthesized witnesses.
+    High-level helper presets also rely on a few absence-significant features:
+    ``undefined_manuscript`` and ``synthetic_witness`` must exist even when a
+    corpus has no such witnesses, while generated corpora must expose empty
+    ``generation_method``/``generation_model`` files when provenance values are
+    unavailable. Keeping empty feature maps here makes the documented load
+    contracts stable without inventing scholarly values in the graph.
     """
 
     node_features = (
@@ -95,6 +102,9 @@ def _node_features_with_format_dependencies(
             node_features.setdefault(feature, {})
     for feature in _ALWAYS_SERIALIZED_NODE_FEATURES:
         node_features.setdefault(feature, {})
+    if data.metadata.get("", {}).get("generatedTranslationLayer") == "1":
+        for feature in _GENERATED_LAYER_OPTIONAL_NODE_FEATURES:
+            node_features.setdefault(feature, {})
     return node_features
 
 
