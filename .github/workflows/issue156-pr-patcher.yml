@@ -38,4 +38,6 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add src/pseudepigrapha_tf/apparatus.py src/pseudepigrapha_tf/translations.py README.md docs/runtime-footprint.md docs/apparatus.md tests/test_selective_feature_presets.py
           git commit -m "feat: expose selective feature presets for #156"
+          echo "PATCH_COMMIT=$(git rev-parse HEAD)"
+          echo "PATCH_TREE=$(git rev-parse 'HEAD^{tree}')"
           git push origin HEAD:${{ github.head_ref }}
