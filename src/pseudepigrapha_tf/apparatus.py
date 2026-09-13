@@ -7,6 +7,24 @@ from typing import Iterable
 class Apparatus:
     """Convenience access to OCP apparatus relations on a loaded Text-Fabric API."""
 
+    PASSAGE_FEATURES = (
+        "reading_text",
+        "is_primary",
+        "ms_abbrev",
+        "undefined_manuscript",
+        "unit_id",
+        "version_kind",
+        "synthetic_witness",
+        "reading_of",
+        "witness",
+        "manuscript_of",
+    )
+    WORK_PASSAGE_FEATURES = (
+        "ocp_book",
+        "version_id",
+        *PASSAGE_FEATURES,
+    )
+
     def __init__(self, api) -> None:
         self.api = api
 

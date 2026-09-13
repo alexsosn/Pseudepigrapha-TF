@@ -4,6 +4,26 @@ from __future__ import annotations
 class Translations:
     """Convenience access to the explicit OCP generated-translation layer."""
 
+    REQUIRED_FEATURES = (
+        "book",
+        "ocp_book",
+        "version_title",
+        "version_kind",
+        "language",
+        "generated_language",
+        "generation_marker",
+        "generation_method",
+        "generation_model",
+        "unit_id",
+        "unit_index",
+        "source_ref",
+        "reading_text",
+        "is_primary",
+        "translation_of",
+        "translation_unit_of",
+        "reading_of",
+    )
+
     def __init__(self, api) -> None:
         self.api = api
 
