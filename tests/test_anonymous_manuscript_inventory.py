@@ -32,7 +32,10 @@ def test_unaddressable_manuscript_metadata_does_not_break_keyed_witness_inventor
     assert api is not False and api is not None
     assert TF.load("ms_name", add=True, silent="deep")
     manuscripts = tuple(api.F.otype.s("manuscript"))
-    anonymous = tuple(node for node in manuscripts if not api.F.ms_abbrev.v(node).strip())
+    # TF returns None for the intentionally blank, preserved source values.
+    anonymous = tuple(
+        node for node in manuscripts if not str(api.F.ms_abbrev.v(node) or "").strip()
+    )
     assert len(manuscripts) == len(named) + 2
     assert len(anonymous) == 2
     assert {api.F.ms_name.v(node) for node in anonymous} == {
