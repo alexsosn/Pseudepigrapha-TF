@@ -120,7 +120,10 @@ class Apparatus:
                 (
                     node
                     for node in manuscript_of.t(owner)
-                    if synthetic_witness is None or synthetic_witness.v(node) != 1
+                    if (
+                        (synthetic_witness is None or synthetic_witness.v(node) != 1)
+                        and str(ms_abbrev.v(node) or "").strip()
+                    )
                 ),
                 key=lambda node: (
                     str(self._required_feature_value(ms_abbrev, "ms_abbrev", node)),
