@@ -27,6 +27,8 @@ work = A.work_passage("1En", "1", "2")
 
 `WORK_PASSAGE_FEATURES` adds `ocp_book` and `version_id`. The latter is needed for stable identity of metadata-only versions in the public corpus.
 
+The `witnesses` mapping contains manuscripts with nonblank, addressable abbreviations. Manuscript metadata with a blank or whitespace-only abbreviation is preserved as distinct Text-Fabric `manuscript` nodes, but is excluded from this keyed mapping: it cannot be cited by a usable siglum. Inspect the raw TF nodes for those records; the helper does not invent scholarly abbreviations.
+
 Display enrichment such as `source_ref`, `ms_name`, `ms_language`, `ms_show`, `title`, `version_title`, `language`, and `author` remains optional where the API already provides a neutral fallback. The presets intentionally do not turn those display fields into semantic requirements.
 
 These tuples are convenience load contracts, not constructor behavior: `Apparatus` never reloads features implicitly. Lower-level methods and absent-section workflows may validly use narrower hand-selected loads, and existing missing-feature `ValueError` checks remain authoritative.
