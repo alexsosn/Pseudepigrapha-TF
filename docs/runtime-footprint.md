@@ -69,9 +69,7 @@ from pseudepigrapha_tf import Translations
 
 TF = Fabric(locations=["tf/1.0"], modules=[""], silent="deep")
 api = TF.load(
-    "book ocp_book version_title version_kind language generated_language "
-    "generation_marker generation_method generation_model unit_id unit_index source_ref "
-    "reading_text is_primary translation_of translation_unit_of reading_of",
+    " ".join(Translations.REQUIRED_FEATURES),
     silent="deep",
 )
 
@@ -80,7 +78,7 @@ versions = T.versions(work="1En", language="French")
 aligned = T.aligned_units(versions[0]["node"])
 ```
 
-On the reference runner this path peaked at **1,047,596 KiB**, just under 1 GiB. This is useful when the task does not require apparatus, browser, or the complete feature inventory, but it should not be interpreted as a general promise that every selective query will stay below 1 GiB.
+The preset freezes the exact feature set used for this measurement. On the reference runner this path peaked at **1,047,596 KiB**, just under 1 GiB. This is useful when the task does not require apparatus, browser, or the complete feature inventory, but it should not be interpreted as a general promise that every selective query will stay below 1 GiB.
 
 ## What #141 changed
 

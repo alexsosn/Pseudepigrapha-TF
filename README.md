@@ -88,15 +88,9 @@ For deeper OCP references, Text-Fabric's three-level section API folds all paren
 `Apparatus.passage()` returns one source version's passage together with all apparatus units and its witness evidence. The stock advanced app does not need every apparatus relation for display, so load the extra semantic features before using the helper on `app.api`:
 
 ```python
-app.load(
-    "ocp_book version_id version_title version_kind language author "
-    "reading_text is_primary ms_abbrev ms_language ms_name ms_show "
-    "unit_id source_ref undefined_manuscript synthetic_witness "
-    "reading_of witness manuscript_of"
-)
-
 from pseudepigrapha_tf import Apparatus
 
+app.load(" ".join(Apparatus.PASSAGE_FEATURES))
 A = Apparatus(app.api)
 passage = A.passage("1En__Ethiopic", "1", "2")
 
@@ -116,6 +110,7 @@ Those are not interchangeable. If a witness is unattested at one or more units, 
 To ask for one normalized passage across every textual source version of a work:
 
 ```python
+app.load(" ".join(Apparatus.WORK_PASSAGE_FEATURES))
 result = A.work_passage("1En", "1", "2")
 
 result["versions"]["1En__Ethiopic"]["status"]
@@ -135,14 +130,9 @@ OCP marks its generated translations structurally. Pseudepigrapha-TF preserves t
 This workflow is standalone: it loads the exact translation-oriented feature set without assuming that the apparatus example above has already run.
 
 ```python
-app.load(
-    "ocp_book version_title version_kind language generated_language "
-    "generation_marker generation_method generation_model unit_id unit_index source_ref "
-    "reading_text is_primary translation_of translation_unit_of reading_of"
-)
-
 from pseudepigrapha_tf import Translations
 
+app.load(" ".join(Translations.REQUIRED_FEATURES))
 T = Translations(app.api)
 french = T.versions(work="1En", language="French")
 generated_book = french[0]["node"]

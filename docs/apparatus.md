@@ -10,9 +10,26 @@
 
 ## Passage-level helpers
 
-`passage()` and the passage-bearing portions of `work_passage()` require the semantic inputs needed to distinguish primary readings, alternatives, witness assignments, omissions, and unattested witnesses: `reading_of`, `witness`, `is_primary`, `manuscript_of`, and `undefined_manuscript` (plus `ocp_book` for `work_passage()`). Omitting `is_primary` is an error; the API never silently turns an unavailable primary/alternative distinction into `primary=False`.
+Use the public presets when loading the full supported passage workflows explicitly:
 
-Descriptive fields such as `source_ref`, `unit_id`, `ms_abbrev`, `ms_name`, `ms_language`, and `ms_show` remain optional where the API already provides a neutral fallback. Selective loading therefore needs to preserve semantic distinctions, not every display field.
+```python
+from pseudepigrapha_tf import Apparatus
+
+app.load(" ".join(Apparatus.PASSAGE_FEATURES))
+A = Apparatus(app.api)
+passage = A.passage("1En__Ethiopic", "1", "2")
+
+app.load(" ".join(Apparatus.WORK_PASSAGE_FEATURES))
+work = A.work_passage("1En", "1", "2")
+```
+
+`PASSAGE_FEATURES` contains the semantic and identity inputs needed to distinguish primary readings, alternatives, witness assignments, omissions, and unattested witnesses: `reading_text`, `reading_of`, `witness`, `is_primary`, `manuscript_of`, `ms_abbrev`, `undefined_manuscript`, and `unit_id`. It also includes `version_kind` and `synthetic_witness`, because a corpus declaring a generated-translation layer must fail closed rather than let generated translations leak into historical apparatus semantics.
+
+`WORK_PASSAGE_FEATURES` adds `ocp_book` and `version_id`. The latter is needed for stable identity of metadata-only versions in the public corpus.
+
+Display enrichment such as `source_ref`, `ms_name`, `ms_language`, `ms_show`, `title`, `version_title`, `language`, and `author` remains optional where the API already provides a neutral fallback. The presets intentionally do not turn those display fields into semantic requirements.
+
+These tuples are convenience load contracts, not constructor behavior: `Apparatus` never reloads features implicitly. Lower-level methods and absent-section workflows may validly use narrower hand-selected loads, and existing missing-feature `ValueError` checks remain authoritative.
 
 ## `witness_text()`
 
