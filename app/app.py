@@ -1,3 +1,4 @@
+from html import escape
 from string import Formatter
 
 from tf.advanced.app import App
@@ -122,9 +123,10 @@ class TfApp(App):
         child slots can be locality anchors rather than the node's content.
 
         Keep the dynamically installed type template authoritative and stop
-        recursion here. The one semantic exception is an explicit empty reading:
-        make its source omission state visible instead of returning an empty
-        string.
+        recursion here. Explicit empty readings get a visible omission marker.
+        Preserved manuscript metadata without an addressable abbreviation uses
+        its plain-text name as a display-only fallback; this does not create a
+        scholarly siglum or mutate the graph.
         """
 
         node = chunk[0]
@@ -135,6 +137,16 @@ class TfApp(App):
             and omission_feature.v(node) == 1
         ):
             return '<span title="is_omission">[omission]</span>'
+
+        if node_type == "manuscript":
+            abbrev_feature = getattr(self.api.F, "ms_abbrev", None)
+            abbreviation = abbrev_feature.v(node) if abbrev_feature is not None else None
+            if not str(abbreviation or "").strip():
+                name_feature = getattr(self.api.F, "ms_name", None)
+                name = name_feature.v(node) if name_feature is not None else None
+                name = str(name or "").strip()
+                if name:
+                    return f'<span title="ms_name">{escape(name)}</span>'
 
         return self.getText(
             False,
