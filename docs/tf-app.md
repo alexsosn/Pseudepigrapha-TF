@@ -52,7 +52,7 @@ Not every valid materialization contains every technical type. For example, the 
 
 Text-Fabric 13.1 needs one additional rendering hook. During `pretty()` rendering of a base non-slot, Text-Fabric internally asks for a plain rendering of the same unravel tree. Even after an explicit parent template is rendered, that plain pass normally continues into the node's `oslots` children. For the technical-anchor node types above this can append unrelated primary-locus text after the node's own content.
 
-`app/app.py` therefore registers one shared `plainCustom` hook for the present own-content technical node types. The hook delegates the node's actual content back to Text-Fabric's configured template renderer and stops the plain pass before it descends into the technical anchor. It does not reconstruct apparatus or witness semantics. The only semantic presentation special case is an explicit empty `reading`, which is shown as `[omission]` instead of as visually empty content.
+`app/app.py` therefore registers one shared `plainCustom` hook for the present own-content technical node types. The hook delegates the node's actual content back to Text-Fabric's configured template renderer and stops the plain pass before it descends into the technical anchor. It does not reconstruct apparatus or witness semantics. Explicit empty `reading` nodes are shown as `[omission]` instead of visually empty content. A preserved `manuscript` node with no nonblank `ms_abbrev` uses its preserved plain-text `ms_name` as a display-only fallback when available; the app does not write that name into `ms_abbrev` or invent a scholarly siglum.
 
 Hidden types are not removed from the graph. Researchers can reveal them with Text-Fabric display options such as `hideTypes=False`, query them normally through the TF API, and traverse their explicit edges.
 
@@ -61,7 +61,7 @@ In particular:
 - alternative `reading` nodes render their own `reading_text`, not the primary reading occupying the locus;
 - explicit empty readings remain visibly marked as omissions;
 - `variant_word` nodes render their own variant-token surface;
-- `manuscript` nodes render `ms_abbrev`;
+- addressable `manuscript` nodes render `ms_abbrev`; preserved anonymous manuscript metadata falls back to `ms_name` for display only when the abbreviation is blank;
 - `resource` nodes, when present, render `resource_name` without making resource-free corpora emit configuration errors;
 - metadata and preserved anomaly nodes use their own identity/content features rather than the anchor word.
 
