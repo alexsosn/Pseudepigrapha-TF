@@ -1,0 +1,7 @@
+# Issue #162 plan
+
+1. **Research.** Verify current GitHub release metadata and separate public corpus identity from forward package/data versions on `main`. Record the exact published tag, archive name, and TF data version.
+2. **RED.** Add one static README regression asserting that the local `/compare` example uses the verified `v0.2.0` / `tf-0.2.zip` / data `0.2` set and does not advertise the nonexistent `v1.0.0` native asset. Commit and record the intentionally failing unit CI before editing README.
+3. **GREEN.** Change only the release-specific local `/compare` commands in README to the verified matching public release and make `--version 0.2` explicit. Leave generic latest-release acquisition unchanged.
+4. **Documentation boundary.** Add a concise note that `main` can be ahead of the latest public release and that explicit reproduction commands must keep tag, asset, and data version matched. Do not introduce release automation/constants or publish a release.
+5. **Verification/review.** Run the full unit/Text-Fabric and pinned-upstream integration suite on the exact clean PR head. Then perform logically independent adversarial review focused on factual release metadata, consistency of every command/path, accidental regression of the generic latest-release path, and avoiding unnecessary release machinery. Merge only after all gates are green.
