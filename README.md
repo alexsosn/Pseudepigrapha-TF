@@ -150,20 +150,20 @@ The synthetic `OCP-Trans` witness remains provenance for the generated layer but
 
 The published corpus works with the standard Text-Fabric advanced app loaded by `tf.app.use()` above. Pseudepigrapha-TF also provides a local `/compare` view for passage-centered comparison across source versions, manuscripts, and generated translations.
 
-The comparison server takes a **local materialized TF feature directory**; it does not run the OCP converter. One reproducible layout is to extract the published native archive and use the tracked app from this repository:
+The comparison server takes a **local materialized TF feature directory**; it does not run the OCP converter. One reproducible layout is to extract the published native archive and use the matching tracked app from that release. The commands below intentionally use the latest public release, `v0.2.0`; `main` can contain newer development package/data versions, so keep the release tag, archive, and Text-Fabric data version matched when reproducing a public release:
 
 ```bash
 curl -L \
-  -o /tmp/tf-1.0.zip \
-  https://github.com/alexsosn/Pseudepigrapha-TF/releases/download/v1.0.0/tf-1.0.zip
+  -o /tmp/tf-0.2.zip \
+  https://github.com/alexsosn/Pseudepigrapha-TF/releases/download/v0.2.0/tf-0.2.zip
 
-mkdir -p /tmp/pseudepigrapha-tf/1.0
-python -m zipfile -e /tmp/tf-1.0.zip /tmp/pseudepigrapha-tf/1.0
+mkdir -p /tmp/pseudepigrapha-tf/0.2
+python -m zipfile -e /tmp/tf-0.2.zip /tmp/pseudepigrapha-tf/0.2
 
-git clone --depth 1 --branch v1.0.0 https://github.com/alexsosn/Pseudepigrapha-TF.git
+git clone --depth 1 --branch v0.2.0 https://github.com/alexsosn/Pseudepigrapha-TF.git
 cd Pseudepigrapha-TF
 python -m pip install .
-pseudepigrapha-tf browse /tmp/pseudepigrapha-tf/1.0 --app app
+pseudepigrapha-tf browse /tmp/pseudepigrapha-tf/0.2 --app app --version 0.2
 ```
 
 Open `http://127.0.0.1:8000/compare`. The stock Text-Fabric browser remains available at `/`; the comparison route is an addition, not a replacement server.
