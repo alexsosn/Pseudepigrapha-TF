@@ -1,0 +1,7 @@
+# Issue #160 plan
+
+1. **Research.** Confirm the preserved direct-model blank-abbreviation contract from #158, the tracked app's `manuscript` template/label policy, and the requirement that technical-node pretty rendering not descend into its `oslots` anchor.
+2. **RED.** Extend the real Text-Fabric advanced-app rendering tests with a materialization containing a manuscript whose abbreviation is whitespace-only and whose `ms_name` is distinctive. Assert the serialized node/name survive and `pretty()` shows the name while excluding unrelated anchor text. Commit and record an intentionally failing CI run before changing app behavior.
+3. **GREEN.** Make the smallest app-only change in `TfApp._plain_own_content()`: for `manuscript`, if `ms_abbrev` is blank/`None`, return an HTML-escaped nonblank `ms_name`; otherwise retain the existing configured-template path. Do not mutate TF data or change parser, graph, serializer, apparatus, translation, or distribution behavior.
+4. **Documentation.** Update `docs/tf-app.md` to distinguish addressable manuscript display (siglum) from anonymous metadata display (preserved name fallback) and state that no siglum is invented.
+5. **Verification/review.** Run full unit/Text-Fabric and pinned-upstream integration on the exact clean PR head. Then perform a logically independent adversarial review focused on escaping, accidental scholarly identity fabrication, anchor-text leakage, ordinary manuscript regressions, scope creep, and behavior when both abbreviation and name are absent. Merge only after all gates are green.
