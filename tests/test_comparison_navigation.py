@@ -232,3 +232,40 @@ def test_witness_selector_inputs_are_associated_with_the_comparison_submit_form(
 def test_comparison_href_rejects_navigation_to_empty_work_or_section():
     with pytest.raises(ValueError, match="work, chapter, and verse"):
         comparison.comparison_href("", "1", "2")
+
+
+def test_navigation_index_reuses_work_and_verse_topology_between_passages():
+    api = navigation_api()
+    calls = {"books": 0, "verse_descendants": 0, "sections": 0}
+    original_books = api.F.otype.s
+    original_descendants = api.L.d
+    original_section = api.T.sectionFromNode
+
+    def books(kind):
+        calls["books"] += 1
+        return original_books(kind)
+
+    def descendants(node, otype=None):
+        calls["verse_descendants"] += 1
+        return original_descendants(node, otype=otype)
+
+    def section(node):
+        calls["sections"] += 1
+        return original_section(node)
+
+    api.F.otype.s = books
+    api.L.d = descendants
+    api.T.sectionFromNode = section
+    navigator = comparison.PassageNavigator(api)
+
+    first = navigator.neighbors("Work", "1", "2", preferred_versions=("Work__B", "Work__A"))
+    counts_after_first = dict(calls)
+    second = navigator.neighbors("Work", "2", "1", preferred_versions=("Work__A",))
+
+    assert first == {"context_version": "Work__A", "previous": ("1", "1"), "next": ("2", "1")}
+    assert second == {"context_version": "Work__A", "previous": ("1", "2"), "next": None}
+    assert calls == counts_after_first
+    assert calls["books"] == 1
+    assert calls["verse_descendants"] == 2
+    # Both source versions are resolved once; generated translation is excluded.
+    assert calls["sections"] == 2 + 2 + 3
