@@ -554,3 +554,10 @@ def test_comparison_rejects_apparatus_bound_to_different_tf_api():
         comparison.build_passage_comparison(
             object(), "Work", "1", "2", apparatus=FakeApparatus(other_api)
         )
+
+
+def test_comparison_rejects_translations_bound_to_different_tf_api():
+    with pytest.raises(ValueError, match="Translations belongs to a different Text-Fabric API"):
+        comparison.build_passage_comparison(
+            object(), "Work", "1", "2", translations=FakeTranslations(object())
+        )
