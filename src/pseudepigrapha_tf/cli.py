@@ -220,12 +220,19 @@ def main(argv: list[str] | None = None) -> int:
         staged_report = Path(report_stage_dir) / publication_path.name
         write_conversion_report(report, staged_report)
         stage_started = _stage("write_report", stage_started)
-        if not _write_prevalidated_tf(data, args.output):
+        def publish_matching_report() -> None:
+            # This commit hook executes after the new TF files are in place,
+            # but while the previous TF generation remains recoverable. No
+            # additional fallible operations may follow the report rename.
+            report["text_fabric"] = feature_directory_identity(args.output)
+            write_conversion_report(report, staged_report)
+            staged_report.replace(publication_path)
+
+        if not _write_prevalidated_tf(
+            data, args.output, after_install=publish_matching_report
+        ):
             raise SystemExit("Text-Fabric refused the generated dataset")
         stage_started = _stage("write_text_fabric", stage_started)
-        report["text_fabric"] = feature_directory_identity(args.output)
-        write_conversion_report(report, staged_report)
-        staged_report.replace(publication_path)
 
     metadata_count = sum(
         1 for kind in data.node_features.get("otype", {}).values() if kind == "document_metadata"
