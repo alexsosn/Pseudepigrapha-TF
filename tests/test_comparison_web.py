@@ -257,3 +257,91 @@ def test_http_route_reuses_translation_helper_within_one_app(monkeypatch):
     assert client.get("/compare?work=Work&chapter=1&verse=2").status_code == 200
     assert len(created) == 1
     assert received == created * 2
+
+
+def test_landing_html_is_lazy_and_cached_across_incomplete_requests(monkeypatch):
+    flask_app = Flask(__name__)
+    tf_app = FakeTfApp()
+    calls = []
+
+    def render_landing(api):
+        calls.append(api)
+        return '<main><option value="Source">Source</option></main>'
+
+    monkeypatch.setattr(web, '_landing_html', render_landing)
+    monkeypatch.setattr(
+        web, 'build_passage_comparison',
+        lambda api, work, chapter, verse, **kwargs: {'work': work},
+    )
+    monkeypatch.setattr(web, 'render_passage_comparison', lambda model: '<main>passage</main>')
+    web.register_comparison_route(flask_app, tf_app)
+    client = flask_app.test_client()
+
+    # Explicit passage navigation must not precompute the dropdown.
+    assert not calls
+    assert client.get('/compare?work=Source&chapter=1&verse=2').status_code == 200
+    assert not calls
+
+    first = client.get('/compare')
+    second = client.get('/compare?chapter=1')
+    third = client.get('/compare?work=Source&chapter=1')
+    for response in (first, second, third):
+        assert response.status_code == 200
+        assert response.mimetype == 'text/html'
+        assert '<option value="Source">' in response.get_data(as_text=True)
+    assert calls == [tf_app.api]
+
+
+def test_landing_cache_is_isolated_per_flask_app_and_api(monkeypatch):
+    calls = []
+
+    def render(api):
+        calls.append(api)
+        return '<main>' + api.label + '</main>'
+
+    monkeypatch.setattr(web, '_landing_html', render)
+    apps = []
+    for label in ('Corpus A', 'Corpus B'):
+        app = Flask(label)
+        tf_app = FakeTfApp()
+        tf_app.api = type('NamedApi', (), {'label': label})()
+        web.register_comparison_route(app, tf_app)
+        apps.append(app)
+    left = apps[0].test_client()
+    right = apps[1].test_client()
+    assert 'Corpus A' in left.get('/compare').get_data(as_text=True)
+    assert 'Corpus B' in right.get('/compare').get_data(as_text=True)
+    assert 'Corpus A' in left.get('/compare').get_data(as_text=True)
+    assert 'Corpus B' in right.get('/compare?work=Missing').get_data(as_text=True)
+    assert len(calls) == 2
+    assert calls[0] is not calls[1]
+
+
+def test_landing_cache_does_not_remember_initial_render_failure(monkeypatch):
+    flask_app = Flask(__name__)
+    flask_app.testing = True
+    tf_app = FakeTfApp()
+    failures = []
+
+    def occasionally_fails(api):
+        failures.append(api)
+        if len(failures) == 1:
+            raise RuntimeError('inventory temporarily unavailable')
+        return '<main>ready</main>'
+
+    monkeypatch.setattr(web, '_landing_html', occasionally_fails)
+    web.register_comparison_route(flask_app, tf_app)
+    client = flask_app.test_client()
+    with pytest.raises(RuntimeError, match='inventory temporarily unavailable'):
+        client.get('/compare')
+    assert client.get('/compare').get_data(as_text=True) == '<main>ready</main>'
+    assert client.get('/compare?verse=2').get_data(as_text=True) == '<main>ready</main>'
+    assert len(failures) == 2
+
+
+def test_landing_html_still_escapes_untrusted_work_ids(monkeypatch):
+    monkeypatch.setattr(web, 'list_comparison_works', lambda api: ('<script>', 'Normal'))
+    html = web._landing_html(object())
+    assert '&lt;script&gt;' in html
+    assert '<script>' not in html
+    assert '<option value="Normal">Normal</option>' in html
