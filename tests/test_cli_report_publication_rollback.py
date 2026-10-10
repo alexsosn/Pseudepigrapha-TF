@@ -123,3 +123,65 @@ def test_successful_report_publication_still_binds_exact_tf_generation(monkeypat
     assert (output / "researcher-notes.txt").read_bytes() == b"retain user sidecar\n"
     assert not (output / "removed-in-new.tf").exists()
     assert (output / "new-only.tf").read_bytes() == b"new feature\n"
+
+
+def test_failed_report_commit_plus_failed_rollback_retains_recoverable_backup(monkeypatch, tmp_path):
+    source, output, old = setup_case(tmp_path, monkeypatch)
+    original_replace = Path.replace
+    report_failed = False
+    rollback_failed = False
+
+    def fail_report_then_restore(self, target):
+        nonlocal report_failed, rollback_failed
+        target = Path(target)
+        if self.parent.name.startswith(".pseudepigrapha-tf-report-") and target == output / "conversion-report.json":
+            report_failed = True
+            raise OSError("report finalization exception")
+        if (
+            report_failed
+            and not rollback_failed
+            and self.parent.name.startswith(".pseudepigrapha-tf-backup-")
+            and self.suffix == ".tf"
+            and target.parent == output
+        ):
+            rollback_failed = True
+            raise OSError("TF rollback exception")
+        return original_replace(self, target)
+
+    monkeypatch.setattr(Path, "replace", fail_report_then_restore)
+    with pytest.raises(RuntimeError, match="rollback also failed") as caught:
+        convert(source, output)
+
+    assert report_failed and rollback_failed
+    assert "report finalization exception" in str(caught.value)
+    assert "TF rollback exception" in str(caught.value)
+    assert (output / "conversion-report.json").read_bytes() == old["conversion-report.json"]
+    backup_dirs = [
+        d for d in tmp_path.iterdir()
+        if d.is_dir() and d.name.startswith(".pseudepigrapha-tf-backup-")
+    ]
+    assert backup_dirs, "recoverable old TF generation must survive a failed rollback"
+    assert any(
+        p.read_bytes() == old["otype.tf"]
+        for d in backup_dirs for p in d.glob("*.tf")
+    )
+
+
+def test_failed_report_commit_does_not_leave_new_generation_for_fresh_output(monkeypatch, tmp_path):
+    source, output, old = setup_case(tmp_path, monkeypatch)
+    for name in ("otype.tf", "oslots.tf", "removed-in-new.tf"):
+        (output / name).unlink()
+    original_replace = Path.replace
+
+    def fail_report(self, target):
+        if self.parent.name.startswith(".pseudepigrapha-tf-report-"):
+            raise OSError("report unavailable")
+        return original_replace(self, target)
+
+    monkeypatch.setattr(Path, "replace", fail_report)
+    with pytest.raises(OSError, match="report unavailable"):
+        convert(source, output)
+
+    assert not list(output.glob("*.tf"))
+    assert (output / "conversion-report.json").read_bytes() == old["conversion-report.json"]
+    assert (output / "researcher-notes.txt").read_bytes() == old["researcher-notes.txt"]
