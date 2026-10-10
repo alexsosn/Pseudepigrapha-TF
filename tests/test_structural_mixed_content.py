@@ -128,3 +128,21 @@ def test_existing_upstream_mixed_content_fixtures_still_parse():
     assert any(token.annotated for token in modern.versions[0].divs[0].items[0].items[0].readings[0].tokens)
     legacy = parse_file(FIXTURES / "legacy.xml")
     assert legacy.versions[0].divs[0].items[0].items[0].readings[0].text == "Initium verbi"
+
+
+@pytest.mark.parametrize("character", ("\\u00a0", "\\u2007", "\\u2028"))
+@pytest.mark.parametrize("location", ("direct text", "child tail"))
+def test_non_xml_unicode_whitespace_is_not_discarded(character, location):
+    # Python str.isspace() includes NBSP, figure space and line separator.
+    # Those are not XML indentation (XML S = #x20 | #x9 | #xD | #xA):
+    # losing them from an otherwise structural div is still source loss.
+    symbol = character.encode("utf-8").decode("unicode_escape")
+    root = ET.fromstring(MODERN_XML)
+    parent = root.find("version/text/div")
+    assert parent is not None
+    if location == "direct text":
+        parent.text = symbol
+    else:
+        parent[0].tail = symbol
+    with pytest.raises(InvalidSourceError, match=r"unicode-space\\.xml.*<div>.*(text|tail)"):
+        parse_bytes(ET.tostring(root), source_path="unicode-space.xml")
