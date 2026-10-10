@@ -52,7 +52,7 @@ def test_register_compare_route_parses_version_and_per_version_witness_selection
 
     captured = {}
 
-    def fake_build(api, work, chapter, verse, *, selected_versions=None, selected_witnesses=None, apparatus=None):
+    def fake_build(api, work, chapter, verse, *, selected_versions=None, selected_witnesses=None, apparatus=None, translations=None):
         captured.update(
             api=api,
             work=work,
@@ -227,3 +227,33 @@ def test_http_requests_reuse_app_scoped_comparison_helpers(monkeypatch):
     assert len(created["apparatus"]) == len(created["navigator"]) == 1
     assert [call[1] for call in seen if call[0] == "apparatus"] == created["apparatus"] * 2
     assert [call[1] for call in seen if call[0] == "navigation"] == created["navigator"] * 2
+
+
+def test_http_route_reuses_translation_helper_within_one_app(monkeypatch):
+    flask_app = Flask(__name__)
+    tf_app = FakeTfApp()
+    created = []
+    received = []
+
+    class TrackedTranslations:
+        def __init__(self, api):
+            assert api is tf_app.api
+            created.append(self)
+
+    def build(api, work, chapter, verse, *, selected_versions=None,
+              selected_witnesses=None, apparatus=None, translations=None):
+        assert api is tf_app.api
+        assert isinstance(translations, TrackedTranslations)
+        received.append(translations)
+        return {"work": work}
+
+    monkeypatch.setattr(web, "Translations", TrackedTranslations, raising=False)
+    monkeypatch.setattr(web, "build_passage_comparison", build)
+    monkeypatch.setattr(web, "render_passage_comparison", lambda model: "<main>ok</main>")
+    web.register_comparison_route(flask_app, tf_app)
+    client = flask_app.test_client()
+
+    assert client.get("/compare?work=Work&chapter=1&verse=1").status_code == 200
+    assert client.get("/compare?work=Work&chapter=1&verse=2").status_code == 200
+    assert len(created) == 1
+    assert received == created * 2
