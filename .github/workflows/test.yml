@@ -487,3 +487,26 @@ jobs:
           PY
       - name: Verify 1 Enoch comparison workflow
         run: python tests/pinned_comparison_acceptance.py /tmp/pseudepigrapha-tf/1.0
+      # Expensive matched experiment is deliberately confined to the research PR,
+      # not the routine full-corpus gate on main or unrelated pull requests.
+      - name: Matched pre-cache vs cached comparison measurements
+        if: ${{ github.event_name == 'pull_request' && github.head_ref == 'perf/174-matched-comparison' }}
+        run: |
+          BASELINE_SHA=7c4b757bb543a110ae9a252d1281835859136852
+          git fetch --no-tags --depth=1 origin "$BASELINE_SHA"
+          git worktree add --detach /tmp/pseudepigrapha-tf-pre-cache "$BASELINE_SHA"
+          python scripts/matched_comparison_benchmark.py \
+            --baseline-root /tmp/pseudepigrapha-tf-pre-cache \
+            --candidate-root "$GITHUB_WORKSPACE" \
+            --tf-dir /tmp/pseudepigrapha-tf/1.0 \
+            --repeat-count 5 \
+            --timeout-seconds 180 \
+            --output /tmp/pseudepigrapha-tf-matched-comparison.json
+      - name: Upload matched comparison measurements
+        if: ${{ github.event_name == 'pull_request' && github.head_ref == 'perf/174-matched-comparison' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: matched-comparison
+          path: /tmp/pseudepigrapha-tf-matched-comparison.json
+          if-no-files-found: error
+          retention-days: 30
