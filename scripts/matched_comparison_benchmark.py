@@ -186,8 +186,11 @@ def _check_metrics(report: dict[str, object]) -> None:
         value = memory.get(key)
         if isinstance(value, bool) or not isinstance(value, int) or value < 0:
             raise ValueError(f"missing or invalid RSS metric: {key}")
-    if memory["peak_rss_kib"] < max(memory["rss_after_app_kib"], memory["rss_after_requests_kib"]):
-        raise ValueError("peak RSS cannot be smaller than current resident RSS")
+    # VmRSS is a separately sampled /proc estimate, while ru_maxrss is a
+    # kernel high-water counter. Linux does not promise synchronous, identical
+    # accounting between these two interfaces. Preserve their raw values and
+    # units; do not reject valid measurements merely because VmRSS briefly
+    # exceeds the separately reported high-water value.
     cases = report.get("cases")
     if not isinstance(cases, list) or not cases:
         raise ValueError("missing comparison cases")
