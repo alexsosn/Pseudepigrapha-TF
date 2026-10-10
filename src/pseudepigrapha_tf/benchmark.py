@@ -13,6 +13,8 @@ from statistics import median
 from time import perf_counter_ns
 from typing import Callable, Iterable
 
+from .release_identity import TF_DATA_VERSION
+
 
 def _peak_rss() -> dict[str, int | str | None]:
     """Return process high-water RSS with its platform-dependent raw units."""
@@ -113,6 +115,7 @@ def benchmark_comparison_client(
 
     return {
         "source_commit": source_commit,
+        "tf_data_version": TF_DATA_VERSION,
         "setup_seconds": round(float(setup_seconds), 3),
         "setup_scope": "web app setup after an earlier in-process TF API load",
         "scope": "in-process Flask test_client, includes HTML response generation",
