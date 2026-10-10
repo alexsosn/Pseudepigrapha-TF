@@ -3,6 +3,8 @@ from __future__ import annotations
 from hashlib import sha256
 import json
 import subprocess
+import importlib.util
+from pathlib import Path
 
 import pytest
 
@@ -35,9 +37,14 @@ class FakeClient:
 
 
 def module():
-    from scripts import matched_comparison_benchmark
-
-    return matched_comparison_benchmark
+    # CI invokes the pytest console script, where the repo root is not
+    # necessarily on sys.path. Import the maintainer CLI by its tracked path.
+    path = Path(__file__).resolve().parents[1] / "scripts" / "matched_comparison_benchmark.py"
+    spec = importlib.util.spec_from_file_location("matched_comparison_benchmark", path)
+    assert spec is not None and spec.loader is not None
+    implementation = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(implementation)
+    return implementation
 
 
 def _one_case():
