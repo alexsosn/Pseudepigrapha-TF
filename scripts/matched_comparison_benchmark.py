@@ -348,6 +348,9 @@ def _parent_report(args) -> dict[str, object]:
         raise ValueError("comparison revisions must be separate checkouts")
     baseline_sha = _commit_sha(baseline_root)
     candidate_sha = _commit_sha(candidate_root)
+    candidate_head_sha = args.candidate_head_sha or candidate_sha
+    if re.fullmatch(r"[0-9a-f]{40}", candidate_head_sha) is None:
+        raise ValueError("candidate head SHA must be an exact commit identifier")
     if baseline_sha != BASELINE_SHA:
         raise ValueError("baseline checkout must be the verified pre-cache v1.0.0 commit")
     verify_corpus_report(data_dir, args.source_commit)
@@ -396,6 +399,7 @@ def _parent_report(args) -> dict[str, object]:
         "source_commit": args.source_commit,
         "baseline_commit": baseline_sha,
         "candidate_commit": candidate_sha,
+        "candidate_head_sha": candidate_head_sha,
         "repetitions_per_case": args.repeat_count,
         "limitations": (
             "same runner, sequential fresh Python subprocesses and compiled TF cache; "
@@ -414,6 +418,7 @@ def main() -> None:
     parser.add_argument("--root")
     parser.add_argument("--baseline-root")
     parser.add_argument("--candidate-root")
+    parser.add_argument("--candidate-head-sha")
     parser.add_argument("--tf-dir", required=True)
     parser.add_argument("--app-dir", required=True)
     parser.add_argument("--variant", choices=("baseline", "candidate"))
@@ -442,6 +447,7 @@ def main() -> None:
         print("MATCHED_COMPARISON_SUMMARY_JSON=" + json.dumps({
             "baseline_commit": report["baseline_commit"],
             "candidate_commit": report["candidate_commit"],
+            "candidate_head_sha": report["candidate_head_sha"],
             "source_commit": report["source_commit"],
             "summary": report["summary"],
         }, sort_keys=True), flush=True)
