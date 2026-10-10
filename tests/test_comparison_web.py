@@ -209,7 +209,7 @@ def test_http_requests_reuse_app_scoped_comparison_helpers(monkeypatch):
             return {"context_version": None, "previous": None, "next": None}
 
     def build(api, work, chapter, verse, *, selected_versions=None,
-              selected_witnesses=None, apparatus=None):
+              selected_witnesses=None, apparatus=None, translations=None):
         assert api is tf_app.api
         assert isinstance(apparatus, TrackedApparatus)
         seen.append(("apparatus", apparatus, chapter, verse))
