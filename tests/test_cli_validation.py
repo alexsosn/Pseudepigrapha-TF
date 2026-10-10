@@ -38,11 +38,13 @@ def _copy_source_fixture(tmp_path):
     return source_dir
 
 
-def _write_stub_tf(data, output_dir):
+def _write_stub_tf(data, output_dir, *, after_install=None):
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
     (output_dir / "otype.tf").write_bytes(b"@node\n@valueType=str\n1\tword\n")
     (output_dir / "oslots.tf").write_bytes(b"@edge\n1\t1\n")
+    if after_install is not None:
+        after_install()
     return True
 
 
@@ -123,7 +125,7 @@ def test_cli_does_not_replace_existing_report_when_tf_serialization_fails(monkey
     old_report = b'{"status":"previous-success"}\n'
     report_path.write_bytes(old_report)
 
-    monkeypatch.setattr(cli, "_write_prevalidated_tf", lambda data, output_dir: False)
+    monkeypatch.setattr(cli, "_write_prevalidated_tf", lambda data, output_dir, **kwargs: False)
 
     with pytest.raises(SystemExit, match="Text-Fabric refused the generated dataset"):
         cli.main(
@@ -149,7 +151,7 @@ def test_cli_preserves_explicit_report_when_tf_serialization_fails(monkeypatch, 
     old_report = b'{"status":"previous-explicit-success"}\n'
     report_path.write_bytes(old_report)
 
-    monkeypatch.setattr(cli, "_write_prevalidated_tf", lambda data, output_dir: False)
+    monkeypatch.setattr(cli, "_write_prevalidated_tf", lambda data, output_dir, **kwargs: False)
 
     with pytest.raises(SystemExit, match="Text-Fabric refused the generated dataset"):
         cli.main(
