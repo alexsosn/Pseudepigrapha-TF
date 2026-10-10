@@ -163,3 +163,22 @@ def test_corpus_report_rejects_wrong_commit_and_failed_semantic_parity(tmp_path)
 def test_abba_schedule_has_isolated_four_runs_not_concurrent_reuse():
     assert module().ABBA_SCHEDULE == ('baseline', 'candidate', 'candidate', 'baseline')
 
+
+
+
+def test_independent_linux_rss_counters_are_not_orderable():
+    """VmRSS and ru_maxrss are sampled through different kernel accounting paths.
+
+    Reject negative/wrong-unit metrics, but preserve the raw measurements even
+    when a high-water counter lags a separately observed current resident set.
+    """
+    m = module()
+    before = _record('baseline', 'base')
+    after = _record('candidate', 'new')
+    before['memory']['peak_rss_kib'] = 205
+    after['memory']['peak_rss_kib'] = 205
+    # Both after-requests VmRSS observations remain at 220 KiB.
+    assert m.validate_pair(
+        before, after, baseline_sha='base', candidate_sha='new',
+        source_commit='ocp-pin',
+    )['enoch']['candidate_warm_median_ms'] == 1.15
