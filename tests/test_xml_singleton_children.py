@@ -41,7 +41,6 @@ def _duplicate(parent: ET.Element, tag: str) -> None:
 
 @pytest.mark.parametrize(("parent_path", "tag"), (
     ("version", "divisions"),
-    ("version", "manuscripts"),
     ("version", "text"),
     ("version/manuscripts/ms", "name"),
     ("version/resources/resource", "URL"),
@@ -58,7 +57,7 @@ def test_modern_duplicate_singleton_element_is_rejected(parent_path, tag):
         parse_bytes(ET.tostring(root), source_path="duplicate-modern.xml")
 
 
-@pytest.mark.parametrize("tag", ("manuscripts", "text"))
+@pytest.mark.parametrize("tag", ("text",))
 def test_legacy_root_duplicate_singleton_is_rejected(tag):
     root = ET.fromstring((FIXTURES / "legacy.xml").read_bytes())
     _duplicate(root, tag)
@@ -80,7 +79,7 @@ def _wrapped_legacy_root() -> ET.Element:
     return root
 
 
-@pytest.mark.parametrize("tag", ("manuscripts", "text"))
+@pytest.mark.parametrize("tag", ("text",))
 def test_wrapped_legacy_version_duplicate_singleton_is_rejected(tag):
     root = _wrapped_legacy_root()
     version = root.find("version")
@@ -144,3 +143,71 @@ def test_intentionally_repeatable_source_children_stay_lossless():
 def test_unmodified_modern_and_legacy_examples_remain_parseable():
     assert parse_file(FIXTURES / "sample.xml").versions
     assert parse_file(FIXTURES / "legacy.xml").versions
+
+
+def _append_distinct_manuscript_group(container, *, abbreviation="HI"):
+    """A second source-declared manuscript with its own edition metadata."""
+    group = ET.SubElement(container, "manuscripts")
+    ms = ET.SubElement(group, "ms", {
+        "abbrev": abbreviation, "language": "Greek", "show": "no",
+    })
+    ET.SubElement(ms, "name").text = f"Declared {abbreviation}"
+    ET.SubElement(ms, "bibliography").text = f"Edition for {abbreviation}"
+    return group
+
+
+@pytest.mark.parametrize("dialect", ("modern", "legacy", "wrapped-legacy"))
+def test_multiple_manuscript_groups_preserve_every_declared_record(dialect):
+    if dialect == "modern":
+        root = ET.fromstring((FIXTURES / "sample.xml").read_bytes())
+        owner = root.find("version")
+        existing = {"A", "B", "C"}
+    elif dialect == "legacy":
+        root = ET.fromstring((FIXTURES / "legacy.xml").read_bytes())
+        owner = root
+        existing = {"A"}
+    else:
+        root = _wrapped_legacy_root()
+        owner = root.find("version")
+        existing = {"A"}
+    assert owner is not None
+
+    _append_distinct_manuscript_group(owner)
+    book = parse_bytes(ET.tostring(root), source_path=f"{dialect}.xml")
+    manuscripts = book.versions[0].manuscripts
+    assert {ms.abbrev for ms in manuscripts} == existing | {"HI"}
+    new = next(ms for ms in manuscripts if ms.abbrev == "HI")
+    assert new.language == "Greek"
+    assert new.show == "no"
+    assert new.name == "Declared HI"
+    assert new.bibliography == ("Edition for HI",)
+
+
+def test_raw_xml_inventory_includes_second_manuscript_group(tmp_path):
+    root = ET.fromstring((FIXTURES / "sample.xml").read_bytes())
+    owner = root.find("version")
+    assert owner is not None
+    _append_distinct_manuscript_group(owner)
+    (tmp_path / "extra-manuscripts.xml").write_bytes(ET.tostring(root))
+
+    raw = audit._raw_inventory(tmp_path)
+    manuscripts = [
+        record for record in raw["manuscripts"]
+        if record["ocp_book"] == "Sample"
+    ]
+    assert {ms["abbrev"] for ms in manuscripts} == {"A", "B", "C", "HI"}
+    row = next(ms for ms in manuscripts if ms["abbrev"] == "HI")
+    assert row["name"] == "Declared HI"
+    assert row["bibliography"] == ["Edition for HI"]
+
+
+def test_duplicate_manuscript_abbrev_across_distinct_groups_fails_closed():
+    root = ET.fromstring((FIXTURES / "sample.xml").read_bytes())
+    owner = root.find("version")
+    assert owner is not None
+    _append_distinct_manuscript_group(owner, abbreviation="A")
+    with pytest.raises(
+        InvalidSourceError,
+        match=r"across-groups[.]xml.*duplicate manuscript abbreviation 'A' across",
+    ):
+        parse_bytes(ET.tostring(root), source_path="across-groups.xml")
