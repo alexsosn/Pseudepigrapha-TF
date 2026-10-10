@@ -283,3 +283,26 @@ def test_navigation_indexes_do_not_share_state_between_different_tf_apis():
     with pytest.raises(KeyError, match="no source versions"):
         second.neighbors("Work", 1, 2)
     assert second.neighbors("Other", 1, 2)["context_version"] == "Work__A"
+
+
+def test_navigation_cache_rejects_duplicate_address_only_when_requested():
+    api = navigation_api()
+    api.L.descendants[1] = (101, 102, 102, 103)
+    navigator = comparison.PassageNavigator(api)
+
+    # Duplicate unrelated addresses historically do not invalidate this request.
+    first = navigator.neighbors("Work", 1, 1, preferred_versions=("Work__A",))
+    assert first["next"] == ("1", "2")
+    with pytest.raises(ValueError, match="duplicate TF passage address"):
+        navigator.neighbors("Work", 1, 2, preferred_versions=("Work__A",))
+
+
+def test_navigation_cache_fails_closed_on_foreign_verse_section():
+    api = navigation_api()
+    api.T.SECTIONS = {
+        **api.T.SECTIONS,
+        102: ("Wrong__Book", "1", "2"),
+    }
+    navigator = comparison.PassageNavigator(api)
+    with pytest.raises(ValueError, match="belongs to section"):
+        navigator.neighbors("Work", 1, 1, preferred_versions=("Work__A",))
