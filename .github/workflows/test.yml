@@ -499,6 +499,7 @@ jobs:
             --baseline-root /tmp/pseudepigrapha-tf-pre-cache \
             --candidate-root "$GITHUB_WORKSPACE" \
             --tf-dir /tmp/pseudepigrapha-tf/1.0 \
+            --app-dir "$GITHUB_WORKSPACE/app" \
             --repeat-count 5 \
             --timeout-seconds 180 \
             --output /tmp/pseudepigrapha-tf-matched-comparison.json
