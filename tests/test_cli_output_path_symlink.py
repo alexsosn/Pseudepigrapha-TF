@@ -81,13 +81,15 @@ def test_cli_accepts_real_output_directory(monkeypatch, tmp_path):
     output = tmp_path / "tf"
     writer_calls = 0
 
-    def writer(data, output_dir):
+    def writer(data, output_dir, *, after_install=None):
         nonlocal writer_calls
         writer_calls += 1
         target = Path(output_dir)
         target.mkdir(parents=True, exist_ok=True)
         (target / "otype.tf").write_bytes(b"@node\n\n1\tword\n")
         (target / "oslots.tf").write_bytes(b"@edge\n\n")
+        if after_install is not None:
+            after_install()
         return True
 
     monkeypatch.setattr(cli, "_write_prevalidated_tf", writer)
@@ -108,12 +110,14 @@ def test_cli_accepts_real_output_reached_through_symlinked_parent(monkeypatch, t
     assert not output.is_symlink()
     writer_calls = 0
 
-    def writer(data, output_dir):
+    def writer(data, output_dir, *, after_install=None):
         nonlocal writer_calls
         writer_calls += 1
         target = Path(output_dir)
         (target / "otype.tf").write_bytes(b"@node\n\n1\tword\n")
         (target / "oslots.tf").write_bytes(b"@edge\n\n")
+        if after_install is not None:
+            after_install()
         return True
 
     monkeypatch.setattr(cli, "_write_prevalidated_tf", writer)
@@ -133,12 +137,14 @@ def test_cli_accepts_dotdot_spelling_of_real_output(monkeypatch, tmp_path):
     assert not output.is_symlink()
     writer_calls = 0
 
-    def writer(data, output_dir):
+    def writer(data, output_dir, *, after_install=None):
         nonlocal writer_calls
         writer_calls += 1
         target = Path(output_dir)
         (target / "otype.tf").write_bytes(b"@node\n\n1\tword\n")
         (target / "oslots.tf").write_bytes(b"@edge\n\n")
+        if after_install is not None:
+            after_install()
         return True
 
     monkeypatch.setattr(cli, "_write_prevalidated_tf", writer)
