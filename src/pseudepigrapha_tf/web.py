@@ -6,9 +6,10 @@ from typing import Any
 
 from flask import Response, request
 
+from .apparatus import Apparatus
 from .comparison import (
+    PassageNavigator,
     build_passage_comparison,
-    passage_neighbors,
     render_passage_comparison,
 )
 from .release_identity import TF_DATA_VERSION
@@ -106,6 +107,11 @@ def register_comparison_route(flask_app: Any, tf_app: Any) -> Any:
     if "pseudepigrapha_compare" in flask_app.view_functions:
         return flask_app
 
+    # These helpers own only caches derived from this loaded Text-Fabric API.
+    # Keep them for the lifetime of this app rather than rebuilding per HTTP request.
+    apparatus = Apparatus(tf_app.api)
+    navigator = PassageNavigator(tf_app.api)
+
     @flask_app.get("/compare", endpoint="pseudepigrapha_compare")
     def compare_passage():
         work = (request.args.get("work") or "").strip()
@@ -126,12 +132,12 @@ def register_comparison_route(flask_app: Any, tf_app: Any) -> Any:
                 verse,
                 selected_versions=selected_versions or None,
                 selected_witnesses=selected_witnesses,
+                apparatus=apparatus,
             )
             # The normal builder always exposes version choices. Keep route unit
             # tests free to substitute a deliberately tiny fake model.
             if "version_choices" in model:
-                model["navigation"] = passage_neighbors(
-                    tf_app.api,
+                model["navigation"] = navigator.neighbors(
                     work,
                     chapter,
                     verse,

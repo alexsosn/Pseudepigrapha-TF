@@ -546,3 +546,11 @@ def test_html_renders_selected_not_present_source_as_a_comparison_card():
     assert 'class="state-not-present"' in html
     assert "not present" in html.lower()
     assert "Coptic metadata only" in html
+
+
+def test_comparison_rejects_apparatus_bound_to_different_tf_api():
+    other_api = object()
+    with pytest.raises(ValueError, match="different Text-Fabric API"):
+        comparison.build_passage_comparison(
+            object(), "Work", "1", "2", apparatus=FakeApparatus(other_api)
+        )
