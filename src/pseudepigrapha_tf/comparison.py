@@ -63,6 +63,124 @@ def comparison_href(
     return f"/compare?{urlencode(pairs)}"
 
 
+class PassageNavigator:
+    """Cache source-version topology for navigation on one loaded TF API."""
+
+    def __init__(self, api: Any) -> None:
+        self.api = api
+        self._work_nodes = None
+        self._source_books = {}
+        self._verse_sections = {}
+
+    def neighbors(
+        self,
+        work: object,
+        chapter: object,
+        verse: object,
+        *,
+        preferred_versions: Iterable[object] = (),
+    ) -> dict[str, object]:
+        """Find passage neighbors, preferring real source versions in the requested order."""
+
+        work_text = str(work)
+        section_pair = (str(chapter), str(verse))
+        otype = getattr(self.api.F, "otype", None)
+        books_for_type = getattr(otype, "s", None) if otype is not None else None
+        ocp_book = getattr(self.api.F, "ocp_book", None)
+        if books_for_type is None or ocp_book is None:
+            raise ValueError("otype and ocp_book features must be loaded for passage navigation")
+        version_kind = getattr(self.api.F, "version_kind", None)
+
+        if self._work_nodes is None:
+            by_work: dict[str, list[int]] = {}
+            for book_node in books_for_type("book"):
+                by_work.setdefault(str(ocp_book.v(book_node) or ""), []).append(book_node)
+            self._work_nodes = by_work
+
+        if work_text not in self._source_books:
+            source_books: dict[str, int] = {}
+            for book_node in self._work_nodes.get(work_text, ()):
+                if version_kind is not None and version_kind.v(book_node) == "generated_translation":
+                    continue
+                section = self.api.T.sectionFromNode(book_node)
+                if not section or not section[0]:
+                    raise ValueError(
+                        f"cannot resolve TF source-version section id for book node {book_node}"
+                    )
+                version_id = str(section[0])
+                if version_id in source_books:
+                    raise ValueError(
+                        f"duplicate source-version section id for navigation: {version_id!r}"
+                    )
+                source_books[version_id] = book_node
+            self._source_books[work_text] = source_books
+
+        source_books = self._source_books[work_text]
+        if not source_books:
+            raise KeyError(
+                f"OCP work has no source versions in loaded Text-Fabric data: {work_text!r}"
+            )
+
+        preferred = tuple(
+            version_id
+            for version_id in _unique_strings(preferred_versions)
+            if version_id in source_books
+        )
+        candidates = preferred + tuple(
+            version_id for version_id in source_books if version_id not in preferred
+        )
+
+        for version_id in candidates:
+            book_node = source_books[version_id]
+            if book_node not in self._verse_sections:
+                verse_nodes = tuple(self.api.L.d(book_node, otype="verse"))
+                verse_index = getattr(self.api.F, "verse_index", None)
+                if verse_index is not None:
+                    verse_nodes = tuple(
+                        sorted(verse_nodes, key=lambda node: (verse_index.v(node) or 0, node))
+                    )
+
+                sections: list[tuple[str, str]] = []
+                positions: dict[tuple[str, str], list[int]] = {}
+                for index, verse_node in enumerate(verse_nodes):
+                    section = self.api.T.sectionFromNode(verse_node)
+                    if not section or len(section) < 3:
+                        raise ValueError(
+                            f"cannot resolve TF passage section for verse node {verse_node}"
+                        )
+                    if str(section[0]) != version_id:
+                        raise ValueError(
+                            f"verse node {verse_node} belongs to section {section[0]!r}, "
+                            f"expected {version_id!r}"
+                        )
+                    pair = (str(section[1]), str(section[2]))
+                    sections.append(pair)
+                    positions.setdefault(pair, []).append(index)
+                self._verse_sections[book_node] = (
+                    tuple(sections),
+                    {pair: tuple(indexes) for pair, indexes in positions.items()},
+                )
+
+            sections, positions = self._verse_sections[book_node]
+            current_positions = positions.get(section_pair, ())
+            if not current_positions:
+                continue
+            if len(current_positions) != 1:
+                raise ValueError(
+                    f"source version {version_id!r} has duplicate TF passage address "
+                    f"{section_pair!r}"
+                )
+
+            current = current_positions[0]
+            return {
+                "context_version": version_id,
+                "previous": sections[current - 1] if current > 0 else None,
+                "next": sections[current + 1] if current + 1 < len(sections) else None,
+            }
+
+        return {"context_version": None, "previous": None, "next": None}
+
+
 def passage_neighbors(
     api: Any,
     work: object,
@@ -71,90 +189,11 @@ def passage_neighbors(
     *,
     preferred_versions: Iterable[object] = (),
 ) -> dict[str, object]:
-    """Resolve previous/next passage from one real source-version section topology.
+    """Resolve previous/next passage from one real source-version section topology."""
 
-    Generated translations never participate. Preferred source versions are tried
-    first, but a preferred version that lacks the current passage is skipped in
-    favor of another source version of the same OCP work that actually contains it.
-    """
-
-    work_text = str(work)
-    chapter_text = str(chapter)
-    verse_text = str(verse)
-
-    otype = getattr(api.F, "otype", None)
-    books_for_type = getattr(otype, "s", None) if otype is not None else None
-    ocp_book = getattr(api.F, "ocp_book", None)
-    if books_for_type is None or ocp_book is None:
-        raise ValueError("otype and ocp_book features must be loaded for passage navigation")
-
-    version_kind = getattr(api.F, "version_kind", None)
-    source_books: dict[str, int] = {}
-    for book_node in books_for_type("book"):
-        if str(ocp_book.v(book_node) or "") != work_text:
-            continue
-        if version_kind is not None and version_kind.v(book_node) == "generated_translation":
-            continue
-        section = api.T.sectionFromNode(book_node)
-        if not section or not section[0]:
-            raise ValueError(f"cannot resolve TF source-version section id for book node {book_node}")
-        version_id = str(section[0])
-        if version_id in source_books:
-            raise ValueError(f"duplicate source-version section id for navigation: {version_id!r}")
-        source_books[version_id] = book_node
-
-    if not source_books:
-        raise KeyError(f"OCP work has no source versions in loaded Text-Fabric data: {work_text!r}")
-
-    preferred = tuple(
-        version_id
-        for version_id in _unique_strings(preferred_versions)
-        if version_id in source_books
+    return PassageNavigator(api).neighbors(
+        work, chapter, verse, preferred_versions=preferred_versions
     )
-    candidates = preferred + tuple(
-        version_id for version_id in source_books if version_id not in preferred
-    )
-
-    for version_id in candidates:
-        book_node = source_books[version_id]
-        verse_nodes = tuple(api.L.d(book_node, otype="verse"))
-        verse_index = getattr(api.F, "verse_index", None)
-        if verse_index is not None:
-            verse_nodes = tuple(
-                sorted(verse_nodes, key=lambda node: (verse_index.v(node) or 0, node))
-            )
-
-        sections: list[tuple[str, str]] = []
-        current_positions: list[int] = []
-        for index, verse_node in enumerate(verse_nodes):
-            section = api.T.sectionFromNode(verse_node)
-            if not section or len(section) < 3:
-                raise ValueError(f"cannot resolve TF passage section for verse node {verse_node}")
-            if str(section[0]) != version_id:
-                raise ValueError(
-                    f"verse node {verse_node} belongs to section {section[0]!r}, expected {version_id!r}"
-                )
-            section_pair = (str(section[1]), str(section[2]))
-            sections.append(section_pair)
-            if section_pair == (chapter_text, verse_text):
-                current_positions.append(index)
-
-        if not current_positions:
-            continue
-        if len(current_positions) != 1:
-            raise ValueError(
-                f"source version {version_id!r} has duplicate TF passage address "
-                f"{(chapter_text, verse_text)!r}"
-            )
-
-        current = current_positions[0]
-        return {
-            "context_version": version_id,
-            "previous": sections[current - 1] if current > 0 else None,
-            "next": sections[current + 1] if current + 1 < len(sections) else None,
-        }
-
-    return {"context_version": None, "previous": None, "next": None}
 
 
 def _showable_witness(record: Mapping[str, object]) -> bool:
@@ -315,6 +354,7 @@ def build_passage_comparison(
     *,
     selected_versions: Iterable[str] | None = None,
     selected_witnesses: Mapping[str, Iterable[str]] | None = None,
+    apparatus: Apparatus | None = None,
 ) -> dict[str, object]:
     """Build a verse-centered comparison from public apparatus/translation APIs.
 
@@ -327,7 +367,10 @@ def build_passage_comparison(
     chapter = str(chapter)
     verse = str(verse)
 
-    apparatus = Apparatus(api)
+    if apparatus is None:
+        apparatus = Apparatus(api)
+    elif apparatus.api is not api:
+        raise ValueError("comparison Apparatus belongs to a different Text-Fabric API")
     translations = Translations(api)
     work_passage = apparatus.work_passage(work, chapter, verse)
 
