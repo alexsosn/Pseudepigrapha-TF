@@ -23,7 +23,7 @@ from pinned_translation_acceptance import verify as verify_translations
 
 
 FEATURES = (
-    "reading_text ms_abbrev ms_language ms_name ms_show undefined_manuscript "
+    "reading_text ms_abbrev ms_language ms_name ms_show bibliography undefined_manuscript "
     "synthetic_witness source_ref is_primary unit_id unit_index "
     "prefix_utf8 g_word_utf8 trailer_utf8 boundary_utf8 version_title version_id "
     "version_kind generated_language generation_marker generation_method generation_model "
@@ -59,6 +59,23 @@ def verify(tf_dir: Path) -> None:
     TF = Fabric(locations=[str(tf_dir)], modules=[""], silent="deep")
     api = TF.load(FEATURES, silent="deep")
     assert api is not None
+
+    # Pinned upstream TSol.xml / Greek declares four *separate* manuscript
+    # containers. HI/L/VW each occur in real reading witness citations;
+    # they must be declared scholarly manuscripts, not synthetic undefined
+    # witness nodes from a first-container-only parser.
+    tsol_manuscripts = [
+        n for n in api.F.otype.s("manuscript")
+        if api.F.ocp_book.v(n) == "TSol" and api.F.version_title.v(n) == "Greek"
+    ]
+    for abbrev, shown in (("McCown", "yes"), ("HI", "no"), ("L", "no"), ("VW", "no")):
+        matching = [n for n in tsol_manuscripts if api.F.ms_abbrev.v(n) == abbrev]
+        assert len(matching) == 1, (abbrev, matching)
+        manuscript = matching[0]
+        assert not (api.F.undefined_manuscript.v(manuscript) or 0), abbrev
+        assert api.F.ms_name.v(manuscript) == abbrev
+        assert api.F.ms_show.v(manuscript) == shown
+        assert "C. C. McCown" in (api.F.bibliography.v(manuscript) or "")
 
     model = build_passage_comparison(
         api,
