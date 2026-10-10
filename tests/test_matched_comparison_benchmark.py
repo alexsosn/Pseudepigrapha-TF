@@ -142,12 +142,12 @@ def test_matched_results_reject_any_version_provenance_status_or_html_drift():
 def test_corpus_report_rejects_wrong_commit_and_failed_semantic_parity(tmp_path):
     m = module()
     report = tmp_path / 'conversion-report.json'
-    report.write_text(json.dumps({'status': 'ok', 'provenance': {'upstream_commit': 'source'},
+    report.write_text(json.dumps({'status': 'ok', 'provenance': {'upstream_commit': 'source', 'source_identity_status': 'verified'},
                                   'semantic_checks': {'version': True}}))
     assert m.verify_corpus_report(tmp_path, 'source') is None
     with pytest.raises(ValueError, match='source commit'):
         m.verify_corpus_report(tmp_path, 'wrong')
-    report.write_text(json.dumps({'status': 'ok', 'provenance': {'upstream_commit': 'source'},
+    report.write_text(json.dumps({'status': 'ok', 'provenance': {'upstream_commit': 'source', 'source_identity_status': 'verified'},
                                   'semantic_checks': {'version': False}}))
     with pytest.raises(ValueError, match='semantic'):
         m.verify_corpus_report(tmp_path, 'source')
