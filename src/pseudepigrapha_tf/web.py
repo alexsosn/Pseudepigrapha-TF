@@ -114,13 +114,21 @@ def register_comparison_route(flask_app: Any, tf_app: Any) -> Any:
     navigator = PassageNavigator(tf_app.api)
     translations = Translations(tf_app.api)
 
+    # The loaded TF API is immutable for this Flask app's lifetime. Build the
+    # escaped landing markup on first use only; specific passage requests never
+    # need its book inventory. A failed render leaves the cache unpopulated.
+    landing_html: str | None = None
+
     @flask_app.get("/compare", endpoint="pseudepigrapha_compare")
     def compare_passage():
         work = (request.args.get("work") or "").strip()
         chapter = (request.args.get("chapter") or "").strip()
         verse = (request.args.get("verse") or "").strip()
         if not (work and chapter and verse):
-            return Response(_landing_html(tf_app.api), mimetype="text/html")
+            nonlocal landing_html
+            if landing_html is None:
+                landing_html = _landing_html(tf_app.api)
+            return Response(landing_html, mimetype="text/html")
 
         selected_versions = tuple(
             value for value in request.args.getlist("version") if value

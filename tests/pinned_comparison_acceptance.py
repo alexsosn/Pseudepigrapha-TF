@@ -5,6 +5,7 @@ import json
 from time import perf_counter
 from pathlib import Path
 import sys
+from unittest.mock import patch
 from urllib.parse import quote
 
 from tf.fabric import Fabric
@@ -15,6 +16,7 @@ from pseudepigrapha_tf.comparison import (
     render_passage_comparison,
 )
 from pseudepigrapha_tf.release_identity import TF_DATA_VERSION
+from pseudepigrapha_tf import web
 from pseudepigrapha_tf.web import load_local_comparison_web_app
 from pinned_classification_acceptance import verify as verify_classifications
 from pinned_translation_acceptance import verify as verify_translations
@@ -135,6 +137,21 @@ def verify(tf_dir: Path) -> None:
         benchmark_json + "\n", encoding="utf-8"
     )
     print("COMPARISON_BENCHMARK_JSON=" + benchmark_json, flush=True)
+
+    # Genuine complete OCP corpus: the landing inventory is built only on
+    # first use, excludes absent/zero-byte 3Macc and generated translations,
+    # and is reused for plain/incomplete comparison requests in this app.
+    # Patch only the counting boundary: HTML is rendered by the *real* loader.
+    with patch.object(web, "_landing_html", wraps=web._landing_html) as render_landing:
+        first_landing = _get(client, "/compare")
+        repeated_landing = _get(client, "/compare?chapter=1")
+        repeated_landing_again = _get(client, "/compare?work=1En")
+    assert render_landing.call_count == 1
+    assert first_landing == repeated_landing == repeated_landing_again
+    assert '<option value="1En">1En</option>' in first_landing
+    assert '<option value="TJob">TJob</option>' in first_landing
+    assert '<option value="3Macc">' not in first_landing
+    assert 'name="chapter"' in first_landing and 'name="verse"' in first_landing
 
     # Real route: ordinary passage, large witness inventory, metadata-only
     # sibling version, and Previous/Next navigation all coexist without
