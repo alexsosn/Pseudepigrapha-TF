@@ -138,7 +138,6 @@ def register_comparison_route(flask_app: Any, tf_app: Any) -> Any:
             # tests free to substitute a deliberately tiny fake model.
             if "version_choices" in model:
                 model["navigation"] = navigator.neighbors(
-                    tf_app.api,
                     work,
                     chapter,
                     verse,
