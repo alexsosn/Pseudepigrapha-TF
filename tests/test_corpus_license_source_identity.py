@@ -16,7 +16,7 @@ def test_cli_override_cannot_verify_license_for_non_git_source(monkeypatch, tmp_
 
     captured = {}
 
-    def capture_writer(data, output_dir):
+    def capture_writer(data, output_dir, *, after_install=None):
         captured.update(data.metadata[""])
         output = Path(output_dir)
         output.mkdir(parents=True, exist_ok=True)
@@ -24,6 +24,8 @@ def test_cli_override_cannot_verify_license_for_non_git_source(monkeypatch, tmp_
             "@node\n@valueType=str\n\n1\tword\n",
             encoding="utf-8",
         )
+        if after_install is not None:
+            after_install()
         return True
 
     monkeypatch.setattr(cli, "_write_prevalidated_tf", capture_writer)
