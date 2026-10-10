@@ -498,6 +498,7 @@ jobs:
           python scripts/matched_comparison_benchmark.py \
             --baseline-root /tmp/pseudepigrapha-tf-pre-cache \
             --candidate-root "$GITHUB_WORKSPACE" \
+            --candidate-head-sha "${{ github.event.pull_request.head.sha }}" \
             --tf-dir /tmp/pseudepigrapha-tf/1.0 \
             --app-dir "$GITHUB_WORKSPACE/app" \
             --repeat-count 5 \
