@@ -269,3 +269,17 @@ def test_navigation_index_reuses_work_and_verse_topology_between_passages():
     assert calls["verse_descendants"] == 2
     # Both source versions are resolved once; generated translation is excluded.
     assert calls["sections"] == 2 + 2 + 3
+
+
+def test_navigation_indexes_do_not_share_state_between_different_tf_apis():
+    first_api = navigation_api()
+    second_api = navigation_api()
+    for node in (1, 2, 3):
+        second_api.F.ocp_book.values[node] = "Other"
+
+    first = comparison.PassageNavigator(first_api)
+    second = comparison.PassageNavigator(second_api)
+    assert first.neighbors("Work", 1, 2)["context_version"] == "Work__A"
+    with pytest.raises(KeyError, match="no source versions"):
+        second.neighbors("Work", 1, 2)
+    assert second.neighbors("Other", 1, 2)["context_version"] == "Work__A"
