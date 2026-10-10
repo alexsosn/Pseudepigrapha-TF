@@ -309,12 +309,12 @@ def validate_source_structure(
             # XML pretty-print indentation is fine, but unmodeled words under
             # structural nodes would disappear from both graph and raw audit.
             # Only XML S (#x20, #x9, #xD, #xA) is formatting whitespace.\n            # Python isspace() also accepts NBSP and Unicode separators, whose\n            # silent removal would lose actual source characters.\n            # Child tails belong to their *parent*, not to a reading child.
-            if parent.text and parent.text.strip(" \\t\\r\\n"):
+            if parent.text and parent.text.strip(" \t\r\n"):
                 raise SourceStructureError(
                     f"{location}: unsupported <{parent.tag}> direct text at {path}"
                 )
             for child in children:
-                if child.tail and child.tail.strip(" \\t\\r\\n"):
+                if child.tail and child.tail.strip(" \t\r\n"):
                     raise SourceStructureError(
                         f"{location}: unsupported <{parent.tag}> child tail "
                         f"after <{child.tag}> at {path}"
