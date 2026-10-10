@@ -167,6 +167,18 @@ LEGACY_ATTRIBUTES: dict[str, frozenset[str] | None] = {
 }
 
 
+# These elements organize XML children but do not carry researcher-visible
+# character content in the OCP converter. ET.text and direct-child ET.tail
+# are otherwise silently dropped by the source parser, so unexpected non-
+# whitespace here must fail closed. Content-bearing elements (reading/w,
+# name/sup, bibliography/booktitle, division, info, URL, elipsis) are
+# intentionally omitted: their text and inline tails are explicitly consumed.
+STRUCTURAL_ONLY_ELEMENTS = frozenset({
+    "book", "version", "divisions", "resources", "resource",
+    "manuscripts", "ms", "text", "div", "unit", "chapter", "verse",
+})
+
+
 def validate_source_structure(
     root: ET.Element,
     *,
@@ -293,6 +305,23 @@ def validate_source_structure(
                     )
 
         children = list(parent)
+        if parent.tag in STRUCTURAL_ONLY_ELEMENTS:
+            # XML pretty-print indentation is fine, but unmodeled words under
+            # structural nodes would disappear from both graph and raw audit.
+            # Only XML S (#x20, #x9, #xD, #xA) is formatting whitespace.
+            # Python isspace() also accepts NBSP and Unicode separators, whose
+            # silent removal would lose actual source characters.
+            # Child tails belong to their *parent*, not to a reading child.
+            if parent.text and parent.text.strip(" \t\r\n"):
+                raise SourceStructureError(
+                    f"{location}: unsupported <{parent.tag}> direct text at {path}"
+                )
+            for child in children:
+                if child.tail and child.tail.strip(" \t\r\n"):
+                    raise SourceStructureError(
+                        f"{location}: unsupported <{parent.tag}> child tail "
+                        f"after <{child.tag}> at {path}"
+                    )
         for child in children:
             if child.tag not in allowed:
                 raise SourceStructureError(
