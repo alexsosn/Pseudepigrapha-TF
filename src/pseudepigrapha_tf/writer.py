@@ -178,7 +178,12 @@ def _rollback_tf_features(output: Path, backup: Path, original_names: frozenset[
         path.replace(output / path.name)
 
 
-def _install_staged_tf_features(stage: Path, output: Path) -> None:
+def _install_staged_tf_features(
+    stage: Path,
+    output: Path,
+    *,
+    after_install: Callable[[], None] | None = None,
+) -> None:
     """Install one staged TF generation and restore the previous set on failure.
 
     The stage and backup are siblings of ``output``, so normal ``Path.replace``
@@ -197,6 +202,12 @@ def _install_staged_tf_features(stage: Path, output: Path) -> None:
             path.replace(backup / path.name)
         for path in staged:
             path.replace(output / path.name)
+        # CLI-owned conversions publish the report identifying this exact TF
+        # generation *before* the previous generation's backup is discarded.
+        # A failed report commit therefore uses the same rollback guarantees
+        # as a failed feature rename, with no second dataset copy or save.
+        if after_install is not None:
+            after_install()
     except BaseException as install_error:
         try:
             _rollback_tf_features(output, backup, original_names)
@@ -239,6 +250,7 @@ def _serialize_tf(
     output_dir: str | Path,
     *,
     fabric_factory: Callable[..., _FabricLike] | None = None,
+    after_install: Callable[[], None] | None = None,
 ) -> bool:
     """Serialize data that has already crossed the caller's validation boundary."""
 
@@ -275,6 +287,8 @@ def _serialize_tf(
         )
 
     if not uses_standard_fabric:
+        if after_install is not None:
+            raise ValueError("deferred report publication requires standard Text-Fabric staging")
         return save(output)
 
     # Text-Fabric writes support files in addition to the supplied feature maps
@@ -286,16 +300,21 @@ def _serialize_tf(
     try:
         if not save(stage):
             return False
-        _install_staged_tf_features(stage, output)
+        _install_staged_tf_features(stage, output, after_install=after_install)
         return True
     finally:
         _cleanup_stage_nonfatal(stage)
 
 
-def _write_prevalidated_tf(data: TFData, output_dir: str | Path) -> bool:
+def _write_prevalidated_tf(
+    data: TFData,
+    output_dir: str | Path,
+    *,
+    after_install: Callable[[], None] | None = None,
+) -> bool:
     """Serialize the CLI's freshly generated and already validated graph."""
 
-    return _serialize_tf(data, output_dir)
+    return _serialize_tf(data, output_dir, after_install=after_install)
 
 
 def write_tf(
