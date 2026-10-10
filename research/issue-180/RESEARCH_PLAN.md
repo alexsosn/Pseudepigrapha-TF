@@ -31,3 +31,9 @@ A structural parent with no children but non-whitespace text is equally unsuppor
 - Not preserving unsupported structural free text by misattributing it to a neighboring `reading`.
 - Not banning legitimate mixed text in content-bearing elements.
 - Fail-closed source refreshs may reject previously accepted *lossy* custom XML until a proper mapping is implemented.
+
+## Pre-merge adversarial refinement of the frozen plan
+
+The original plan proposed Python `str.isspace()` to recognize formatting whitespace. Independent inspection of the initial implementation showed that `isspace()` also returns true for U+00A0 NO-BREAK SPACE, U+2007 FIGURE SPACE and U+2028 LINE SEPARATOR, which are **not** the XML 1.0 `S` formatting characters. Those characters can encode meaningful textual evidence and must not be silently discarded even under a structural-only node.
+
+A supplementary **RED-only** test commit `035db127c6e827a3e24e402250cb62584aa5bcf3` (Actions run `38093722761`) verified **6 expected failures, 686 passing tests**, covering all three code points in both direct text and child tails on top of the original 38 failures / 648 passing baseline. The revised implementation compares against exactly `" \\t\\r\\n"` (XML space, tab, CR, LF), preserving standard pretty-printing and rejecting Unicode separators. This refinement does not widen acceptance or change content-bearing mixed-XML handling.
