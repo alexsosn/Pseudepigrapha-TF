@@ -7,7 +7,7 @@ This opt-in experiment addresses [issue #174](https://github.com/alexsosn/Pseude
 - Baseline `v1.0.0`: Git SHA `7c4b757bb543a110ae9a252d1281835859136852`, **before** PRs #166, #168 and #170.
 - Candidate: recorded exact checked-out SHA of current code, including cache changes.
 - Both variants use the same converted TF `1.0` directory from pinned OCP commit `c939dcbacad78c5d18d2c4282cad23c47e19ac07`. The runner refuses missing/mismatched conversion provenance or failed independent semantic checks.
-- Each worker is a **separate sequential Python process** with `PYTHONPATH` bound to its own checkout. No worker loads a second TF API; the same Python executable, installed Text-Fabric dependencies, filesystem and benchmark script are used for both.
+- Each worker is a **separate sequential Python process** with `PYTHONPATH` bound to its own checkout, but both load the **same explicitly selected tracked app directory**. No worker loads a second TF API; the same Python executable, installed Text-Fabric dependencies, filesystem and benchmark script are used for both.
 
 ## One-off CI invocation
 
@@ -30,6 +30,7 @@ python scripts/matched_comparison_benchmark.py \
   --baseline-root /tmp/pseudepigrapha-tf-pre-cache \
   --candidate-root "$PWD" \
   --tf-dir /tmp/pseudepigrapha-tf/1.0 \
+  --app-dir "$PWD/app" \
   --repeat-count 5 \
   --output /tmp/pseudepigrapha-tf-matched-comparison.json
 ```
