@@ -200,3 +200,52 @@ def test_private_passage_context_rejects_generated_units():
             100,
             {},
         )
+
+
+def test_translation_inventory_is_scanned_once_across_filtered_lookups():
+    from collections import Counter
+
+    api = translation_api()
+    calls = Counter()
+    original = api.F.otype.s
+
+    def counted(kind):
+        calls[kind] += 1
+        return original(kind)
+
+    api.F.otype.s = counted
+    helper = Translations(api)
+    first = helper.versions(work="Demo")
+    filtered = helper.versions(work="Demo", language="French")
+    empty = helper.versions(work="Missing")
+    again = helper.versions(work="Demo")
+
+    assert len(first) == len(filtered) == len(again) == 1
+    assert empty == ()
+    assert calls == Counter({"book": 1})
+    first[0]["title"] = "modified by caller"
+    assert helper.versions(work="Demo")[0]["title"] == "Greek (French)"
+
+
+def test_translation_inventory_keeps_unrelated_bad_edges_out_of_filtered_queries():
+    from collections import Counter
+
+    api = translation_api()
+    api.F.otype.values[3] = "book"
+    api.F.version_kind.values[3] = "generated_translation"
+    api.F.ocp_book.values[3] = "Other"
+    api.F.generated_language.values[3] = "English"
+    counts = Counter()
+    original = api.F.otype.s
+
+    def counted(kind):
+        counts[kind] += 1
+        return original(kind)
+
+    api.F.otype.s = counted
+    helper = Translations(api)
+    assert helper.versions(work="Demo")[0]["id"] == "Demo__translation__French"
+    with pytest.raises(ValueError, match="expected exactly 1"):
+        helper.versions(work="Other")
+    assert helper.versions(work="Demo", language="English") == ()
+    assert counts == Counter({"book": 1})
