@@ -273,7 +273,7 @@ def _child_report(args) -> dict[str, object]:
     rss_before = _rss_kib()
     started = perf_counter_ns()
     app = load_local_comparison_web_app(
-        Path(args.tf_dir).resolve(), (root / "app").resolve(),
+        Path(args.tf_dir).resolve(), Path(args.app_dir).resolve(),
         version="1.0", silent="deep",
     )
     setup_s = round((perf_counter_ns() - started) / 1_000_000_000, 3)
@@ -341,6 +341,9 @@ def _parent_report(args) -> dict[str, object]:
     baseline_root = Path(args.baseline_root).resolve()
     candidate_root = Path(args.candidate_root).resolve()
     data_dir = Path(args.tf_dir).resolve()
+    app_dir = Path(args.app_dir).resolve()
+    if not app_dir.is_dir():
+        raise ValueError("benchmark app directory not found")
     if baseline_root == candidate_root:
         raise ValueError("comparison revisions must be separate checkouts")
     baseline_sha = _commit_sha(baseline_root)
@@ -359,6 +362,7 @@ def _parent_report(args) -> dict[str, object]:
             sys.executable, str(script), "--child",
             "--root", str(root),
             "--tf-dir", str(data_dir),
+            "--app-dir", str(app_dir),
             "--variant", variant,
             "--commit", commit,
             "--source-commit", args.source_commit,
@@ -411,6 +415,7 @@ def main() -> None:
     parser.add_argument("--baseline-root")
     parser.add_argument("--candidate-root")
     parser.add_argument("--tf-dir", required=True)
+    parser.add_argument("--app-dir", required=True)
     parser.add_argument("--variant", choices=("baseline", "candidate"))
     parser.add_argument("--commit")
     parser.add_argument("--source-commit", default=SOURCE_SHA)
