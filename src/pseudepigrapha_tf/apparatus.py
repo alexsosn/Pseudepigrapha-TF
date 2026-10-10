@@ -27,6 +27,9 @@ class Apparatus:
 
     def __init__(self, api) -> None:
         self.api = api
+        # TF node membership is stable for the lifetime of a loaded API.
+        self._work_nodes = None
+        self._work_versions_cache = {}
 
     def _feature(self, name: str, node: int, default=None):
         feature = getattr(self.api.F, name, None)
@@ -425,6 +428,43 @@ class Apparatus:
             )
         return self._passage_from_context(reference, verse_node, self._witnesses(book_node))
 
+    def _versions_for_work(self, work: str, ocp_book, version_kind):
+        """Discover versions once, resolving section ids only for the requested work."""
+
+        cached = self._work_versions_cache.get(work)
+        if cached is not None:
+            return cached
+
+        if self._work_nodes is None:
+            textual_by_work: dict[str, list[int]] = {}
+            metadata_by_work: dict[str, list[int]] = {}
+            for node in self.api.F.otype.s("book"):
+                textual_by_work.setdefault(str(ocp_book.v(node) or ""), []).append(node)
+            for node in self.api.F.otype.s("version_metadata"):
+                metadata_by_work.setdefault(str(ocp_book.v(node) or ""), []).append(node)
+            self._work_nodes = (textual_by_work, metadata_by_work)
+
+        textual_by_work, metadata_by_work = self._work_nodes
+        textual_versions = tuple(
+            sorted(
+                (
+                    (self._book_id(node), node)
+                    for node in textual_by_work.get(work, ())
+                    if version_kind is None or version_kind.v(node) != "generated_translation"
+                ),
+                key=lambda item: item[0],
+            )
+        )
+        metadata_nodes = tuple(
+            sorted(
+                metadata_by_work.get(work, ()),
+                key=lambda node: str(self._feature("version_id", node, "")),
+            )
+        )
+        result = (textual_versions, metadata_nodes)
+        self._work_versions_cache[work] = result
+        return result
+
     def work_passage(self, work: str, chapter: str | int, verse: str | int) -> dict[str, object]:
         """Return the requested passage across source/critical OCP versions of one work."""
 
@@ -433,28 +473,7 @@ class Apparatus:
         chapter = str(chapter)
         verse = str(verse)
         version_kind = self._version_kind_feature()
-
-        textual_versions = tuple(
-            sorted(
-                (
-                    (self._book_id(node), node)
-                    for node in self.api.F.otype.s("book")
-                    if str(ocp_book.v(node) or "") == work
-                    and (version_kind is None or version_kind.v(node) != "generated_translation")
-                ),
-                key=lambda item: item[0],
-            )
-        )
-        metadata_nodes = tuple(
-            sorted(
-                (
-                    node
-                    for node in self.api.F.otype.s("version_metadata")
-                    if str(ocp_book.v(node) or "") == work
-                ),
-                key=lambda node: str(self._feature("version_id", node, "")),
-            )
-        )
+        textual_versions, metadata_nodes = self._versions_for_work(work, ocp_book, version_kind)
 
         if not textual_versions and not metadata_nodes:
             raise KeyError(f"OCP work not found in loaded Text-Fabric data: {work!r}")

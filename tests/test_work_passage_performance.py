@@ -184,3 +184,92 @@ def test_work_passage_uses_actual_owner_witnesses_for_mismatched_section_owner()
     assert set(version["witnesses"]) == {"A", "X"}
     assert set(version["passage"]["witnesses"]) == {"B"}
     assert api.E.manuscript_of.t_calls == Counter({1: 1, 2: 2})
+
+
+def test_repeated_work_passages_reuse_version_inventory_and_book_ids():
+    api = work_passage_api()
+    counts = Counter()
+    original = api.F.otype.s
+
+    def counted_nodes(kind):
+        counts[kind] += 1
+        return original(kind)
+
+    api.F.otype.s = counted_nodes
+    apparatus = Apparatus(api)
+
+    first = apparatus.work_passage("Work", "1", "1")
+    second = apparatus.work_passage("Work", 1, 2)
+
+    assert list(first["versions"]) == list(second["versions"]) == ["Work__A", "Work__B"]
+    assert second["reference"] == ("1", "2")
+    assert counts == Counter({"book": 1, "version_metadata": 1})
+    assert api.T.section_calls == Counter({1: 1, 2: 1})
+
+
+def test_distinct_works_share_inventory_but_resolve_only_requested_book_ids():
+    api = work_passage_api()
+    api.F.ocp_book.values[2] = "Other"
+    api.T.bad_book_heading = True
+    counts = Counter()
+    original = api.F.otype.s
+
+    def counted_nodes(kind):
+        counts[kind] += 1
+        return original(kind)
+
+    api.F.otype.s = counted_nodes
+    apparatus = Apparatus(api)
+
+    with pytest.raises(
+        ValueError,
+        match="cannot resolve TF book section id for textual OCP version node 1",
+    ):
+        apparatus.work_passage("Work", 1, 1)
+
+    # The failed Work lookup must not poison the otherwise valid Other work.
+    other = apparatus.work_passage("Other", 1, 1)
+    assert list(other["versions"]) == ["Work__B"]
+    assert api.T.section_calls == Counter({1: 1, 2: 1})
+    assert counts == Counter({"book": 1, "version_metadata": 1})
+
+
+def test_version_cache_preserves_generated_exclusion_and_metadata_only_ordering():
+    api = work_passage_api()
+    api.F.otype.values.update({3: "book", 40: "version_metadata", 41: "version_metadata"})
+    api.F.ocp_book.values.update({3: "Work", 40: "Work", 41: "Work"})
+    api.F.version_kind = Feature({3: "generated_translation"})
+    api.F.version_id = Feature({40: "Work__Z", 41: "Work__C"})
+    apparatus = Apparatus(api)
+
+    first = apparatus.work_passage("Work", 1, 1)
+    second = apparatus.work_passage("Work", 2, 2)
+
+    for result in (first, second):
+        assert list(result["versions"]) == ["Work__A", "Work__B"]
+        assert list(result["metadata_only_versions"]) == ["Work__C", "Work__Z"]
+        assert all(
+            record["status"] == "metadata_only"
+            for record in result["metadata_only_versions"].values()
+        )
+    # A generated book must never have its section resolved by the apparatus.
+    assert api.T.section_calls == Counter({1: 1, 2: 1})
+
+
+def test_missing_work_reuses_inventory_without_caching_failed_results():
+    api = work_passage_api()
+    counts = Counter()
+    original = api.F.otype.s
+
+    def counted_nodes(kind):
+        counts[kind] += 1
+        return original(kind)
+
+    api.F.otype.s = counted_nodes
+    apparatus = Apparatus(api)
+    for _ in range(2):
+        with pytest.raises(KeyError, match="OCP work not found"):
+            apparatus.work_passage("Absent", 1, 1)
+
+    assert counts == Counter({"book": 1, "version_metadata": 1})
+    assert api.T.section_calls == Counter()
