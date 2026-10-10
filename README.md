@@ -278,6 +278,7 @@ The README intentionally stops short of reproducing the complete feature catalog
 
 - [Text-Fabric feature reference](docs/features/0_home.md) for serialized node/edge contracts;
 - [source identity and anomaly policy](docs/source-identity-and-anomalies.md) for fail-closed source handling;
+- [conversion report publication and rollback](docs/conversion-report-transaction.md) for recoverable TF/report consistency after disk/report failures;
 - [apparatus helper contracts](docs/apparatus.md) for semantic/selective-load requirements;
 - [pinned comparison HTTP benchmark](docs/comparison-performance-benchmark.md) for reproducible latency/RSS observations without a claimed speedup;
 - [data licensing and attribution](DATA_LICENSE.md) for corpus/software license boundaries;
