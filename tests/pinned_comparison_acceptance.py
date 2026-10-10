@@ -1,12 +1,15 @@
 from __future__ import annotations
 
 from html import escape
+import json
+from time import perf_counter
 from pathlib import Path
 import sys
 from urllib.parse import quote
 
 from tf.fabric import Fabric
 
+from pseudepigrapha_tf.benchmark import benchmark_comparison_client
 from pseudepigrapha_tf.comparison import (
     build_passage_comparison,
     render_passage_comparison,
@@ -102,13 +105,36 @@ def verify(tf_dir: Path) -> None:
     assert f'data-translation-id="{first_translation["id"]}"' in html
     assert f'data-version-id="{first_translation["id"]}"' not in html
 
+    app_start = perf_counter()
     flask_app = load_local_comparison_web_app(
         tf_dir,
         Path("app"),
         version=TF_DATA_VERSION,
         silent="deep",
     )
+    app_setup_seconds = perf_counter() - app_start
     client = flask_app.test_client()
+
+    # This is the same real, pinned-corpus Flask app subsequently exercised
+    # for semantic acceptance. Measure before those checks warm its caches.
+    # First-in-app is not a fresh-process cold start.
+    benchmark = benchmark_comparison_client(
+        client,
+        (
+            ("1en-comparison", "/compare?work=1En&chapter=1&verse=2", 200),
+            ("tjob-metadata", "/compare?work=TJob&chapter=1&verse=1", 200),
+            ("aristob-deep-section", "/compare?work=Aristob&chapter=7%3A32&verse=13", 200),
+            ("psssol-ambiguous", "/compare?work=PssSol&chapter=1&verse=5", 400),
+        ),
+        repetitions=5,
+        setup_seconds=app_setup_seconds,
+        source_commit="c939dcbacad78c5d18d2c4282cad23c47e19ac07",
+    )
+    benchmark_json = json.dumps(benchmark, ensure_ascii=False, sort_keys=True)
+    Path("/tmp/pseudepigrapha-tf-comparison-benchmark.json").write_text(
+        benchmark_json + "\n", encoding="utf-8"
+    )
+    print("COMPARISON_BENCHMARK_JSON=" + benchmark_json, flush=True)
 
     # Real route: ordinary passage, large witness inventory, metadata-only
     # sibling version, and Previous/Next navigation all coexist without
