@@ -13,6 +13,7 @@ from .comparison import (
     render_passage_comparison,
 )
 from .release_identity import TF_DATA_VERSION
+from .translations import Translations
 
 
 def _h(value: object) -> str:
@@ -111,6 +112,7 @@ def register_comparison_route(flask_app: Any, tf_app: Any) -> Any:
     # Keep them for the lifetime of this app rather than rebuilding per HTTP request.
     apparatus = Apparatus(tf_app.api)
     navigator = PassageNavigator(tf_app.api)
+    translations = Translations(tf_app.api)
 
     @flask_app.get("/compare", endpoint="pseudepigrapha_compare")
     def compare_passage():
@@ -133,6 +135,7 @@ def register_comparison_route(flask_app: Any, tf_app: Any) -> Any:
                 selected_versions=selected_versions or None,
                 selected_witnesses=selected_witnesses,
                 apparatus=apparatus,
+                translations=translations,
             )
             # The normal builder always exposes version choices. Keep route unit
             # tests free to substitute a deliberately tiny fake model.

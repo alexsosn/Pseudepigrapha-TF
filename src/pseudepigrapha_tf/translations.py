@@ -26,6 +26,8 @@ class Translations:
 
     def __init__(self, api) -> None:
         self.api = api
+        self._generated_books = None
+        self._version_records_cache = {}
 
     def _feature(self, name: str, node: int, default=None):
         feature = getattr(self.api.F, name, None)
@@ -77,17 +79,40 @@ class Translations:
 
         otype = self._require_feature("otype")
         version_kind = self._require_feature("version_kind")
+        work_key = None if work is None else str(work)
+        language_key = None if language is None else str(language)
+        cache_key = (work_key, language_key)
+
+        if self._generated_books is None:
+            all_generated: list[int] = []
+            by_work: dict[str, list[int]] = {}
+            for node in tuple(otype.s("book")):
+                if version_kind.v(node) != "generated_translation":
+                    continue
+                node_work = str(self._feature("ocp_book", node, ""))
+                all_generated.append(node)
+                by_work.setdefault(node_work, []).append(node)
+            self._generated_books = (
+                tuple(all_generated),
+                {key: tuple(nodes) for key, nodes in by_work.items()},
+            )
+
+        cached = self._version_records_cache.get(cache_key)
+        if cached is not None:
+            # Returned records are mutable; never expose the private cached copies.
+            return tuple(record.copy() for record in cached)
+
+        all_generated, by_work = self._generated_books
+        nodes = all_generated if work_key is None else by_work.get(work_key, ())
         records: list[dict[str, object]] = []
-        for node in tuple(otype.s("book")):
-            if version_kind.v(node) != "generated_translation":
-                continue
+        for node in nodes:
             node_work = str(self._feature("ocp_book", node, ""))
             target_language = str(
                 self._feature("generated_language", node, self._feature("language", node, ""))
             )
-            if work is not None and node_work != str(work):
+            if work_key is not None and node_work != work_key:
                 continue
-            if language is not None and target_language != str(language):
+            if language_key is not None and target_language != language_key:
                 continue
             source = self.source_version(node)
             records.append(
@@ -104,7 +129,11 @@ class Translations:
                     "generation_model": str(self._feature("generation_model", node, "")),
                 }
             )
-        return tuple(sorted(records, key=lambda record: (str(record["work"]), str(record["id"]))))
+        sorted_records = tuple(
+            sorted(records, key=lambda record: (str(record["work"]), str(record["id"])))
+        )
+        self._version_records_cache[cache_key] = sorted_records
+        return tuple(record.copy() for record in sorted_records)
 
     def _primary_text(self, unit: int) -> str:
         reading_of = self._require_edge("reading_of")
