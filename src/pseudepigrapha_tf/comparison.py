@@ -355,6 +355,7 @@ def build_passage_comparison(
     selected_versions: Iterable[str] | None = None,
     selected_witnesses: Mapping[str, Iterable[str]] | None = None,
     apparatus: Apparatus | None = None,
+    translations: Translations | None = None,
 ) -> dict[str, object]:
     """Build a verse-centered comparison from public apparatus/translation APIs.
 
@@ -371,7 +372,10 @@ def build_passage_comparison(
         apparatus = Apparatus(api)
     elif apparatus.api is not api:
         raise ValueError("comparison Apparatus belongs to a different Text-Fabric API")
-    translations = Translations(api)
+    if translations is None:
+        translations = Translations(api)
+    elif translations.api is not api:
+        raise ValueError("comparison Translations belongs to a different Text-Fabric API")
     work_passage = apparatus.work_passage(work, chapter, verse)
 
     source_versions = work_passage.get("versions", {})
