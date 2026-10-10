@@ -242,6 +242,8 @@ For exact anomaly provenance and record-specific exceptions, see [source identit
 
 Rebuilding is for maintainers, reproducibility work, or researchers intentionally converting another OCP snapshot. It is **not required to use the published corpus**.
 
+The pinned upstream `static/docs` files use the **custom Grammateus/OCP XML** vocabulary (`book/version/div/unit/reading`), not TEI XML despite the upstream README's broader label. That pinned directory has 39 `.xml` names, including one empty `3Macc.xml`; the complete release converter processes 38 nonempty files. See [ADR-0002: Text-Fabric-Factory/source format](docs/architecture/ADR-0002-tff-source-format-boundary.md) for the primary-source evidence and migration decision.
+
 For the release-pinned source used by the full integration gate:
 
 ```bash
