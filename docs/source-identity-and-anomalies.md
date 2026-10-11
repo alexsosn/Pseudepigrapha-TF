@@ -33,6 +33,9 @@ The independent conversion report compares the raw blank-ID record with marked T
 
 ## Other pinned structural anomalies
 
+
+The pinned corpus also has five `ms` records whose `language` attribute is **absent** despite the modern DTD requirement: ClMal/Jewish Antiquities/Niese, ClMal/Praep. Evang./Mras, Eup/Praep. Evang. (Frag. 3)/Mras, and Ps-Eup/Praep. Evang. (Frag. 1, 2)/Mras. The converter retains these omissions without inventing a language. Each allowance requires an exact source basename, work identity, version title, manuscript abbreviation, **and SHA-256 digest of the complete reviewed XML**. For the pinned `c939dcb...` source, ClMal, Eup and Ps-Eup each have a separately reviewed SHA-256 in `KNOWN_MISSING_MANUSCRIPT_LANGUAGE`. A changed source file reusing the same identifiers fails required-attribute validation; an updated snapshot must be reviewed and explicitly whitelisted before conversion.
+
 Known source structures are preserved explicitly instead of being silently discarded or editorially reassigned:
 
 - `Aristob.xml` uses upstream `<elipsis>` markers. They become TF `ellipsis` nodes while retaining the literal `source_tag=elipsis`.
