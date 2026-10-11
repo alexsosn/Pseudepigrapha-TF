@@ -118,23 +118,39 @@ def _build_express_archive(
     repository_name = _require_repository_component(repository_name, "repository name")
     marker = _checkout_marker(release_tag, release_commit)
     app_payloads = _collect_app_payloads(app_directory)
-    feature_payloads = _native_feature_payloads(native_archive)
+    # Only native feature metadata is retained. Previously every decompressed
+    # feature was held in a bytes dictionary throughout complete.zip creation.
+    feature_records = _native._feature_records(native_archive)
 
     root = f"{repository_owner}/{repository_name}"
     app_root = f"{root}/app"
     data_root = f"{root}/tf/{data_version}"
-    members: dict[str, bytes] = {
+    # A tuple describes one ZIP member to copy, not its entire payload.
+    members: dict[str, bytes | tuple[str, int]] = {
         f"{app_root}/{_EXPRESS_CHECKOUT_NAME}": marker,
         f"{data_root}/{_EXPRESS_CHECKOUT_NAME}": marker,
     }
     members.update({f"{app_root}/{name}": payload for name, payload in app_payloads.items()})
-    members.update({f"{data_root}/{name}": payload for name, payload in feature_payloads.items()})
+    for record in feature_records:
+        members[f"{data_root}/{record['name']}"] = (record["name"], record["bytes"])
 
     try:
-        with ZipFile(express_archive, "w") as zf:
+        with ZipFile(native_archive) as native, ZipFile(express_archive, "w") as zf:
             for name in sorted(members):
-                zf.writestr(_native._canonical_zip_info(name), members[name])
-    except (OSError, RuntimeError) as exc:
+                entry = members[name]
+                info = _native._canonical_zip_info(name)
+                if isinstance(entry, bytes):
+                    # Tiny checkout markers and app resources keep the historic
+                    # writestr behavior, including normalized ZIP metadata.
+                    zf.writestr(info, entry)
+                else:
+                    native_name, byte_count = entry
+                    # Match the old writestr header/Zip64 decision even though
+                    # the actual content is copied a bounded chunk at a time.
+                    info.file_size = byte_count
+                    with native.open(native_name) as source, zf.open(info, "w") as target:
+                        shutil.copyfileobj(source, target, length=1_048_576)
+    except (OSError, BadZipFile, RuntimeError, KeyError, EOFError) as exc:
         raise DistributionContractError(f"could not build Text-Fabric express archive: {exc}") from exc
 
 
@@ -151,6 +167,19 @@ def _validate_express_member(info: Any) -> tuple[str, ...]:
         if kind not in {0, stat.S_IFREG}:
             raise DistributionContractError(f"Text-Fabric express archive contains a special member: {name!r}")
     return parts
+
+
+def _streams_equal(left: Any, right: Any) -> bool:
+    """Compare the actual decoded bytes of two ZIP members without buffering."""
+
+    while True:
+        left_bytes = left.read(1_048_576)
+        right_bytes = right.read(1_048_576)
+        if left_bytes != right_bytes:
+            return False
+        if not left_bytes:
+            # Both ZipExtFile streams reached EOF, checking both CRC values.
+            return True
 
 
 def _validate_express_archive(
@@ -176,16 +205,20 @@ def _validate_express_archive(
     repository_owner = _require_repository_component(repository_owner, "repository owner")
     repository_name = _require_repository_component(repository_name, "repository name")
     marker = _checkout_marker(release_tag, release_commit)
-    feature_payloads = _native_feature_payloads(native_archive)
+    # Verify native source identities, but keep only small SHA/size records.
+    feature_records = {
+        record["name"]: record for record in _native._feature_records(native_archive)
+    }
 
     root = f"{repository_owner}/{repository_name}"
     app_prefix = f"{root}/app/"
     data_prefix = f"{root}/tf/{data_version}/"
     app_payloads: dict[str, bytes] = {}
-    data_payloads: dict[str, bytes] = {}
+    data_names: set[str] = set()
+    data_marker: bytes | None = None
 
     try:
-        with ZipFile(express_archive) as zf:
+        with ZipFile(express_archive) as zf, ZipFile(native_archive) as native:
             infos = zf.infolist()
             names = [info.filename for info in infos]
             if not infos:
@@ -198,7 +231,6 @@ def _validate_express_archive(
             for info in infos:
                 _validate_express_member(info)
                 name = info.filename
-                payload = zf.read(info)
                 if name.startswith(app_prefix):
                     relative = name[len(app_prefix):]
                     parts = _safe_relative_parts(relative, "Text-Fabric app member")
@@ -206,7 +238,7 @@ def _validate_express_archive(
                         raise DistributionContractError(
                             f"Text-Fabric express archive contains excluded app member {name!r}"
                         )
-                    app_payloads[relative] = payload
+                    app_payloads[relative] = zf.read(info)
                 elif name.startswith(data_prefix):
                     relative = name[len(data_prefix):]
                     parts = _safe_relative_parts(relative, "Text-Fabric data member")
@@ -214,18 +246,32 @@ def _validate_express_archive(
                         raise DistributionContractError(
                             f"Text-Fabric express data member must be top-level within the version: {name!r}"
                         )
-                    data_payloads[relative] = payload
+                    if relative == _EXPRESS_CHECKOUT_NAME:
+                        data_marker = zf.read(info)
+                        continue
+
+                    data_names.add(relative)
+                    if relative not in feature_records:
+                        # Preserve the old read-to-EOF CRC check for unexpected
+                        # entries too. They will fail the exact-name check below.
+                        with zf.open(info) as unexpected:
+                            _native._hash_stream_record(relative, unexpected)
+                        continue
+                    with zf.open(info) as actual, native.open(relative) as expected:
+                        if not _streams_equal(actual, expected):
+                            raise DistributionContractError(
+                                f"Text-Fabric express feature {relative!r} differs from native archive bytes"
+                            )
                 else:
                     raise DistributionContractError(
                         f"Text-Fabric express member is outside the expected repository roots: {name!r}"
                     )
     except DistributionContractError:
         raise
-    except (OSError, BadZipFile, RuntimeError, KeyError) as exc:
+    except (OSError, BadZipFile, RuntimeError, KeyError, EOFError) as exc:
         raise DistributionContractError(f"invalid Text-Fabric express archive: {exc}") from exc
 
     app_marker = app_payloads.pop(_EXPRESS_CHECKOUT_NAME, None)
-    data_marker = data_payloads.pop(_EXPRESS_CHECKOUT_NAME, None)
     if app_marker is None or data_marker is None:
         raise DistributionContractError("Text-Fabric express archive is missing required checkout marker")
     if app_marker != marker or data_marker != marker:
@@ -233,17 +279,13 @@ def _validate_express_archive(
     if "config.yaml" not in app_payloads:
         raise DistributionContractError("Text-Fabric express app is missing config.yaml")
 
-    if set(data_payloads) != set(feature_payloads):
-        missing = sorted(set(feature_payloads) - set(data_payloads))
-        extra = sorted(set(data_payloads) - set(feature_payloads))
+    expected_names = set(feature_records)
+    if data_names != expected_names:
+        missing = sorted(expected_names - data_names)
+        extra = sorted(data_names - expected_names)
         raise DistributionContractError(
             f"Text-Fabric express feature member set differs from native archive; missing={missing}, extra={extra}"
         )
-    for name, native_payload in feature_payloads.items():
-        if data_payloads[name] != native_payload:
-            raise DistributionContractError(
-                f"Text-Fabric express feature {name!r} differs from native archive bytes"
-            )
     return app_payloads
 
 
