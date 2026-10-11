@@ -4,7 +4,7 @@ import subprocess
 from pathlib import Path
 
 from .model import Book
-from .parser import EmptySourceError, parse_bytes
+from .parser import EmptySourceError, InvalidSourceError, parse_bytes
 
 
 _REVIEWED_NON_CORPUS_FILES = frozenset({
@@ -56,6 +56,7 @@ def load_source_directory(path: str | Path) -> tuple[list[Book], list[str]]:
     validate_source_boundary(source_dir)
     books: list[Book] = []
     warnings: list[str] = []
+    work_sources: dict[str, str] = {}
     for xml_path in sorted(source_dir.glob("*.xml")):
         if xml_path.name.startswith("."):
             continue
@@ -64,6 +65,16 @@ def load_source_directory(path: str | Path) -> tuple[list[Book], list[str]]:
         except EmptySourceError:
             warnings.append(f"skipping empty XML source: {xml_path.name}")
             continue
+        # Distinct source files claiming one OCP work identity cannot be
+        # exposed as separate TF books with the same researcher-facing key.
+        # Keep exact source spelling; never merge or normalize editorial IDs.
+        earlier = work_sources.get(book.filename)
+        if earlier is not None:
+            raise InvalidSourceError(
+                f"duplicate OCP book filename {book.filename!r} in "
+                f"{earlier} and {xml_path.name}"
+            )
+        work_sources[book.filename] = xml_path.name
         for exclusion in book.excluded_generated_translations:
             warnings.append(
                 "excluding generated translation "
