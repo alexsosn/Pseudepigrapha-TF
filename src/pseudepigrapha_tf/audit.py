@@ -126,20 +126,21 @@ def _raw_inventory(source_dir: Path) -> dict:
     }
 
     def add_manuscripts(container: ET.Element, ocp_book: str, version_title: str) -> None:
-        manuscripts = container.find("manuscripts")
-        if manuscripts is None:
-            return
-        for ms in manuscripts.findall("ms"):
-            name = ms.find("name")
-            bibliography = ms.findall("bibliography")
-            inventory["manuscripts"].append({
-                "ocp_book": ocp_book, "version_title": version_title,
-                "abbrev": ms.get("abbrev", ""), "language": ms.get("language", ""),
-                "show": ms.get("show", ""), "name": _plain_text(name),
-                "name_xml": _inner_xml(name) if name is not None else "",
-                "bibliography": [_plain_text(b) for b in bibliography],
-                "bibliography_xml": [_inner_xml(b) for b in bibliography],
-            })
+        # TSol.xml's Greek version declares separate McCown/HI/L/VW blocks.
+        # Inventory *all* raw groups, independently of the parser's model,
+        # so a future regression cannot hide dropped declared manuscripts.
+        for manuscripts in container.findall("manuscripts"):
+            for ms in manuscripts.findall("ms"):
+                name = ms.find("name")
+                bibliography = ms.findall("bibliography")
+                inventory["manuscripts"].append({
+                    "ocp_book": ocp_book, "version_title": version_title,
+                    "abbrev": ms.get("abbrev", ""), "language": ms.get("language", ""),
+                    "show": ms.get("show", ""), "name": _plain_text(name),
+                    "name_xml": _inner_xml(name) if name is not None else "",
+                    "bibliography": [_plain_text(b) for b in bibliography],
+                    "bibliography_xml": [_inner_xml(b) for b in bibliography],
+                })
 
     def add_resources(container: ET.Element, ocp_book: str, version_title: str) -> None:
         for resources in container.findall("resources"):

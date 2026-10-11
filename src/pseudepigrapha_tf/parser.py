@@ -207,9 +207,9 @@ def _division_delimiter(element: ET.Element) -> str:
 
 def _parse_version(element: ET.Element) -> Version:
     divisions_el = element.find("divisions")
-    manuscripts_el = element.find("manuscripts")
+    manuscript_groups = element.findall("manuscripts")
     text_el = element.find("text")
-    if manuscripts_el is None or text_el is None:
+    if not manuscript_groups or text_el is None:
         raise InvalidSourceError(f"version {element.get('title', '')!r} is missing manuscripts or text")
 
     wrapped_legacy = is_wrapped_legacy_version(element)
@@ -238,15 +238,19 @@ def _parse_version(element: ET.Element) -> Version:
         fragment=element.get("fragment", ""),
         divisions=divisions,
         resources=tuple(resources),
-        manuscripts=tuple(_parse_manuscript(ms) for ms in manuscripts_el.findall("ms")),
+        manuscripts=tuple(
+            _parse_manuscript(ms)
+            for group in manuscript_groups
+            for ms in group.findall("ms")
+        ),
         divs=divs,
     )
 
 
 def _parse_legacy_version(root: ET.Element) -> Version:
-    manuscripts_el = root.find("manuscripts")
+    manuscript_groups = root.findall("manuscripts")
     text_el = root.find("text")
-    if manuscripts_el is None or text_el is None:
+    if not manuscript_groups or text_el is None:
         raise InvalidSourceError("legacy book is missing manuscripts or text")
     resources: list[Resource] = []
     for resources_el in root.findall("resources"):
@@ -259,7 +263,11 @@ def _parse_legacy_version(root: ET.Element) -> Version:
         fragment="",
         divisions=(DivisionSpec("Chapter", ":"), DivisionSpec("Verse", "")),
         resources=tuple(resources),
-        manuscripts=tuple(_parse_manuscript(ms) for ms in manuscripts_el.findall("ms")),
+        manuscripts=tuple(
+            _parse_manuscript(ms)
+            for group in manuscript_groups
+            for ms in group.findall("ms")
+        ),
         divs=_parse_legacy_divs(text_el),
     )
 

@@ -178,6 +178,17 @@ STRUCTURAL_ONLY_ELEMENTS = frozenset({
     "manuscripts", "ms", "text", "div", "unit", "chapter", "verse",
 })
 
+# Parser-owned child fields consumed via Element.find() are singletons.
+# Unlike findall()-consumed resources, info, bibliography, versions, divs
+# and readings, a second recognized child here would silently disappear.
+# Validate only multiplicity; existing required-presence rules are unchanged.
+SINGLETON_CHILDREN: dict[str, frozenset[str]] = {
+    "book": frozenset({"text"}),
+    "version": frozenset({"divisions", "text"}),
+    "ms": frozenset({"name"}),
+    "resource": frozenset({"URL"}),
+}
+
 
 def validate_source_structure(
     root: ET.Element,
@@ -322,10 +333,40 @@ def validate_source_structure(
                         f"{location}: unsupported <{parent.tag}> child tail "
                         f"after <{child.tag}> at {path}"
                     )
+        # A version may contain multiple upstream <manuscripts> groups (e.g.
+        # pinned TSol Greek has McCown, HI, L, VW in four groups). Validate
+        # abbreviation identity across *all* groups, not just within each
+        # group; merging them must never silently overwrite a witness.
+        if parent.tag in {"version", "book"}:
+            groups = parent.findall("manuscripts")
+            if len(groups) > 1:
+                declared: set[str] = set()
+                for group in groups:
+                    for manuscript in group.findall("ms"):
+                        abbreviation = manuscript.get("abbrev", "")
+                        if not abbreviation.strip():
+                            continue
+                        if abbreviation in declared:
+                            raise SourceStructureError(
+                                f"{location}: duplicate manuscript abbreviation "
+                                f"{abbreviation!r} across <manuscripts> groups "
+                                f"in <{parent.tag}> at {path}"
+                            )
+                        declared.add(abbreviation)
+
+        seen_singletons: set[str] = set()
+        singletons = SINGLETON_CHILDREN.get(parent.tag, frozenset())
         for child in children:
             if child.tag not in allowed:
                 raise SourceStructureError(
                     f"{location}: unsupported <{child.tag}> child of <{parent.tag}> at {path}"
                 )
+            if child.tag in singletons:
+                if child.tag in seen_singletons:
+                    raise SourceStructureError(
+                        f"{location}: duplicate <{child.tag}> child of <{parent.tag}> at {path}; "
+                        "the converter consumes only the first"
+                    )
+                seen_singletons.add(child.tag)
         for child in reversed(children):
             stack.append((child, f"{path}/{child.tag}", version_title, div_path, wrapped_legacy))
