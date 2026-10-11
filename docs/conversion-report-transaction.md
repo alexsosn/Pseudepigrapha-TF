@@ -12,8 +12,10 @@ No second full TF serialization or copy of the previous feature set is required.
 
 ## Failure scenarios
 
-- Failure or `KeyboardInterrupt` during TF installation or later report fingerprinting/write/final rename: **restore all previous `*.tf` features**, removing new-only features; leave the previous report untouched; retain unrelated non-TF files.
-- If no previous feature generation existed: remove partially installed `*.tf` files after failure, without deleting unrelated files.
+- Failure or `KeyboardInterrupt` **before** the report is committed (including failed feature installation, fingerprinting, report writing, or a rename that did not publish): **restore all previous `*.tf` features**, removing new-only features; leave the previous report untouched; retain unrelated non-TF files.
+- If a report rename **did successfully publish** before an exception/interrupt was delivered, the converter checks the *actual published report bytes* against the intended final report. It **does not roll back the new TF features** because that would corrupt a now-committed feature/report pair; the original exception still propagates.
+- If the post-exception commit-state probe itself fails (for example, the published report cannot be read), the converter must **not guess** or destroy a potentially committed generation. It retains the previous TF backup, reports both the original error and the probe error, and requires operator inspection before retry.
+- If no previous feature generation existed and publication did not commit: remove partially installed `*.tf` files after failure, without deleting unrelated files.
 - If rollback fails: propagate the combined installation/publication **and** rollback exceptions and retain the backup directory with recoverable old feature bytes. Investigate that backup before retrying conversion.
 - A failure only to delete a backup *after* successfully publishing both features and report is nonfatal housekeeping, reported as a warning. The published matched pair remains valid.
 - If semantic parity audit fails **before** feature installation, the CLI may publish a failure diagnostic report, but does not publish a new TF generation.
@@ -24,4 +26,4 @@ Explicit `--report` paths, including symlinks to a non-TF report file, retain th
 
 This is **exception-safe recovery**, not general multi-file transaction isolation: while individual `*.tf` feature files are renamed, uncoordinated concurrent readers could temporarily observe a mixed generation. An unconditional process kill, machine crash, or power loss during this interval cannot be recovered by a Python exception handler. True crash-safe atomic visibility would require a generation-pointer/journaling design and its own migration/research plan.
 
-Do not use these guarantees to skip release manifest verification: distribution still checks that the report's feature-set hash matches the exact serialized archive. Regression tests cover post-install report-publication errors, interruptions, failed rollback recovery, and ordinary success.
+Do not use these guarantees to skip release manifest verification: distribution still checks that the report's feature-set hash matches the exact serialized archive. Regression tests cover errors before and after a successful report rename, interruption, an unreadable commit-state probe, failed rollback recovery, and ordinary success.
