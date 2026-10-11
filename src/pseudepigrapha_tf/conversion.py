@@ -72,9 +72,13 @@ def _validate_and_classify_model(
     """Validate source identities and classify every source version in one tree pass."""
 
     book_shapes: list[tuple[_VersionTreeShape, ...]] = []
+    seen_book_ids: set[str] = set()
     for book in books:
         if not book.filename.strip():
             raise ValueError("blank book filename")
+        if book.filename in seen_book_ids:
+            raise ValueError(f"duplicate OCP book filename {book.filename!r}")
+        seen_book_ids.add(book.filename)
         version_shapes: list[_VersionTreeShape] = []
         for version in book.versions:
             has_units = False
