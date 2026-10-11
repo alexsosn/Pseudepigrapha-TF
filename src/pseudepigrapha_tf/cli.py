@@ -220,16 +220,32 @@ def main(argv: list[str] | None = None) -> int:
         staged_report = Path(report_stage_dir) / publication_path.name
         write_conversion_report(report, staged_report)
         stage_started = _stage("write_report", stage_started)
+        intended_report_bytes: bytes | None = None
+
         def publish_matching_report() -> None:
-            # This commit hook executes after the new TF files are in place,
-            # but while the previous TF generation remains recoverable. No
-            # additional fallible operations may follow the report rename.
+            nonlocal intended_report_bytes
+            # Snapshot the small *final* report before the atomic rename.
+            # A signal can arrive after the OS rename but before a Python
+            # "published = True" assignment: that flag cannot safely decide
+            # whether old TF files should be restored.
             report["text_fabric"] = feature_directory_identity(args.output)
             write_conversion_report(report, staged_report)
+            intended_report_bytes = staged_report.read_bytes()
             staged_report.replace(publication_path)
 
+        def report_is_committed() -> bool:
+            if intended_report_bytes is None:
+                return False
+            try:
+                return publication_path.read_bytes() == intended_report_bytes
+            except FileNotFoundError:
+                # The target can be absent on a first failed publication.
+                return False
+
         if not _write_prevalidated_tf(
-            data, args.output, after_install=publish_matching_report
+            data, args.output,
+            after_install=publish_matching_report,
+            publication_committed=report_is_committed,
         ):
             raise SystemExit("Text-Fabric refused the generated dataset")
         stage_started = _stage("write_text_fabric", stage_started)
