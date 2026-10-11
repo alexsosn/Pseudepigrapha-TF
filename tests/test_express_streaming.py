@@ -59,6 +59,14 @@ def _arguments(native_zip: Path, app: Path) -> dict:
     }
 
 
+def _validation_arguments(native_zip: Path, app: Path) -> dict:
+    # The validator takes native_archive and repository identifiers, but
+    # unlike the builder it deliberately does not accept app_directory.
+    args = _arguments(native_zip, app)
+    del args["app_directory"]
+    return args
+
+
 def _deny_native_feature_payloads(*args, **kwargs):
     raise AssertionError("entire native feature payload dictionary is forbidden")
 
@@ -104,7 +112,7 @@ def test_streaming_express_validator_checks_feature_bytes_without_payload_dicts(
         patch.object(ZipFile, "read", _no_tf_member_read(original)),
     ):
         app_payloads = distribution._validate_express_archive(
-            express, **_arguments(native_zip, app)
+            express, **_validation_arguments(native_zip, app)
         )
     assert app_payloads["config.yaml"] == b"apiVersion: 3\n"
     assert app_payloads["app.py"] == b"CODE = 1\n"
@@ -119,5 +127,5 @@ def test_express_validator_rejects_same_length_feature_substitution(tmp_path):
     assert len(members[name]) == len(original)
     _historical_express(express, members)
     with pytest.raises(distribution.DistributionContractError, match="differs from native archive bytes"):
-        distribution._validate_express_archive(express, **_arguments(native_zip, app))
+        distribution._validate_express_archive(express, **_validation_arguments(native_zip, app))
 
