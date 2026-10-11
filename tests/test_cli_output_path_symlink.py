@@ -81,7 +81,7 @@ def test_cli_accepts_real_output_directory(monkeypatch, tmp_path):
     output = tmp_path / "tf"
     writer_calls = 0
 
-    def writer(data, output_dir, *, after_install=None):
+    def writer(data, output_dir, *, after_install=None, publication_committed=None):
         nonlocal writer_calls
         writer_calls += 1
         target = Path(output_dir)
@@ -110,7 +110,7 @@ def test_cli_accepts_real_output_reached_through_symlinked_parent(monkeypatch, t
     assert not output.is_symlink()
     writer_calls = 0
 
-    def writer(data, output_dir, *, after_install=None):
+    def writer(data, output_dir, *, after_install=None, publication_committed=None):
         nonlocal writer_calls
         writer_calls += 1
         target = Path(output_dir)
@@ -137,7 +137,7 @@ def test_cli_accepts_dotdot_spelling_of_real_output(monkeypatch, tmp_path):
     assert not output.is_symlink()
     writer_calls = 0
 
-    def writer(data, output_dir, *, after_install=None):
+    def writer(data, output_dir, *, after_install=None, publication_committed=None):
         nonlocal writer_calls
         writer_calls += 1
         target = Path(output_dir)
