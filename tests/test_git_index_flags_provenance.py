@@ -26,12 +26,12 @@ def _checkout(tmp_path: Path) -> tuple[Path, Path, Path, str]:
     repo = tmp_path / "ocp"
     source_dir = repo / "static" / "docs"
     source_dir.mkdir(parents=True)
-    path = source_dir / "sample.xml"
+    path = source_dir / "Sample.xml"
     path.write_bytes(FIXTURE.read_bytes())
     _git(repo, "init")
     _git(repo, "config", "user.name", "Pseudepigrapha-TF tests")
     _git(repo, "config", "user.email", "tests@example.invalid")
-    _git(repo, "add", "static/docs/sample.xml")
+    _git(repo, "add", "static/docs/Sample.xml")
     _git(repo, "commit", "-m", "pinned sample")
     return repo, source_dir, path, _git(repo, "rev-parse", "HEAD")
 
@@ -47,7 +47,7 @@ def test_dirty_xml_cannot_be_verified_when_git_index_flag_hides_edit(
     assert git_source_is_clean(source_dir)
     path.write_bytes(path.read_bytes() + b"\n")
     assert _git(source_dir, "status", "--porcelain=v1", "--untracked-files=all", "--ignored=matching", "--", ".")
-    _git(repo, "update-index", flag, "static/docs/sample.xml")
+    _git(repo, "update-index", flag, "static/docs/Sample.xml")
     assert _git(source_dir, "status", "--porcelain=v1", "--untracked-files=all", "--ignored=matching", "--", ".") == ""
     assert _git(source_dir, "ls-files", "-v", "--", ".").startswith(index_tag + " ")
     assert not git_source_is_clean(source_dir)
@@ -59,7 +59,7 @@ def test_index_flag_is_not_proof_of_worktree_identity_even_when_bytes_current(
 ):
     repo, source_dir, _, _ = _checkout(tmp_path)
     assert git_source_is_clean(source_dir)
-    _git(repo, "update-index", flag, "static/docs/sample.xml")
+    _git(repo, "update-index", flag, "static/docs/Sample.xml")
     # Deliberate conservative policy: Git is configured not to check these
     # working files, so a status-only attestation is insufficient.
     assert _git(source_dir, "status", "--porcelain=v1", "--", ".") == ""
@@ -72,7 +72,7 @@ def test_cli_conversion_can_proceed_but_must_downgrade_hidden_dirty_source(
 ):
     repo, source_dir, path, commit = _checkout(tmp_path)
     path.write_bytes(path.read_bytes() + b"\n")
-    _git(repo, "update-index", flag, "static/docs/sample.xml")
+    _git(repo, "update-index", flag, "static/docs/Sample.xml")
     assert _git(source_dir, "status", "--porcelain=v1", "--", ".") == ""
     monkeypatch.setattr(provenance, "OCP_PIN", commit)
     captured = {}

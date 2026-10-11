@@ -57,7 +57,7 @@ def test_distinct_work_ids_with_identical_version_titles_remain_supported(tmp_pa
     _two_files(tmp_path, identical_id=False)
     books, warnings = load_source_directory(tmp_path)
     assert warnings == []
-    assert [book.filename for book in books] == ["Sample", "Other"]
+    assert [book.filename for book in books] == ["Other", "Sample"]
     assert [book.versions[0].title for book in books] == ["Greek", "Greek"]
 
     graph = build_tf_data(books)

@@ -1,4 +1,5 @@
 from pathlib import Path
+from xml.etree import ElementTree as ET
 
 import pytest
 
@@ -15,6 +16,13 @@ from pseudepigrapha_tf.semantic_audit import (
 from pseudepigrapha_tf.source import load_source_directory
 
 FIXTURES = Path(__file__).parent / "fixtures"
+
+
+def _copy_named_source(source: Path, destination: Path) -> None:
+    """Use the existing fixture bytes under their actual root OCP work identity."""
+    raw = source.read_bytes()
+    identity = ET.fromstring(raw).attrib["filename"]
+    (destination / f"{identity}.xml").write_bytes(raw)
 VERSION_METADATA_CORRUPTIONS = (
     ("title", "CORRUPTED TITLE"),
     ("text_structure", "CORRUPTED STRUCTURE"),
@@ -28,7 +36,7 @@ VERSION_METADATA_CORRUPTIONS = (
 
 def _corpus(tmp_path):
     for name in ("sample.xml", "three_divisions.xml", "legacy.xml"):
-        (tmp_path / name).write_text((FIXTURES / name).read_text(encoding="utf-8"), encoding="utf-8")
+        _copy_named_source(FIXTURES / name, tmp_path)
     books, warnings = load_source_directory(tmp_path)
     assert warnings == []
     return books
@@ -50,7 +58,7 @@ def test_conversion_report_proves_semantic_parity_against_raw_xml(tmp_path):
 
 def test_conversion_report_uses_report_local_node_index(monkeypatch, tmp_path):
     source = FIXTURES / "three_divisions.xml"
-    (tmp_path / source.name).write_text(source.read_text(encoding="utf-8"), encoding="utf-8")
+    _copy_named_source(source, tmp_path)
     books, warnings = load_source_directory(tmp_path)
     assert warnings == []
     data = build_tf_data(books)
@@ -113,7 +121,7 @@ def test_node_index_is_not_cached_on_mutable_tfdata():
 
 def test_conversion_report_reuses_section_address_resolution(monkeypatch, tmp_path):
     source = FIXTURES / "three_divisions.xml"
-    (tmp_path / source.name).write_text(source.read_text(encoding="utf-8"), encoding="utf-8")
+    _copy_named_source(source, tmp_path)
     books, warnings = load_source_directory(tmp_path)
     assert warnings == []
     data = build_tf_data(books)
@@ -135,7 +143,7 @@ def test_conversion_report_reuses_section_address_resolution(monkeypatch, tmp_pa
 
 def test_conversion_report_preserves_invalid_section_address_semantics(monkeypatch, tmp_path):
     source = FIXTURES / "three_divisions.xml"
-    (tmp_path / source.name).write_text(source.read_text(encoding="utf-8"), encoding="utf-8")
+    _copy_named_source(source, tmp_path)
     books, warnings = load_source_directory(tmp_path)
     assert warnings == []
     data = build_tf_data(books)
@@ -150,7 +158,7 @@ def test_conversion_report_preserves_invalid_section_address_semantics(monkeypat
 
 def test_conversion_report_preserves_empty_source_division_without_section_fabrication(tmp_path):
     source = FIXTURES / "empty_division.xml"
-    (tmp_path / source.name).write_text(source.read_text(encoding="utf-8"), encoding="utf-8")
+    _copy_named_source(source, tmp_path)
     books, warnings = load_source_directory(tmp_path)
     assert warnings == []
 
@@ -225,7 +233,7 @@ def test_duplicate_upstream_sections_get_unique_tf_addresses_without_changing_so
 
 def test_conversion_report_includes_metadata_only_versions(tmp_path):
     source = FIXTURES / "metadata_only_version.xml"
-    (tmp_path / source.name).write_text(source.read_text(encoding="utf-8"), encoding="utf-8")
+    _copy_named_source(source, tmp_path)
     books, warnings = load_source_directory(tmp_path)
     assert warnings == []
 
@@ -240,7 +248,7 @@ def test_conversion_report_includes_metadata_only_versions(tmp_path):
 
 def test_compatibility_audit_entry_point_matches_canonical_semantic_report(tmp_path):
     source = FIXTURES / "metadata_only_version.xml"
-    (tmp_path / source.name).write_text(source.read_text(encoding="utf-8"), encoding="utf-8")
+    _copy_named_source(source, tmp_path)
     books, warnings = load_source_directory(tmp_path)
     assert warnings == []
     data = build_tf_data(books)
@@ -278,7 +286,7 @@ def test_conversion_report_detects_silent_version_metadata_corruption(tmp_path, 
 @pytest.mark.parametrize(("feature", "corrupted"), VERSION_METADATA_CORRUPTIONS)
 def test_conversion_report_detects_metadata_only_version_metadata_corruption(tmp_path, feature, corrupted):
     source = FIXTURES / "metadata_only_version.xml"
-    (tmp_path / source.name).write_text(source.read_text(encoding="utf-8"), encoding="utf-8")
+    _copy_named_source(source, tmp_path)
     books, warnings = load_source_directory(tmp_path)
     assert warnings == []
 

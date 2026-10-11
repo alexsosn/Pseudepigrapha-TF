@@ -11,7 +11,7 @@ FIXTURES = Path(__file__).parent / "fixtures"
 
 def _case(tmp_path):
     source = FIXTURES / "ownership_edges.xml"
-    (tmp_path / source.name).write_text(source.read_text(encoding="utf-8"), encoding="utf-8")
+    (tmp_path / "Ownership.xml").write_text(source.read_text(encoding="utf-8"), encoding="utf-8")
     books, warnings = load_source_directory(tmp_path)
     assert warnings == []
     data = build_tf_data(books)

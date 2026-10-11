@@ -10,7 +10,7 @@ FIXTURES = Path(__file__).parent / "fixtures"
 
 def test_semantic_audit_reads_special_structure_source_once(tmp_path, monkeypatch):
     source = FIXTURES / "ellipsis.xml"
-    target = tmp_path / source.name
+    target = tmp_path / "Ellipsis.xml"
     target.write_bytes(source.read_bytes())
     books, warnings = load_source_directory(tmp_path)
     assert warnings == []
@@ -30,4 +30,4 @@ def test_semantic_audit_reads_special_structure_source_once(tmp_path, monkeypatc
 
     assert report["status"] == "ok", report["failed_checks"]
     assert report["source"]["ellipses"] == report["graph"]["ellipses"] == 1
-    assert source_reads == [source.name]
+    assert source_reads == [target.name]

@@ -2,6 +2,8 @@
 
 Pseudepigrapha-TF preserves OCP source identity rather than silently normalizing malformed or incomplete records.
 
+When loading an OCP source *directory*, every non-empty top-level `WorkId.xml` must declare that exact `WorkId` in its `<book filename="WorkId">` attribute, including case. This is enforced whether or not the optional `intros.json` metadata export is present; a mismatched name fails rather than silently changing researcher-facing work identity. Individual in-memory `parse_bytes()` calls can still parse text without a filesystem name. Empty `.xml` placeholders retain their documented skip behavior.
+
 ## Blank attributes
 
 The pinned Grammateus DTD declares many attributes as `CDATA #REQUIRED`, but requiredness guarantees presence, not a non-empty value. OCP also uses empty strings as legitimate metadata, so the converter does **not** apply a blanket non-empty rule.
