@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import io
 import json
 import os
 from pathlib import Path
@@ -263,29 +264,66 @@ _SERIALIZED_IDENTITY_KEYS = {
 }
 
 
-def _serialized_otype_metadata(archive: Path) -> dict[str, str]:
-    """Read release identity from a Text-Fabric-compatible otype header."""
+# A metadata header is short, but native otype.tf may contain millions of
+# subsequent node rows. Bound both UTF-8 decoding and any not-yet-terminated
+# header line; still decode to EOF so CRC/UTF-8 errors *after* the header fail.
+_OTYPE_READ_CHARS = 65_536
+_MAX_OTYPE_HEADER_LINE_CHARS = 65_536
+_OTYPE_LINE_ENDINGS = "\\n\\v\\f\\x1c\\x1d\\x1e\\x85\\u2028\\u2029"
 
+
+def _serialized_otype_metadata(archive: Path) -> dict[str, str]:
+    """Parse a bounded otype header while validating the full member to EOF."""
+
+    lines: list[str] = []
+    pending = ""
+    saw_blank = False
     try:
         with ZipFile(archive) as zf:
-            payload = zf.read("otype.tf")
+            with zf.open("otype.tf") as member:
+                # TextIOWrapper normalizes CRLF and CR to LF; the explicit
+                # splitlines boundary also preserves Python's Unicode line
+                # separators, previously accepted by payload.splitlines().
+                with io.TextIOWrapper(member, encoding="utf-8", newline=None) as decoded:
+                    while chunk := decoded.read(_OTYPE_READ_CHARS):
+                        if saw_blank:
+                            # Keep consuming and decoding, including the last
+                            # byte: ZipExtFile checks CRC at EOF, and UTF-8
+                            # corruption after header must never be ignored.
+                            continue
+                        pending += chunk
+                        complete_lines = pending.splitlines(keepends=True)
+                        if complete_lines and complete_lines[-1][-1] not in _OTYPE_LINE_ENDINGS:
+                            pending = complete_lines.pop()
+                        else:
+                            pending = ""
+                        for complete in complete_lines:
+                            line = complete[:-1]
+                            if len(line) > _MAX_OTYPE_HEADER_LINE_CHARS:
+                                raise DistributionContractError(
+                                    "serialized otype.tf metadata header line exceeds size limit"
+                                )
+                            lines.append(line)
+                            if line == "":
+                                saw_blank = True
+                                break
+                        if not saw_blank and len(pending) > _MAX_OTYPE_HEADER_LINE_CHARS:
+                            raise DistributionContractError(
+                                "serialized otype.tf metadata header line exceeds size limit"
+                            )
     except KeyError as exc:
         raise DistributionContractError("TF archive is missing required otype.tf") from exc
-    except (OSError, BadZipFile, RuntimeError) as exc:
-        raise DistributionContractError(f"could not read serialized otype metadata: {exc}") from exc
-    try:
-        lines = payload.decode("utf-8").splitlines()
     except UnicodeDecodeError as exc:
         raise DistributionContractError("serialized otype.tf is not valid UTF-8") from exc
+    except (OSError, BadZipFile, RuntimeError, EOFError) as exc:
+        raise DistributionContractError(f"could not read serialized otype metadata: {exc}") from exc
 
     if not lines or lines[0] != "@node":
         raise DistributionContractError("serialized otype.tf header must start with @node")
 
     metadata: dict[str, str] = {}
-    saw_blank = False
     for line in lines[1:]:
         if line == "":
-            saw_blank = True
             break
         if not line.startswith("@") or "=" not in line:
             raise DistributionContractError(
