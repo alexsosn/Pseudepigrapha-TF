@@ -16,7 +16,7 @@ The repository-level [`agora.materializer.json`](../agora.materializer.json) dec
 The converter still works standalone:
 
 ```bash
-pseudepigrapha-tf convert /path/to/OCP/static/docs --output tf/1.0
+pseudepigrapha-tf convert /path/to/OCP/static/docs --output tf/1.1
 ```
 
 Agora invokes the same public CLI implementation as a Python module. For Git acquisition, Agora resolves the fetched commit and substitutes it into `{source_revision}`; for a user-local checkout it passes a locally detected Git `HEAD` when available. If local files have no Git revision, the placeholder is empty and the converter records no upstream commit, matching its non-Git standalone behavior.

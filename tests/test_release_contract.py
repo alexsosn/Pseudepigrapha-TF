@@ -16,11 +16,11 @@ OLD_OCP_COMMIT = "2d1d14d23434a784d377ff7f4409ccdb2d18aafb"
 def test_release_versions_and_default_dataset_path_are_consistent() -> None:
     pyproject = tomllib.loads(Path("pyproject.toml").read_text(encoding="utf-8"))
 
-    assert pyproject["project"]["version"] == "1.0.0"
-    assert __version__ == "1.0.0"
+    assert pyproject["project"]["version"] == "1.1.0"
+    assert __version__ == "1.1.0"
 
     args = _parser().parse_args(["convert", "source"])
-    assert args.output == Path("tf/1.0")
+    assert args.output == Path("tf/1.1")
 
 
 def test_readme_documents_noneditable_runtime_install_before_rebuild() -> None:

@@ -71,14 +71,19 @@ def test_1_1_release_notes_exist_and_describe_researcher_gates() -> None:
 
     assert RELEASE_TAG in text
     for concept in (
-        "correctness",
-        "translation",
-        "install",
-        "memory",
-        "web",
+        "manuscript",
+        "fail-closed",
+        "transaction",
+        "stream",
+        "comparison",
         "documentation",
     ):
         assert concept in text.lower()
+
+    # A new data version is the whole reason this release exists; the notes must
+    # say so rather than describing only converter changes.
+    assert "tf-1.1.zip" in text
+    assert "data version" in text.lower()
 
 
 def test_historical_v0_2_public_release_verification_is_retained() -> None:
