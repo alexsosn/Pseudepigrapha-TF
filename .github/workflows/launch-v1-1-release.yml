@@ -84,6 +84,19 @@ jobs:
           case "$TAG_STATUS:$RELEASE_STATUS" in
             404:404)
               echo "Neither release nor tag exists; creating immutable v1.1.0 tag"
+              # Create the ref only in the proven both-absent state. A tag
+              # created before a failed workflow dispatch must never be moved.
+              gh api -X POST "repos/$GITHUB_REPOSITORY/git/refs" \
+                -f "ref=refs/tags/$RELEASE_TAG" \
+                -f "sha=$TARGET_COMMIT" --silent
+              ;;
+            200:404)
+              # A prior invocation may have created the ref and then failed
+              # to dispatch (network error, transient Actions rejection).
+              # Retry only when that immutable tag still binds this SHA.
+              TAG_COMMIT="$(python -c "import json;print(json.load(open('/tmp/v1-1-tag.json'))['object']['sha'])")"
+              test "$TAG_COMMIT" = "$TARGET_COMMIT"
+              echo "Matching immutable tag exists without release; retrying publisher dispatch"
               ;;
             200:200)
               TAG_COMMIT="$(python -c "import json;print(json.load(open('/tmp/v1-1-tag.json'))['object']['sha'])")"
@@ -120,10 +133,7 @@ jobs:
               ;;
           esac
 
-          # One atomic lightweight tag; never move, force-push or clobber it.
-          gh api -X POST "repos/$GITHUB_REPOSITORY/git/refs" \
-            -f "ref=refs/tags/$RELEASE_TAG" \
-            -f "sha=$TARGET_COMMIT" --silent
+          # Reverify the exact immutable tag even after a successful ref POST.
           TAG_COMMIT="$(gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$RELEASE_TAG" --jq '.object.sha')"
           test "$TAG_COMMIT" = "$TARGET_COMMIT"
 
