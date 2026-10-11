@@ -1,4 +1,5 @@
 from pathlib import Path
+from xml.etree import ElementTree as ET
 
 import pytest
 
@@ -24,7 +25,10 @@ def _modern_xml(*, version_extra="", division_extra="", div_extra="", unit_extra
 
 def _case(tmp_path, fixture_name):
     source = FIXTURES / fixture_name
-    (tmp_path / source.name).write_text(source.read_text(encoding="utf-8"), encoding="utf-8")
+    # Preserve raw fixture bytes while using its exact declared OCP work ID.
+    raw = source.read_bytes()
+    declared = ET.fromstring(raw).attrib["filename"]
+    (tmp_path / f"{declared}.xml").write_bytes(raw)
     books, warnings = load_source_directory(tmp_path)
     assert warnings == []
     data = build_tf_data(books)
