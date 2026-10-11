@@ -1,0 +1,114 @@
+name: launch-v1-1-release
+
+on:
+  workflow_run:
+    workflows: [test]
+    types: [completed]
+
+# The publisher owns draft/live assets. This launcher only creates the
+# one-time immutable tag and dispatches the existing release validator.
+permissions:
+  contents: write
+  actions: write
+
+concurrency:
+  group: guarded-v1-1-release-kickoff
+  cancel-in-progress: false
+
+jobs:
+  launch:
+    if: >-
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.event == 'push' &&
+      github.event.workflow_run.head_branch == 'main' &&
+      github.event.workflow_run.head_repository.full_name == github.repository &&
+      github.repository == 'alexsosn/Pseudepigrapha-TF'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      GH_TOKEN: \${{ github.token }}
+      RELEASE_TAG: v1.1.0
+      TARGET_COMMIT: \${{ github.event.workflow_run.head_sha }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: \${{ github.event.workflow_run.head_sha }}
+          fetch-depth: 1
+
+      - name: Require still-current green main SHA and exact 1.1 release identity
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REPOSITORY" = "alexsosn/Pseudepigrapha-TF"
+          test "$(git rev-parse HEAD)" = "$TARGET_COMMIT"
+          CURRENT_MAIN="$(git ls-remote origin refs/heads/main | cut -f1)"
+          test -n "$CURRENT_MAIN"
+          test "$CURRENT_MAIN" = "$TARGET_COMMIT"
+          python - <<'PY'
+          import os
+          import re
+          import tomllib
+          from pathlib import Path
+
+          project = tomllib.loads(Path('pyproject.toml').read_text(encoding='utf-8'))
+          package_version = project['project']['version']
+          match = re.search(
+              r'(?ms)^provenanceSpec:\s*$.*?^\s+version:\s*["\x27]?([^"\x27\s#]+)',
+              Path('app/config.yaml').read_text(encoding='utf-8'),
+          )
+          if match is None:
+              raise SystemExit('missing app provenanceSpec.version')
+          data_version = match.group(1)
+          expected_tag = f'v{package_version}'
+          if (package_version, data_version, os.environ['RELEASE_TAG']) != (
+              '1.1.0', '1.1', expected_tag
+          ):
+              raise SystemExit('release launcher supports only v1.1.0 / TF 1.1')
+          PY
+
+      - name: Probe immutable tag and release without masking GitHub API errors
+        run: |
+          set -euo pipefail
+          api_probe() {
+            local path="$1"
+            local output="$2"
+            curl --silent --show-error --output "$output" \
+              --write-out '%{http_code}' \
+              --header "Authorization: Bearer $GH_TOKEN" \
+              --header 'Accept: application/vnd.github+json' \
+              --header 'X-GitHub-Api-Version: 2022-11-28' \
+              "https://api.github.com/repos/$GITHUB_REPOSITORY/$path"
+          }
+
+          TAG_STATUS="$(api_probe "git/ref/tags/$RELEASE_TAG" /tmp/v1-1-tag.json)"
+          RELEASE_STATUS="$(api_probe "releases/tags/$RELEASE_TAG" /tmp/v1-1-release.json)"
+          case "$TAG_STATUS:$RELEASE_STATUS" in
+            404:404)
+              echo "Neither release nor tag exists; creating immutable v1.1.0 tag"
+              ;;
+            200:200)
+              TAG_COMMIT="$(python -c "import json;print(json.load(open('/tmp/v1-1-tag.json'))['object']['sha'])")"
+              test "$TAG_COMMIT" = "$TARGET_COMMIT"
+              echo "Matching tag and release already exist; no action"
+              exit 0
+              ;;
+            *)
+              echo "Unexpected or partial release state: tag HTTP $TAG_STATUS, release HTTP $RELEASE_STATUS" >&2
+              echo "Refusing tag move, draft overwrite or unverified recovery" >&2
+              exit 1
+              ;;
+          esac
+
+          # One atomic lightweight tag; never move, force-push or clobber it.
+          gh api -X POST "repos/$GITHUB_REPOSITORY/git/refs" \
+            -f "ref=refs/tags/$RELEASE_TAG" \
+            -f "sha=$TARGET_COMMIT" --silent
+          TAG_COMMIT="$(gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$RELEASE_TAG" --jq '.object.sha')"
+          test "$TAG_COMMIT" = "$TARGET_COMMIT"
+
+          # Dispatch against the immutable TAG, never mutable main. The target
+          # workflow preflight checks GITHUB_SHA == RELEASE_COMMIT. Its own
+          # builder/manifest/draft/live-verification gates remain mandatory.
+          gh workflow run publish-corpus-release.yml \
+            --ref "$RELEASE_TAG" \
+            -f release_tag="$RELEASE_TAG" \
+            -f release_commit="$TARGET_COMMIT"
