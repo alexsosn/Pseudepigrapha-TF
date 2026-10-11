@@ -31,6 +31,8 @@ The source exception requires the exact release-pinned `AdamEve.xml` bytes (SHA-
 
 The independent conversion report compares the raw blank-ID record with marked TF units. CI requires exactly one such source and graph record in the pinned corpus, and then reloads the generated corpus through Text-Fabric 13.1 to verify that the marker survives serialization while `unit_id` remains absent.
 
+A converter source checkout is also marked **unverified** when the Git index marks files under the OCP source directory `assume-unchanged` or `skip-worktree`. Git porcelain status can report a modified XML file as clean under either flag; the converter additionally inspects `git ls-files -v` and trusts only ordinary tracked entries. If Git cannot inspect the index, provenance remains unverified; conversion itself is still permitted. This is a conservative attestation policy for sparse/flagged worktrees and does not claim to protect against files changing concurrently after source loading.
+
 ## Other pinned structural anomalies
 
 
