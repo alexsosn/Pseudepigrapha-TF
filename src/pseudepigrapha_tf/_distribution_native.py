@@ -6,7 +6,7 @@ import os
 from pathlib import Path
 import shutil
 from tempfile import mkdtemp
-from typing import Any, Mapping
+from typing import Any, BinaryIO, Mapping
 from zipfile import BadZipFile, ZIP_DEFLATED, ZipFile, ZipInfo
 
 from .provenance import (
@@ -45,13 +45,27 @@ def _sha256_bytes(payload: bytes) -> str:
     return hashlib.sha256(payload).hexdigest()
 
 
+# Hash validation is repeatedly applied to potentially large native TF ZIPs.
+# Limit the temporary input buffer to 1 MiB rather than materializing each
+# complete file/member. In ZipExtFile, reading through EOF also checks CRC.
+_HASH_CHUNK_BYTES = 1_048_576
+
+
+def _hash_stream_record(name: str, stream: BinaryIO) -> dict[str, Any]:
+    digest = hashlib.sha256()
+    byte_count = 0
+    while True:
+        chunk = stream.read(_HASH_CHUNK_BYTES)
+        if not chunk:
+            break
+        digest.update(chunk)
+        byte_count += len(chunk)
+    return {"name": name, "bytes": byte_count, "sha256": digest.hexdigest()}
+
+
 def _file_record(path: Path) -> dict[str, Any]:
-    payload = path.read_bytes()
-    return {
-        "name": path.name,
-        "bytes": len(payload),
-        "sha256": _sha256_bytes(payload),
-    }
+    with path.open("rb") as stream:
+        return _hash_stream_record(path.name, stream)
 
 
 def _require_mapping(value: object, label: str) -> Mapping[str, Any]:
@@ -231,17 +245,13 @@ def _feature_records(archive: Path) -> list[dict[str, Any]]:
                     raise DistributionContractError(
                         f"TF archive contains non-feature or non-top-level entry {name!r}"
                     )
-                payload = zf.read(info)
-                records.append(
-                    {
-                        "name": name,
-                        "bytes": len(payload),
-                        "sha256": _sha256_bytes(payload),
-                    }
-                )
+                # Read the entire decompressed member to EOF; this both
+                # hashes the real bytes and requires ZipExtFile CRC parity.
+                with zf.open(info) as member:
+                    records.append(_hash_stream_record(name, member))
     except DistributionContractError:
         raise
-    except (OSError, BadZipFile, RuntimeError) as exc:
+    except (OSError, BadZipFile, RuntimeError, EOFError) as exc:
         raise DistributionContractError(f"invalid TF archive: {exc}") from exc
 
     return sorted(records, key=lambda item: item["name"])
