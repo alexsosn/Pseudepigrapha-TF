@@ -215,9 +215,9 @@ def test_rename_that_commits_then_raises_must_not_roll_back_new_tf(
 
     assert len(interrupted) == 1
     assert CompleteStageFabric.save_count == 1
-    assert (output / "otype.tf").read_bytes() == b"new type\\n"
-    assert (output / "oslots.tf").read_bytes() == b"new slots\\n"
-    assert (output / "new-only.tf").read_bytes() == b"new feature\\n"
+    assert (output / "otype.tf").read_bytes() == b"new type\n"
+    assert (output / "oslots.tf").read_bytes() == b"new slots\n"
+    assert (output / "new-only.tf").read_bytes() == b"new feature\n"
     assert not (output / "removed-in-new.tf").exists()
     assert (output / "researcher-notes.txt").read_bytes() == old["researcher-notes.txt"]
     committed_report = json.loads((output / "conversion-report.json").read_text())
