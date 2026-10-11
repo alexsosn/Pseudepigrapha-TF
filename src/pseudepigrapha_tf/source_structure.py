@@ -9,6 +9,12 @@ class SourceStructureError(ValueError):
     """Raised when a well-formed XML tree contains unsupported source structure."""
 
 
+# The source validator is iterative, but parser, raw audit and TF graph
+# construction still traverse nested divisions recursively. Reject excessive
+# structural depth before any recursive consumer can exhaust the Python stack.
+MAX_SOURCE_DIV_NESTING = 128
+
+
 MODERN_CHILDREN: dict[str, frozenset[str]] = {
     "book": frozenset({"version"}),
     "version": frozenset({"divisions", "resources", "manuscripts", "text"}),
@@ -236,6 +242,11 @@ def validate_source_structure(
             wrapped_legacy = is_wrapped_legacy_version(parent)
         if parent.tag == "div":
             div_path = div_path + (parent.attrib.get("number", ""),)
+            if len(div_path) > MAX_SOURCE_DIV_NESTING:
+                raise SourceStructureError(
+                    f"{location}: <div> nesting depth {len(div_path)} exceeds "
+                    f"maximum {MAX_SOURCE_DIV_NESTING} at {path}"
+                )
 
         # The <version> wrapper itself is modern. Only its descendants use the
         # legacy chapter/verse policy.
