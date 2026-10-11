@@ -269,7 +269,7 @@ _SERIALIZED_IDENTITY_KEYS = {
 # header line; still decode to EOF so CRC/UTF-8 errors *after* the header fail.
 _OTYPE_READ_CHARS = 65_536
 _MAX_OTYPE_HEADER_LINE_CHARS = 65_536
-_OTYPE_LINE_ENDINGS = "\\n\\v\\f\\x1c\\x1d\\x1e\\x85\\u2028\\u2029"
+_OTYPE_LINE_ENDINGS = "\n\v\f\x1c\x1d\x1e\x85\u2028\u2029"
 
 
 def _serialized_otype_metadata(archive: Path) -> dict[str, str]:
