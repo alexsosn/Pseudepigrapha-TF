@@ -114,8 +114,14 @@ def test_streaming_express_validator_checks_feature_bytes_without_payload_dicts(
         app_payloads = distribution._validate_express_archive(
             express, **_validation_arguments(native_zip, app)
         )
-    assert app_payloads["config.yaml"] == b"apiVersion: 3\n"
-    assert app_payloads["app.py"] == b"CODE = 1\n"
+    assert app_payloads["config.yaml"] == {
+        "name": "config.yaml", "bytes": len(b"apiVersion: 3\n"),
+        "sha256": sha256(b"apiVersion: 3\n").hexdigest(),
+    }
+    assert app_payloads["app.py"] == {
+        "name": "app.py", "bytes": len(b"CODE = 1\n"),
+        "sha256": sha256(b"CODE = 1\n").hexdigest(),
+    }
 
 
 def test_express_validator_rejects_same_length_feature_substitution(tmp_path):
