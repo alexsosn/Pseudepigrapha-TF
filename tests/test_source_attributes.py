@@ -117,7 +117,7 @@ def test_exception_filename_does_not_exempt_wrong_book_identity():
 
 
 def test_raw_audit_rejects_same_unknown_attribute(tmp_path):
-    path = tmp_path / "attributes.xml"
+    path = tmp_path / "Attrs.xml"
     path.write_bytes(_with_attribute(b'<unit id="1" group="2" parallel="p" linebreak="following">', b'future="metadata"'))
 
     with pytest.raises(InvalidSourceError, match=r"unsupported attribute future on <unit>"):
@@ -125,7 +125,7 @@ def test_raw_audit_rejects_same_unknown_attribute(tmp_path):
 
 
 def test_raw_audit_rejects_missing_modern_dtd_required_attribute(tmp_path):
-    path = tmp_path / "attributes.xml"
+    path = tmp_path / "Attrs.xml"
     path.write_bytes(
         _without_attribute(
             b'<unit id="1" group="2" parallel="p" linebreak="following">',
@@ -177,7 +177,7 @@ def test_optional_modern_attributes_can_still_be_absent():
 
 def test_pinned_capitalized_delimiter_alias_is_preserved_and_audited(tmp_path):
     data = _modern_xml().replace(b'delimiter=":"', b'Delimiter=":"', 1)
-    path = tmp_path / "attributes.xml"
+    path = tmp_path / "Attrs.xml"
     path.write_bytes(data)
 
     books, warnings = load_source_directory(tmp_path)
@@ -207,7 +207,7 @@ def test_duplicate_delimiter_spellings_fail_loudly_in_raw_audit(tmp_path):
         b'<division label="Chapter" delimiter=":" Delimiter="."/>',
         1,
     )
-    path = tmp_path / "attributes.xml"
+    path = tmp_path / "Attrs.xml"
     path.write_bytes(data)
 
     with pytest.raises(InvalidSourceError, match=r"both delimiter and Delimiter on <division>"):
@@ -220,7 +220,7 @@ def test_unknown_w_attribute_is_preserved_inside_audited_mixed_xml(tmp_path):
         b'>alpha <w morph="N" future="retained">beta</w></reading>',
         1,
     )
-    path = tmp_path / "attributes.xml"
+    path = tmp_path / "Attrs.xml"
     path.write_bytes(data)
 
     books, warnings = load_source_directory(tmp_path)
