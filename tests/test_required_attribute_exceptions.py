@@ -1,4 +1,8 @@
+from hashlib import sha256
+
 import pytest
+
+from pseudepigrapha_tf import source_structure
 
 from pseudepigrapha_tf.conversion import build_tf_data
 from pseudepigrapha_tf.parser import InvalidSourceError, parse_bytes
@@ -31,19 +35,28 @@ def _source(*, book_filename: str, version_title: str, manuscript_abbrev: str) -
 )
 def test_known_missing_manuscript_language_stays_unknown_and_audited(
     tmp_path,
+    monkeypatch,
     source_name,
     book_filename,
     version_title,
     manuscript_abbrev,
 ):
     path = tmp_path / source_name
-    path.write_bytes(
-        _source(
-            book_filename=book_filename,
-            version_title=version_title,
-            manuscript_abbrev=manuscript_abbrev,
-        )
+    fixture_bytes = _source(
+        book_filename=book_filename,
+        version_title=version_title,
+        manuscript_abbrev=manuscript_abbrev,
     )
+    # Small synthetic XML is deliberately not upstream's immutable source.
+    # Authorize only its exact bytes in the isolated positive fixture; the
+    # real pinned OCP conversion tests exercise the production digest map.
+    identity = (source_name, book_filename, version_title, manuscript_abbrev)
+    monkeypatch.setitem(
+        source_structure.KNOWN_MISSING_MANUSCRIPT_LANGUAGE,
+        identity,
+        frozenset({sha256(fixture_bytes).hexdigest()}),
+    )
+    path.write_bytes(fixture_bytes)
 
     books, warnings = load_source_directory(tmp_path)
     assert warnings == []
@@ -91,3 +104,28 @@ def test_known_file_book_and_version_do_not_exempt_other_manuscript_record():
             ),
             source_path="Eup.xml",
         )
+
+
+def test_digest_authorizes_only_exact_positive_fixture_bytes(monkeypatch):
+    source_name, book_filename, version_title, manuscript_abbrev = KNOWN_MISSING_MS_LANGUAGE[0]
+    original = _source(
+        book_filename=book_filename,
+        version_title=version_title,
+        manuscript_abbrev=manuscript_abbrev,
+    )
+    identity = (source_name, book_filename, version_title, manuscript_abbrev)
+    monkeypatch.setitem(
+        source_structure.KNOWN_MISSING_MANUSCRIPT_LANGUAGE,
+        identity,
+        frozenset({sha256(original).hexdigest()}),
+    )
+    assert parse_bytes(original, source_path=source_name).versions
+
+    # Preserve the four visible identity labels, but change scholarly content.
+    edited = original.replace(b"alpha", b"beta")
+    assert edited != original
+    with pytest.raises(
+        InvalidSourceError,
+        match=r"missing required attribute language on <ms>",
+    ):
+        parse_bytes(edited, source_path=source_name)
