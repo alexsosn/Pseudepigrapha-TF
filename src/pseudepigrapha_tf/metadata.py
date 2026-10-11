@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Mapping
@@ -42,13 +43,31 @@ def _unique_json_object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
     return result
 
 
+def _reject_non_json_constant(value: str) -> None:
+    # Python's JSON decoder accepts NaN and Infinity unless disabled.
+    raise ValueError(f"invalid JSON constant {value!r}: non-finite numeric value")
+
+
+def _parse_finite_json_float(literal: str) -> float:
+    value = float(literal)
+    # Valid JSON numeric syntax such as 1e9999 can overflow Python float.
+    if not math.isfinite(value):
+        raise ValueError(f"non-finite JSON number from out of range literal {literal!r}")
+    return value
+
+
 def _decode_json(raw: bytes, *, source_name: str) -> Any:
     try:
         text = raw.decode("utf-8")
     except UnicodeDecodeError as exc:
         raise ValueError(f"{source_name}: invalid UTF-8 JSON: {exc}") from exc
     try:
-        return json.loads(text, object_pairs_hook=_unique_json_object)
+        return json.loads(
+            text,
+            object_pairs_hook=_unique_json_object,
+            parse_constant=_reject_non_json_constant,
+            parse_float=_parse_finite_json_float,
+        )
     except json.JSONDecodeError as exc:
         raise ValueError(f"{source_name}: invalid UTF-8 JSON: {exc}") from exc
     except ValueError as exc:
@@ -90,6 +109,8 @@ class PublicMetadataCorpus:
 def _require_scalar(value: Any, *, location: str) -> Any:
     if not isinstance(value, _JSON_SCALAR_TYPES):
         raise ValueError(f"{location}: expected JSON scalar, got {type(value).__name__}")
+    if isinstance(value, float) and not math.isfinite(value):
+        raise ValueError(f"{location}: non-finite JSON scalar is not permitted")
     return value
 
 
@@ -187,7 +208,7 @@ def load_public_metadata(path: str | Path) -> PublicMetadataCorpus:
 
 
 def _encode_scalar(value: Any) -> str:
-    return json.dumps(value, ensure_ascii=False)
+    return json.dumps(value, ensure_ascii=False, allow_nan=False)
 
 
 def _encoded_features(document: PublicMetadataDocument) -> dict[str, str]:
