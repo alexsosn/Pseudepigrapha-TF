@@ -34,6 +34,26 @@ class _TFInstallRollbackError(RuntimeError):
         self.backup = backup
 
 
+
+class _TFPublicationStateUnknown(RuntimeError):
+    """Do not roll back while it is unknown whether the report was committed."""
+
+    def __init__(
+        self,
+        install_error: BaseException,
+        probe_error: BaseException,
+        backup: Path,
+    ) -> None:
+        super().__init__(
+            "Text-Fabric report commit state could not be determined "
+            f"after ({install_error}); publication status check also failed "
+            f"({probe_error}); recoverable backup retained at {backup}"
+        )
+        self.install_error = install_error
+        self.probe_error = probe_error
+        self.backup = backup
+
+
 _FORMAT_FEATURE = re.compile(r"\{([^}:]+)(?::[^}]*)?\}")
 _ALWAYS_SERIALIZED_NODE_FEATURES = frozenset(
     {"undefined_manuscript", "synthetic_witness"}
@@ -183,6 +203,7 @@ def _install_staged_tf_features(
     output: Path,
     *,
     after_install: Callable[[], None] | None = None,
+    publication_committed: Callable[[], bool] | None = None,
 ) -> None:
     """Install one staged TF generation and restore the previous set on failure.
 
@@ -209,6 +230,30 @@ def _install_staged_tf_features(
         if after_install is not None:
             after_install()
     except BaseException as install_error:
+        # Path.replace can perform the report rename successfully and *then*
+        # raise (e.g. a KeyboardInterrupt delivered after the syscall). Once
+        # the matching report is public, rolling back TF would itself corrupt
+        # the feature/report pair. Resolve publication state from actual bytes,
+        # never from a flag assigned after the interruptible rename.
+        if publication_committed is not None:
+            try:
+                committed = publication_committed()
+            except BaseException as probe_error:
+                # Guessing here could destroy a committed generation. Keep
+                # both TF copies for operator recovery and report both errors.
+                raise _TFPublicationStateUnknown(
+                    install_error, probe_error, backup
+                ) from probe_error
+            if committed:
+                try:
+                    shutil.rmtree(backup)
+                except BaseException as cleanup_error:
+                    _warn_nonfatal(
+                        "report was already published; previous TF backup "
+                        f"cleanup failed at {backup}: {cleanup_error}",
+                        stacklevel=3,
+                    )
+                raise
         try:
             _rollback_tf_features(output, backup, original_names)
         except BaseException as rollback_error:
@@ -251,6 +296,7 @@ def _serialize_tf(
     *,
     fabric_factory: Callable[..., _FabricLike] | None = None,
     after_install: Callable[[], None] | None = None,
+    publication_committed: Callable[[], bool] | None = None,
 ) -> bool:
     """Serialize data that has already crossed the caller's validation boundary."""
 
@@ -287,7 +333,7 @@ def _serialize_tf(
         )
 
     if not uses_standard_fabric:
-        if after_install is not None:
+        if after_install is not None or publication_committed is not None:
             raise ValueError("deferred report publication requires standard Text-Fabric staging")
         return save(output)
 
@@ -300,7 +346,11 @@ def _serialize_tf(
     try:
         if not save(stage):
             return False
-        _install_staged_tf_features(stage, output, after_install=after_install)
+        _install_staged_tf_features(
+            stage, output,
+            after_install=after_install,
+            publication_committed=publication_committed,
+        )
         return True
     finally:
         _cleanup_stage_nonfatal(stage)
@@ -311,10 +361,14 @@ def _write_prevalidated_tf(
     output_dir: str | Path,
     *,
     after_install: Callable[[], None] | None = None,
+    publication_committed: Callable[[], bool] | None = None,
 ) -> bool:
     """Serialize the CLI's freshly generated and already validated graph."""
 
-    return _serialize_tf(data, output_dir, after_install=after_install)
+    return _serialize_tf(
+        data, output_dir, after_install=after_install,
+        publication_committed=publication_committed,
+    )
 
 
 def write_tf(
