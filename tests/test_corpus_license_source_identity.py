@@ -16,7 +16,7 @@ def test_cli_override_cannot_verify_license_for_non_git_source(monkeypatch, tmp_
 
     captured = {}
 
-    def capture_writer(data, output_dir, *, after_install=None):
+    def capture_writer(data, output_dir, *, after_install=None, publication_committed=None):
         captured.update(data.metadata[""])
         output = Path(output_dir)
         output.mkdir(parents=True, exist_ok=True)
