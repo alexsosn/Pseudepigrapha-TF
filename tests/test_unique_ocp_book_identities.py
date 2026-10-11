@@ -18,8 +18,8 @@ SOURCE = Path(__file__).parent / "fixtures" / "sample.xml"
 
 
 def _two_files(directory: Path, *, identical_id: bool = True) -> tuple[Path, Path]:
-    first = directory / "first.xml"
-    second = directory / "second.xml"
+    first = directory / "Sample.xml"
+    second = directory / ("Twin.xml" if identical_id else "Other.xml")
     first.write_bytes(SOURCE.read_bytes())
     second_data = SOURCE.read_bytes().replace("λόγος".encode(), "λόγος".encode(), 1)
     assert second_data != first.read_bytes()
@@ -32,7 +32,7 @@ def _two_files(directory: Path, *, identical_id: bool = True) -> tuple[Path, Pat
 def test_source_directory_rejects_two_distinct_documents_with_same_book_filename(tmp_path):
     _two_files(tmp_path)
     with pytest.raises(
-        InvalidSourceError, match=r"duplicate.*Sample.*first[.]xml.*second[.]xml"
+        InvalidSourceError, match=r"duplicate.*Sample.*Sample[.]xml.*Twin[.]xml"
     ):
         load_source_directory(tmp_path)
 
@@ -48,7 +48,7 @@ def test_graph_builder_rejects_colliding_work_identifiers_even_without_directory
 def test_independent_raw_audit_detects_same_work_id_across_source_files(tmp_path):
     _two_files(tmp_path)
     with pytest.raises(
-        InvalidSourceError, match=r"duplicate.*Sample.*first[.]xml.*second[.]xml"
+        InvalidSourceError, match=r"duplicate.*Sample.*Sample[.]xml.*Twin[.]xml"
     ):
         audit._raw_inventory(tmp_path)
 
@@ -73,7 +73,7 @@ def test_multiple_versions_inside_one_document_are_not_cross_file_duplicates(tmp
     second_version = deepcopy(first_version)
     second_version.set("title", "Second legitimate version")
     root.append(second_version)
-    (tmp_path / "one-work.xml").write_bytes(ET.tostring(root, encoding="utf-8"))
+    (tmp_path / "Sample.xml").write_bytes(ET.tostring(root, encoding="utf-8"))
 
     books, warnings = load_source_directory(tmp_path)
     assert warnings == []
