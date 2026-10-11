@@ -142,15 +142,29 @@ KNOWN_BLANK_UNIT_ID_SOURCES: dict[
 # ms/@language #REQUIRED while omitting it in the source. Scope the exception
 # to source basename + OCP book identity + version title + manuscript abbrev;
 # neighboring records in the same file still obey the DTD requirement.
-KNOWN_MISSING_MANUSCRIPT_LANGUAGE: frozenset[tuple[str, str, str, str]] = frozenset(
-    {
-        ("ClMal.xml", "ClMal", "Jewish Antiquities", "Niese"),
-        ("ClMal.xml", "ClMal", "Praep. Evang.", "Mras"),
-        ("Eup.xml", "Eup", "Praep. Evang. (Frag. 3)", "Mras"),
-        ("Ps-Eup.xml", "Ps-Eup", "Praep. Evang. (Frag. 1)", "Mras"),
-        ("Ps-Eup.xml", "Ps-Eup", "Praep. Evang. (Frag. 2)", "Mras"),
-    }
-)
+# Record identity alone is insufficient: an unrelated or edited XML file can
+# reuse these four labels. Bind each exception to the complete reviewed source
+# bytes, just as for KNOWN_BLANK_UNIT_ID_SOURCES above. The pinned source commit
+# is c939dcbacad78c5d18d2c4282cad23c47e19ac07.
+KNOWN_MISSING_MANUSCRIPT_LANGUAGE: dict[
+    tuple[str, str, str, str], frozenset[str]
+] = {
+    ("ClMal.xml", "ClMal", "Jewish Antiquities", "Niese"): frozenset({
+        "bd9e16f31a3e418ccf0d3c5b6392e01124ec757f52a5bb571a2b14e7acd49bb1",
+    }),
+    ("ClMal.xml", "ClMal", "Praep. Evang.", "Mras"): frozenset({
+        "bd9e16f31a3e418ccf0d3c5b6392e01124ec757f52a5bb571a2b14e7acd49bb1",
+    }),
+    ("Eup.xml", "Eup", "Praep. Evang. (Frag. 3)", "Mras"): frozenset({
+        "c4dcefa833e2286d97e83b466a5a43b3046b6f2733bf373ecfb03bc1177e6052",
+    }),
+    ("Ps-Eup.xml", "Ps-Eup", "Praep. Evang. (Frag. 1)", "Mras"): frozenset({
+        "e28e843f1d54825bca453c134f962f2d32e33438e4b009e7755efce313b282ef",
+    }),
+    ("Ps-Eup.xml", "Ps-Eup", "Praep. Evang. (Frag. 2)", "Mras"): frozenset({
+        "e28e843f1d54825bca453c134f962f2d32e33438e4b009e7755efce313b282ef",
+    }),
+}
 
 LEGACY_ATTRIBUTES: dict[str, frozenset[str] | None] = {
     "book": frozenset({"filename", "title", "textStructure", "language"}),
@@ -269,7 +283,9 @@ def validate_source_structure(
                     version_title,
                     parent.attrib.get("abbrev", ""),
                 )
-                if manuscript_identity in KNOWN_MISSING_MANUSCRIPT_LANGUAGE:
+                if source_sha256 in KNOWN_MISSING_MANUSCRIPT_LANGUAGE.get(
+                    manuscript_identity, frozenset()
+                ):
                     required = required - {"language"}
             for attribute in sorted(required):
                 if attribute not in parent.attrib:
