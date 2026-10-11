@@ -253,6 +253,7 @@ def _raw_inventory(source_dir: Path) -> dict:
                 "label": spec.label, "delimiter": spec.delimiter, "text": spec.text,
             })
 
+    raw_work_sources: dict[str, str] = {}
     for path in sorted(source_dir.glob("*.xml")):
         data = path.read_bytes()
         if path.name.startswith(".") or not data.strip():
@@ -271,6 +272,16 @@ def _raw_inventory(source_dir: Path) -> dict:
         except SourceStructureError as exc:
             raise InvalidSourceError(str(exc)) from exc
         ocp_book = root.get("filename", "")
+        # Independently check raw file ownership instead of inheriting the
+        # parser/loader's identity assumption, which could conceal a source
+        # collision in the source-to-graph semantic parity inventory.
+        earlier = raw_work_sources.get(ocp_book)
+        if earlier is not None:
+            raise InvalidSourceError(
+                f"duplicate OCP book filename {ocp_book!r} in "
+                f"{earlier} and {path.name}"
+            )
+        raw_work_sources[ocp_book] = path.name
         inventory["files"].append({"file": path.name, "sha256": source_sha256})
         if versions:
             classified_versions: list[tuple[ET.Element, bool]] = []
