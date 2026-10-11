@@ -85,3 +85,20 @@ def test_actual_immutable_asset_publisher_contract_is_retained():
     assert "--verify-tag" in publisher
     assert "--draft=false" in publisher
     assert "verify-live:" in publisher
+
+
+def test_tag_only_state_can_retry_dispatch_without_mutating_immutable_tag():
+    """A successful tag POST followed by failed dispatch must be recoverable."""
+    text = _launcher()
+    assert "200:404)" in text, "matching existing tag with no release must be retryable"
+    tag_only = text.split("200:404)", 1)[1].split(";;", 1)[0]
+    assert "TAG_COMMIT" in tag_only
+    assert 'test "$TAG_COMMIT" = "$TARGET_COMMIT"' in tag_only
+    assert "gh api -X POST" not in tag_only, "never recreate an existing tag"
+    # Tag creation must remain restricted to the both-absent state.
+    create_tag = text.split("404:404)", 1)[1].split(";;", 1)[0]
+    assert "gh api -X POST" in create_tag
+    # Both clean creation and tag-only recovery must reach the same publisher,
+    # with no release/publication operation in the privileged launcher.
+    assert text.count("gh workflow run publish-corpus-release.yml") == 1
+    assert text.index("gh workflow run publish-corpus-release.yml") > text.index("200:404)")
