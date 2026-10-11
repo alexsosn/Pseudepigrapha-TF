@@ -38,7 +38,7 @@ def _copy_source_fixture(tmp_path):
     return source_dir
 
 
-def _write_stub_tf(data, output_dir, *, after_install=None):
+def _write_stub_tf(data, output_dir, *, after_install=None, publication_committed=None):
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
     (output_dir / "otype.tf").write_bytes(b"@node\n@valueType=str\n1\tword\n")

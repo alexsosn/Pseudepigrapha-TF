@@ -37,7 +37,7 @@ def test_dirty_pinned_checkout_cannot_retain_verified_license(monkeypatch, tmp_p
 
     captured = {}
 
-    def capture_writer(data, output_dir, *, after_install=None):
+    def capture_writer(data, output_dir, *, after_install=None, publication_committed=None):
         captured.clear()
         captured.update(data.metadata[""])
         output = Path(output_dir)

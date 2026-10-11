@@ -31,7 +31,7 @@ def _existing_stub_tf(output: Path) -> dict[str, bytes]:
     return payloads
 
 
-def _write_stub_tf(data, output_dir, *, after_install=None):
+def _write_stub_tf(data, output_dir, *, after_install=None, publication_committed=None):
     output = Path(output_dir)
     output.mkdir(parents=True, exist_ok=True)
     (output / "otype.tf").write_bytes(b"@node\n@valueType=str\n1\tword\n")

@@ -185,3 +185,88 @@ def test_failed_report_commit_does_not_leave_new_generation_for_fresh_output(mon
     assert not list(output.glob("*.tf"))
     assert (output / "conversion-report.json").read_bytes() == old["conversion-report.json"]
     assert (output / "researcher-notes.txt").read_bytes() == old["researcher-notes.txt"]
+
+
+@pytest.mark.parametrize("exception_type", [KeyboardInterrupt, OSError])
+def test_rename_that_commits_then_raises_must_not_roll_back_new_tf(
+    monkeypatch, tmp_path, exception_type
+):
+    source, output, old = setup_case(tmp_path, monkeypatch)
+    original_replace = Path.replace
+    interrupted = []
+
+    def rename_then_raise(self, target):
+        target = Path(target)
+        if (
+            self.parent.name.startswith(".pseudepigrapha-tf-report-")
+            and target == output / "conversion-report.json"
+        ):
+            # The destination really has the new report before interruption:
+            # this is not the already-covered pre-rename failure case.
+            result = original_replace(self, target)
+            interrupted.append(result)
+            assert json.loads(target.read_text())["status"] == "ok"
+            raise exception_type("exception after successful report rename")
+        return original_replace(self, target)
+
+    monkeypatch.setattr(Path, "replace", rename_then_raise)
+    with pytest.raises(exception_type, match="after successful report rename"):
+        convert(source, output)
+
+    assert len(interrupted) == 1
+    assert CompleteStageFabric.save_count == 1
+    assert (output / "otype.tf").read_bytes() == b"new type\n"
+    assert (output / "oslots.tf").read_bytes() == b"new slots\n"
+    assert (output / "new-only.tf").read_bytes() == b"new feature\n"
+    assert not (output / "removed-in-new.tf").exists()
+    assert (output / "researcher-notes.txt").read_bytes() == old["researcher-notes.txt"]
+    committed_report = json.loads((output / "conversion-report.json").read_text())
+    assert committed_report["status"] == "ok"
+    assert committed_report["text_fabric"] == feature_directory_identity(output)
+
+
+def test_unknown_report_commit_state_retains_backup_and_both_failure_causes(
+    monkeypatch, tmp_path
+):
+    source, output, old = setup_case(tmp_path, monkeypatch)
+    original_replace = Path.replace
+    original_read_bytes = Path.read_bytes
+    committed = []
+
+    def rename_then_raise(self, target):
+        if (
+            self.parent.name.startswith(".pseudepigrapha-tf-report-")
+            and Path(target) == output / "conversion-report.json"
+        ):
+            result = original_replace(self, target)
+            committed.append(result)
+            raise OSError("report rename returned an uncertain error")
+        return original_replace(self, target)
+
+    def unreadable_publication(self):
+        if self == output / "conversion-report.json" and committed:
+            raise PermissionError("cannot inspect published report")
+        return original_read_bytes(self)
+
+    monkeypatch.setattr(Path, "replace", rename_then_raise)
+    with monkeypatch.context() as patch:
+        patch.setattr(Path, "read_bytes", unreadable_publication)
+        with pytest.raises(RuntimeError, match="commit state could not be determined") as caught:
+            convert(source, output)
+
+    assert committed
+    assert "report rename returned an uncertain error" in str(caught.value)
+    assert "cannot inspect published report" in str(caught.value)
+    assert "backup" in str(caught.value)
+    assert (output / "otype.tf").read_bytes() == b"new type\n"
+    assert json.loads((output / "conversion-report.json").read_text())["status"] == "ok"
+    assert (output / "researcher-notes.txt").read_bytes() == old["researcher-notes.txt"]
+    backup_dirs = [
+        p for p in tmp_path.iterdir()
+        if p.is_dir() and p.name.startswith(".pseudepigrapha-tf-backup-")
+    ]
+    assert backup_dirs
+    assert any(
+        (backup / "otype.tf").read_bytes() == old["otype.tf"]
+        for backup in backup_dirs if (backup / "otype.tf").is_file()
+    )
