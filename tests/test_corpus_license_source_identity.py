@@ -9,7 +9,7 @@ FIXTURES = Path(__file__).parent / "fixtures"
 def test_cli_override_cannot_verify_license_for_non_git_source(monkeypatch, tmp_path):
     source_dir = tmp_path / "source"
     source_dir.mkdir()
-    (source_dir / "sample.xml").write_text(
+    (source_dir / "Sample.xml").write_text(
         (FIXTURES / "sample.xml").read_text(encoding="utf-8"),
         encoding="utf-8",
     )

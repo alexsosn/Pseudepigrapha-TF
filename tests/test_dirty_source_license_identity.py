@@ -20,14 +20,14 @@ def test_dirty_pinned_checkout_cannot_retain_verified_license(monkeypatch, tmp_p
     repo = tmp_path / "ocp"
     source_dir = repo / "static" / "docs"
     source_dir.mkdir(parents=True)
-    sample = source_dir / "sample.xml"
+    sample = source_dir / "Sample.xml"
     fixture_text = (FIXTURES / "sample.xml").read_text(encoding="utf-8")
     sample.write_text(fixture_text, encoding="utf-8")
 
     _git(repo, "init")
     _git(repo, "config", "user.email", "tests@example.invalid")
     _git(repo, "config", "user.name", "Pseudepigrapha-TF tests")
-    _git(repo, "add", "static/docs/sample.xml")
+    _git(repo, "add", "static/docs/Sample.xml")
     _git(repo, "commit", "-m", "fixture source")
     commit = _git(repo, "rev-parse", "HEAD")
 
@@ -68,7 +68,7 @@ def test_dirty_pinned_checkout_cannot_retain_verified_license(monkeypatch, tmp_p
     # would ingest but Git does not know about. HEAD still matches; provenance
     # must nevertheless stay unverified because the converted corpus is not the
     # committed source tree.
-    _git(repo, "checkout", "--", "static/docs/sample.xml")
+    _git(repo, "checkout", "--", "static/docs/Sample.xml")
     extra = source_dir / "Extra.xml"
     extra.write_text(fixture_text.replace('filename="Sample"', 'filename="Extra"'), encoding="utf-8")
 

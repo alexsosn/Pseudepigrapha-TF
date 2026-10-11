@@ -36,7 +36,7 @@ def setup_case(tmp_path, monkeypatch):
 
     source = tmp_path / "source"
     source.mkdir()
-    (source / "sample.xml").write_bytes(FIXTURE.read_bytes())
+    (source / "Sample.xml").write_bytes(FIXTURE.read_bytes())
     output = tmp_path / "tf"
     output.mkdir()
     (output / "otype.tf").write_bytes(b"previous type\n")

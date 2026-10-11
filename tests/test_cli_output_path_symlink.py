@@ -13,7 +13,7 @@ FIXTURES = Path(__file__).parent / "fixtures"
 def _copy_source(tmp_path: Path) -> Path:
     source = tmp_path / "source"
     source.mkdir()
-    (source / "sample.xml").write_text(
+    (source / "Sample.xml").write_text(
         (FIXTURES / "sample.xml").read_text(encoding="utf-8"),
         encoding="utf-8",
     )

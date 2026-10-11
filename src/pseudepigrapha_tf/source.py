@@ -74,6 +74,11 @@ def load_source_directory(path: str | Path) -> tuple[list[Book], list[str]]:
                 f"duplicate OCP book filename {book.filename!r} in "
                 f"{earlier} and {xml_path.name}"
             )
+        if book.filename != xml_path.stem:
+            raise InvalidSourceError(
+                f"{xml_path.name}: OCP <book filename> identity {book.filename!r} "
+                f"does not match XML filename stem {xml_path.stem!r}"
+            )
         work_sources[book.filename] = xml_path.name
         for exclusion in book.excluded_generated_translations:
             warnings.append(

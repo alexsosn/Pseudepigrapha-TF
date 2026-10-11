@@ -31,7 +31,7 @@ def _graph_snapshot(data):
 def _copy_source_fixture(tmp_path):
     source_dir = tmp_path / "source"
     source_dir.mkdir()
-    (source_dir / "sample.xml").write_text(
+    (source_dir / "Sample.xml").write_text(
         (FIXTURES / "sample.xml").read_text(encoding="utf-8"),
         encoding="utf-8",
     )
