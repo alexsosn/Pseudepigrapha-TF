@@ -685,6 +685,27 @@ def validate_distribution(
         )
 
 
+
+# Construct canonical archives in bounded chunks. This matches historical
+# writestr(ZipInfo, feature.read_bytes()) ZIP bytes while avoiding a complete
+# feature-sized temporary bytes allocation. ZipFile.open updates CRC/headers
+# after streaming the actual source contents.
+_ZIP_WRITE_CHUNK_BYTES = 1_048_576
+
+
+def _write_native_feature_archive(archive: Path, features: list[Path]) -> None:
+    with ZipFile(archive, "w", compression=ZIP_DEFLATED) as zf:
+        for feature in features:
+            info = _canonical_zip_info(feature.name)
+            # Providing the size before opening preserves the old writestr
+            # zip64/header decision and canonical byte-for-byte layout.
+            info.file_size = feature.stat().st_size
+            with feature.open("rb") as source_stream, zf.open(info, "w") as member_stream:
+                shutil.copyfileobj(
+                    source_stream, member_stream, length=_ZIP_WRITE_CHUNK_BYTES
+                )
+
+
 def stage_distribution_assets(
     tf_directory: str | Path,
     destination: str | Path,
@@ -737,9 +758,7 @@ def stage_distribution_assets(
     try:
         # Text-Fabric 13.1 tf-zip writes sorted top-level .tf files with
         # ZIP_DEFLATED and excludes non-feature files such as the report.
-        with ZipFile(archive, "w", compression=ZIP_DEFLATED) as zf:
-            for feature in features:
-                zf.writestr(_canonical_zip_info(feature.name), feature.read_bytes())
+        _write_native_feature_archive(archive, features)
         shutil.copyfile(report_source, staged_report)
 
         manifest = build_distribution_manifest(
