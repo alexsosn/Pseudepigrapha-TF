@@ -54,6 +54,16 @@ def _parse_finite_json_float(literal: str) -> float:
     # Valid JSON numeric syntax such as 1e9999 can overflow Python float.
     if not math.isfinite(value):
         raise ValueError(f"non-finite JSON number from out of range literal {literal!r}")
+    # A nonzero JSON number can also underflow to binary64 zero (1e-9999).
+    # Inspect the mantissa, not exponent digits: true JSON zeros such as
+    # 0e-9999 and -0.000E+99999 are valid and must stay valid. The JSON
+    # decoder has already validated the literal's numeric syntax.
+    if value == 0.0:
+        mantissa = literal.split("e", 1)[0].split("E", 1)[0]
+        if any(digit in "123456789" for digit in mantissa):
+            raise ValueError(
+                f"JSON numeric underflow: nonzero literal {literal!r} rounded to zero"
+            )
     return value
 
 
