@@ -154,16 +154,16 @@ The comparison server takes a **local materialized TF feature directory**; it do
 
 ```bash
 curl -L \
-  -o /tmp/tf-1.0.zip \
-  https://github.com/alexsosn/Pseudepigrapha-TF/releases/download/v1.0.0/tf-1.0.zip
+  -o /tmp/tf-1.1.zip \
+  https://github.com/alexsosn/Pseudepigrapha-TF/releases/download/v1.1.0/tf-1.1.zip
 
-mkdir -p /tmp/pseudepigrapha-tf/1.0
-python -m zipfile -e /tmp/tf-1.0.zip /tmp/pseudepigrapha-tf/1.0
+mkdir -p /tmp/pseudepigrapha-tf/1.1
+python -m zipfile -e /tmp/tf-1.1.zip /tmp/pseudepigrapha-tf/1.1
 
-git clone --depth 1 --branch v1.0.0 https://github.com/alexsosn/Pseudepigrapha-TF.git
+git clone --depth 1 --branch v1.1.0 https://github.com/alexsosn/Pseudepigrapha-TF.git
 cd Pseudepigrapha-TF
 python -m pip install .
-pseudepigrapha-tf browse /tmp/pseudepigrapha-tf/1.0 --app app
+pseudepigrapha-tf browse /tmp/pseudepigrapha-tf/1.1 --app app
 ```
 
 Open `http://127.0.0.1:8000/compare`. The stock Text-Fabric browser remains available at `/`; the comparison route is an addition, not a replacement server.
@@ -183,6 +183,8 @@ Resource measurements are reference measurements from GitHub-hosted Ubuntu runne
 For the published `v0.2.0` baseline, the stock `complete.zip` is about **9.36 MiB**, the populated stock Text-Fabric cache measured about **216.6 MiB**, and a warm full-app load measured about **1.69 GiB peak RSS**.
 
 The 1.0 corpus output is smaller: about **9.20 MiB** compressed, **145.4 MiB** in the populated stock cache, about **1.34 GiB peak RSS** for a warm full-app load, and about **1023 MiB peak RSS** for the measured translation-oriented selective load. Text-Fabric retained no ZIP archive in the populated cache in either measurement.
+
+These remain the most recent measured figures. The 1.1 corpus changes manuscript metadata only and was not re-measured, so no figure above is restated as a 1.1 measurement.
 
 The first local load is more expensive because Text-Fabric compiles/cache-materializes features. On the reference runner the post-#141 first local load took about 46 seconds and peaked around 2.08 GiB; a warm full-app load took about 3.6 seconds. Hosted-runner wall-clock values fluctuate, so the disk/RSS deltas are more meaningful than the exact seconds.
 
@@ -252,7 +254,7 @@ git -C Online-Critical-Pseudepigrapha checkout c939dcbacad78c5d18d2c4282cad23c47
 
 pseudepigrapha-tf convert \
   Online-Critical-Pseudepigrapha/static/docs \
-  --output tf/1.0
+  --output tf/1.1
 ```
 
 Conversion auto-detects and records source Git identity where possible. The supported pinned source receives the researched verified content-license profile; arbitrary source tuples are convertible but remain explicitly unverified rather than inheriting that claim.
