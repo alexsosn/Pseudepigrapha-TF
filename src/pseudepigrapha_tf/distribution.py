@@ -129,7 +129,7 @@ def _build_express_archive(
     repository_owner = _require_repository_component(repository_owner, "repository owner")
     repository_name = _require_repository_component(repository_name, "repository name")
     marker = _checkout_marker(release_tag, release_commit)
-    app_payloads = _collect_app_payloads(app_directory)
+    app_files = _enumerate_app_files(app_directory)
     # Only native feature metadata is retained. Previously every decompressed
     # feature was held in a bytes dictionary throughout complete.zip creation.
     feature_records = _native._feature_records(native_archive)
@@ -138,11 +138,11 @@ def _build_express_archive(
     app_root = f"{root}/app"
     data_root = f"{root}/tf/{data_version}"
     # A tuple describes one ZIP member to copy, not its entire payload.
-    members: dict[str, bytes | tuple[str, int]] = {
+    members: dict[str, bytes | Path | tuple[str, int]] = {
         f"{app_root}/{_EXPRESS_CHECKOUT_NAME}": marker,
         f"{data_root}/{_EXPRESS_CHECKOUT_NAME}": marker,
     }
-    members.update({f"{app_root}/{name}": payload for name, payload in app_payloads.items()})
+    members.update({f"{app_root}/{name}": path for name, path in app_files.items()})
     for record in feature_records:
         members[f"{data_root}/{record['name']}"] = (record["name"], record["bytes"])
 
@@ -152,9 +152,15 @@ def _build_express_archive(
                 entry = members[name]
                 info = _native._canonical_zip_info(name)
                 if isinstance(entry, bytes):
-                    # Tiny checkout markers and app resources keep the historic
-                    # writestr behavior, including normalized ZIP metadata.
+                    # Only the tiny generated checkout markers use writestr.
                     zf.writestr(info, entry)
+                elif isinstance(entry, Path):
+                    # The tracked app asset must not be materialized as bytes.
+                    # The stat size retains the historical Zip64/header
+                    # decision, while streaming computes the real CRC/length.
+                    info.file_size = entry.stat().st_size
+                    with entry.open("rb") as source, zf.open(info, "w") as target:
+                        shutil.copyfileobj(source, target, length=1_048_576)
                 else:
                     native_name, byte_count = entry
                     # Match the old writestr header/Zip64 decision even though
