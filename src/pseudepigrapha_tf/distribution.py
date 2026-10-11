@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+from io import BytesIO
 from pathlib import Path
 import shutil
 import stat
@@ -57,7 +58,13 @@ def _safe_relative_parts(path: str, label: str) -> tuple[str, ...]:
     return parts
 
 
-def _collect_app_payloads(app_directory: Path) -> dict[str, bytes]:
+def _enumerate_app_files(app_directory: Path) -> dict[str, Path]:
+    """List the exact tracked app files without materializing their contents.
+
+    Both construction and validation must apply the same symlink, exclusion,
+    reserved-marker and required-config rules. Symlink checks deliberately
+    precede exclusion checks: an excluded subtree cannot hide a link.
+    """
     if app_directory.is_symlink():
         raise DistributionContractError(f"Text-Fabric app directory must not be a symlink: {app_directory}")
     if not app_directory.is_dir():
@@ -71,26 +78,31 @@ def _collect_app_payloads(app_directory: Path) -> dict[str, bytes]:
             + ", ".join(str(path.relative_to(app_directory)) for path in symlinks)
         )
 
-    payloads: dict[str, bytes] = {}
+    files: dict[str, Path] = {}
+    for path in sorted(entries, key=lambda item: item.relative_to(app_directory).as_posix()):
+        relative = path.relative_to(app_directory).as_posix()
+        parts = _safe_relative_parts(relative, "Text-Fabric app entry")
+        if any(part in _EXPRESS_EXCLUDE for part in parts):
+            continue
+        if path.is_dir():
+            continue
+        if not path.is_file():
+            raise DistributionContractError(f"Text-Fabric app entry is not a regular file: {relative}")
+        if relative == _EXPRESS_CHECKOUT_NAME:
+            continue
+        files[relative] = path
+    if "config.yaml" not in files:
+        raise DistributionContractError("Text-Fabric app directory is missing required config.yaml")
+    return files
+
+
+def _collect_app_payloads(app_directory: Path) -> dict[str, bytes]:
+    """Legacy byte payloads remain necessary for express *construction* only."""
+    files = _enumerate_app_files(app_directory)
     try:
-        for path in sorted(entries, key=lambda item: item.relative_to(app_directory).as_posix()):
-            relative = path.relative_to(app_directory).as_posix()
-            parts = _safe_relative_parts(relative, "Text-Fabric app entry")
-            if any(part in _EXPRESS_EXCLUDE for part in parts):
-                continue
-            if path.is_dir():
-                continue
-            if not path.is_file():
-                raise DistributionContractError(f"Text-Fabric app entry is not a regular file: {relative}")
-            if relative == _EXPRESS_CHECKOUT_NAME:
-                continue
-            payloads[relative] = path.read_bytes()
+        return {relative: path.read_bytes() for relative, path in files.items()}
     except OSError as exc:
         raise DistributionContractError(f"could not read Text-Fabric app files: {exc}") from exc
-
-    if "config.yaml" not in payloads:
-        raise DistributionContractError("Text-Fabric app directory is missing required config.yaml")
-    return payloads
 
 
 def _native_feature_payloads(tf_archive: Path) -> dict[str, bytes]:
@@ -191,7 +203,7 @@ def _validate_express_archive(
     data_version: str,
     repository_owner: str,
     repository_name: str,
-) -> dict[str, bytes]:
+) -> dict[str, dict[str, Any]]:
     express_archive = Path(express_archive)
     native_archive = Path(native_archive)
     if express_archive.name != EXPRESS_NAME:
@@ -213,9 +225,10 @@ def _validate_express_archive(
     root = f"{repository_owner}/{repository_name}"
     app_prefix = f"{root}/app/"
     data_prefix = f"{root}/tf/{data_version}/"
-    app_payloads: dict[str, bytes] = {}
+    app_records: dict[str, dict[str, Any]] = {}
     data_names: set[str] = set()
-    data_marker: bytes | None = None
+    saw_app_marker = False
+    saw_data_marker = False
 
     try:
         with ZipFile(express_archive) as zf, ZipFile(native_archive) as native:
@@ -238,7 +251,18 @@ def _validate_express_archive(
                         raise DistributionContractError(
                             f"Text-Fabric express archive contains excluded app member {name!r}"
                         )
-                    app_payloads[relative] = zf.read(info)
+                    if relative == _EXPRESS_CHECKOUT_NAME:
+                        with zf.open(info) as member:
+                            if not _streams_equal(member, BytesIO(marker)):
+                                raise DistributionContractError(
+                                    "Text-Fabric express checkout marker does not match release tag/commit"
+                                )
+                        saw_app_marker = True
+                    else:
+                        # Stream untrusted app members to EOF for both SHA-256
+                        # and ZIP CRC; never retain a decompressed body.
+                        with zf.open(info) as member:
+                            app_records[relative] = _native._hash_stream_record(relative, member)
                 elif name.startswith(data_prefix):
                     relative = name[len(data_prefix):]
                     parts = _safe_relative_parts(relative, "Text-Fabric data member")
@@ -247,7 +271,12 @@ def _validate_express_archive(
                             f"Text-Fabric express data member must be top-level within the version: {name!r}"
                         )
                     if relative == _EXPRESS_CHECKOUT_NAME:
-                        data_marker = zf.read(info)
+                        with zf.open(info) as member:
+                            if not _streams_equal(member, BytesIO(marker)):
+                                raise DistributionContractError(
+                                    "Text-Fabric express checkout marker does not match release tag/commit"
+                                )
+                        saw_data_marker = True
                         continue
 
                     data_names.add(relative)
@@ -271,12 +300,9 @@ def _validate_express_archive(
     except (OSError, BadZipFile, RuntimeError, KeyError, EOFError) as exc:
         raise DistributionContractError(f"invalid Text-Fabric express archive: {exc}") from exc
 
-    app_marker = app_payloads.pop(_EXPRESS_CHECKOUT_NAME, None)
-    if app_marker is None or data_marker is None:
+    if not saw_app_marker or not saw_data_marker:
         raise DistributionContractError("Text-Fabric express archive is missing required checkout marker")
-    if app_marker != marker or data_marker != marker:
-        raise DistributionContractError("Text-Fabric express checkout marker does not match release tag/commit")
-    if "config.yaml" not in app_payloads:
+    if "config.yaml" not in app_records:
         raise DistributionContractError("Text-Fabric express app is missing config.yaml")
 
     expected_names = set(feature_records)
@@ -286,16 +312,17 @@ def _validate_express_archive(
         raise DistributionContractError(
             f"Text-Fabric express feature member set differs from native archive; missing={missing}, extra={extra}"
         )
-    return app_payloads
+    return app_records
 
 
 def _validate_express_app_identity(
-    app_payloads: Mapping[str, bytes],
+    app_records: Mapping[str, Mapping[str, Any]],
     app_directory: str | Path,
 ) -> None:
-    expected = _collect_app_payloads(Path(app_directory))
-    actual_names = set(app_payloads)
-    expected_names = set(expected)
+    """Require exact tracked app bytes without holding their payloads in RAM."""
+    expected_files = _enumerate_app_files(Path(app_directory))
+    actual_names = set(app_records)
+    expected_names = set(expected_files)
     if actual_names != expected_names:
         missing = sorted(expected_names - actual_names)
         extra = sorted(actual_names - expected_names)
@@ -303,11 +330,16 @@ def _validate_express_app_identity(
             "Text-Fabric express app member set differs from exact app directory; "
             f"missing={missing}, extra={extra}"
         )
-    for name, expected_payload in expected.items():
-        if app_payloads[name] != expected_payload:
-            raise DistributionContractError(
-                f"Text-Fabric express app payload {name!r} differs from exact app directory"
-            )
+    try:
+        for relative, path in expected_files.items():
+            with path.open("rb") as stream:
+                expected = _native._hash_stream_record(relative, stream)
+            if app_records[relative] != expected:
+                raise DistributionContractError(
+                    f"Text-Fabric express app payload {relative!r} differs from exact app directory"
+                )
+    except OSError as exc:
+        raise DistributionContractError(f"could not read Text-Fabric app files: {exc}") from exc
 
 
 def build_distribution_manifest(
