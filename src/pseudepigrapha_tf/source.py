@@ -105,8 +105,10 @@ def git_source_is_clean(path: str | Path) -> bool:
 
     Verification is deliberately conservative: any tracked, untracked, or
     ignored filesystem change below the supplied directory makes the source
-    unsuitable for an exact pinned-source license assertion. Conversion may
-    still proceed; callers can downgrade provenance to unverified.
+    unsuitable for an exact pinned-source license assertion. Git's porcelain
+    status can *hide* changes to index entries marked assume-unchanged or
+    skip-worktree, so those index hints also forbid attestation. Conversion
+    may still proceed; callers can downgrade provenance to unverified.
     """
 
     try:
@@ -129,4 +131,23 @@ def git_source_is_clean(path: str | Path) -> bool:
         )
     except (OSError, subprocess.CalledProcessError, subprocess.TimeoutExpired):
         return False
-    return not result.stdout.strip()
+    if result.stdout.strip():
+        return False
+
+    # Porcelain status is not an identity proof for assume-unchanged or
+    # skip-worktree index entries: both can conceal modified working files.
+    # "git ls-files -v" marks ordinary tracked files with "H ", hidden
+    # assume-unchanged files with lowercase "h ", and skip-worktree with
+    # "S ". Reject any non-ordinary tag rather than guessing source bytes.
+    try:
+        tracked = subprocess.run(
+            ["git", "-C", str(Path(path)), "ls-files", "-v", "--", "."],
+            check=True,
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+    except (OSError, subprocess.CalledProcessError, subprocess.TimeoutExpired):
+        return False
+    entries = tracked.stdout.splitlines()
+    return bool(entries) and all(entry.startswith("H ") for entry in entries)
