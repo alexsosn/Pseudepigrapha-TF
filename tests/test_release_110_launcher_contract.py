@@ -53,6 +53,13 @@ def test_launcher_has_scoped_credential_and_never_overwrites_release():
     assert "git/refs" in text
     assert "gh api" in text
     assert "gh workflow run publish-corpus-release.yml" in text
+    # A draft or incomplete prior release must never be reported as published.
+    assert "existing['draft']" in text
+    assert "existing['prerelease']" in text
+    assert "tf-1.1.zip" in text
+    assert "complete.zip" in text
+    assert "conversion-report.json" in text
+    assert "dataset-manifest.json" in text
     assert '--ref "$RELEASE_TAG"' in text
     assert '-f release_commit="$TARGET_COMMIT"' in text
     assert '-f release_tag="$RELEASE_TAG"' in text
