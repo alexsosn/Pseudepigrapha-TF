@@ -36,7 +36,7 @@ def _deep_source(depth: int) -> bytes:
 def test_parser_rejects_excessive_div_depth_as_invalid_source(depth):
     with pytest.raises(
         InvalidSourceError,
-        match=rf"deep[.]xml.*<div>.*nesting depth.*{depth}.*128",
+        match=r"deep[.]xml.*<div>.*nesting depth 129.*128",
     ):
         parse_bytes(_deep_source(depth), source_path="deep.xml")
 
