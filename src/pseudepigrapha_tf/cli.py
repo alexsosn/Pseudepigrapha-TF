@@ -147,7 +147,7 @@ def main(argv: list[str] | None = None) -> int:
     total_started = stage_started = perf_counter()
     books, source_warnings = load_source_directory(args.source)
     public_metadata = (
-        load_public_metadata(args.source)
+        load_public_metadata(args.source, parsed_books=books)
         if (args.source / "intros.json").is_file()
         else None
     )

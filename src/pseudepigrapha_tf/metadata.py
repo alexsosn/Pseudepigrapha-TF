@@ -5,10 +5,11 @@ import json
 import math
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Mapping
+from typing import Any, Mapping, Sequence
 from xml.etree import ElementTree as ET
 
 from .graph import TFData
+from .model import Book
 
 PUBLIC_METADATA_FIELDS = (
     "introduction",
@@ -136,8 +137,65 @@ def _validate_xml_identities(source_dir: Path) -> set[str]:
     return filenames
 
 
-def load_public_metadata(path: str | Path) -> PublicMetadataCorpus:
+def _validate_preparsed_xml_identities(
+    source_dir: Path, parsed_books: Sequence[Book]
+) -> set[str]:
+    """Reuse exact source loader models without rereading already parsed XML.
+
+    This is a trusted handoff from load_source_directory(), not a way to prove
+    arbitrary user-supplied models reflect current disk bytes. The standalone
+    metadata loader retains its own full XML validation.
+    """
+
+    paths = {
+        path.name: path
+        for path in source_dir.glob("*.xml")
+        if not path.name.startswith(".")
+    }
+    seen: set[str] = set()
+    for book in parsed_books:
+        if not isinstance(book, Book):
+            raise ValueError("parsed source inventory must contain Book models")
+        expected_path = f"{book.filename}.xml"
+        if book.source_path != expected_path:
+            raise ValueError(
+                f"parsed source identity mismatch: {book.source_path!r} "
+                f"does not match OCP book {book.filename!r}"
+            )
+        if book.source_path not in paths:
+            raise ValueError(
+                f"parsed source XML {book.source_path!r} is missing from source directory"
+            )
+        if book.source_path in seen:
+            raise ValueError(f"duplicate parsed source XML path: {book.source_path}")
+        if len(book.source_sha256) != 64 or any(
+            digit not in "0123456789abcdef" for digit in book.source_sha256
+        ):
+            raise ValueError(
+                f"{book.source_path}: missing or invalid parsed source SHA-256"
+            )
+        seen.add(book.source_path)
+
+    # The original standalone validator included even empty XML placeholder
+    # filenames. A source added after the initial parse must never be silently
+    # accepted as a nonempty, unparsed OCP work. Only unparsed blank files may
+    # be skipped, matching load_source_directory() semantics.
+    for name, path in sorted(paths.items()):
+        if name not in seen and path.read_bytes().strip():
+            raise ValueError(
+                f"{name}: nonempty XML source missing from parsed source inventory"
+            )
+    return set(paths)
+
+
+def load_public_metadata(
+    path: str | Path, *, parsed_books: Sequence[Book] | None = None
+) -> PublicMetadataCorpus:
     """Load and strictly map the committed public OCP ``intros.json`` export.
+
+    If parsed_books is supplied by load_source_directory(), its already validated
+    XML identity inventory replaces a redundant second full XML parse. Without
+    parsed_books, standalone callers retain strict full XML validation.
 
     Mapping is by exact root-level XML filename. Long source strings are kept as
     Python values here; JSON-scalar escaping happens only at the TF boundary so
@@ -158,7 +216,11 @@ def load_public_metadata(path: str | Path) -> PublicMetadataCorpus:
     if not isinstance(source_meta, dict):
         raise ValueError("intros.json: _meta must be an object when present")
 
-    xml_filenames = _validate_xml_identities(source_dir)
+    xml_filenames = (
+        _validate_xml_identities(source_dir)
+        if parsed_books is None
+        else _validate_preparsed_xml_identities(source_dir, parsed_books)
+    )
     parsed: dict[str, PublicMetadataDocument] = {}
     for filename, entry in documents.items():
         if not isinstance(filename, str) or not filename.endswith(".xml"):
