@@ -102,27 +102,27 @@ jobs:
               TAG_COMMIT="$(python -c "import json;print(json.load(open('/tmp/v1-1-tag.json'))['object']['sha'])")"
               test "$TAG_COMMIT" = "$TARGET_COMMIT"
               python - <<'PY'
-              import json
-              import os
-              from pathlib import Path
+          import json
+          import os
+          from pathlib import Path
 
-              existing = json.loads(Path('/tmp/v1-1-release.json').read_text(encoding='utf-8'))
-              expected = {
-                  'tf-1.1.zip', 'complete.zip',
-                  'conversion-report.json', 'dataset-manifest.json',
-              }
-              actual = {asset['name'] for asset in existing['assets']}
-              if (
-                  existing['tag_name'] != os.environ['RELEASE_TAG']
-                  or existing['draft']
-                  or existing['prerelease']
-                  or actual != expected
-              ):
-                  raise SystemExit(
-                      'incomplete existing release: refuse to treat a draft, '
-                      'prerelease, or mismatched asset set as successful publication'
-                  )
-              PY
+          existing = json.loads(Path('/tmp/v1-1-release.json').read_text(encoding='utf-8'))
+          expected = {
+              'tf-1.1.zip', 'complete.zip',
+              'conversion-report.json', 'dataset-manifest.json',
+          }
+          actual = {asset['name'] for asset in existing['assets']}
+          if (
+              existing['tag_name'] != os.environ['RELEASE_TAG']
+              or existing['draft']
+              or existing['prerelease']
+              or actual != expected
+          ):
+              raise SystemExit(
+                  'incomplete existing release: refuse to treat a draft, '
+                  'prerelease, or mismatched asset set as successful publication'
+              )
+          PY
               echo "Verified existing public release asset names and immutable tag; no action"
               exit 0
               ;;
