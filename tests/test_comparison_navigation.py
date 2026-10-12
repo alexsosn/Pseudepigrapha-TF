@@ -306,3 +306,31 @@ def test_navigation_cache_fails_closed_on_foreign_verse_section():
     navigator = comparison.PassageNavigator(api)
     with pytest.raises(ValueError, match="belongs to section"):
         navigator.neighbors("Work", 1, 1, preferred_versions=("Work__A",))
+
+
+def test_open_comparison_can_jump_to_another_passage_in_same_selection_form():
+    html = comparison.render_passage_comparison(_render_model())
+    form = html.split('<form id="comparison-controls"', 1)[1].split("</form>", 1)[0]
+
+    assert 'type="hidden" name="work" value="Work"' in form
+    assert '<label>Chapter <input name="chapter" value="1" required></label>' in form
+    assert '<label>Verse <input name="verse" value="2" required></label>' in form
+    assert 'type="hidden" name="chapter"' not in form
+    assert 'type="hidden" name="verse"' not in form
+    assert 'name="version" value="Work__A" checked' in form
+    assert 'name="version" value="Work__B" checked' in form
+    # Witness controls in cards still target this same GET form.
+    assert 'name="witness.Work__A" value="A 1" checked form="comparison-controls"' in html
+
+
+def test_comparison_jump_section_values_are_html_attribute_escaped():
+    model = _render_model()
+    model["chapter"] = '1" onfocus="alert(1)'
+    model["verse"] = "<verse>"
+
+    html = comparison.render_passage_comparison(model)
+    form = html.split('<form id="comparison-controls"', 1)[1].split("</form>", 1)[0]
+
+    assert 'name="chapter" value="1&quot; onfocus=&quot;alert(1)" required' in form
+    assert 'name="verse" value="&lt;verse&gt;" required' in form
+    assert 'name="chapter" value="1" onfocus="' not in form
