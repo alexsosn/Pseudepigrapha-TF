@@ -797,8 +797,10 @@ def render_passage_comparison(model: Mapping[str, object]) -> str:
         (
             '<form id="comparison-controls" class="comparison-controls" action="/compare" method="get">',
             f'<input type="hidden" name="work" value="{_h(work)}">',
-            f'<input type="hidden" name="chapter" value="{_h(chapter)}">',
-            f'<input type="hidden" name="verse" value="{_h(verse)}">',
+            '<fieldset class="passage-jump"><legend>Passage</legend>',
+            f'<label>Chapter <input name="chapter" value="{_h(chapter)}" required></label>',
+            f'<label>Verse <input name="verse" value="{_h(verse)}" required></label>',
+            '</fieldset>',
             '<fieldset><legend>Source versions</legend>',
         )
     )

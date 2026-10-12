@@ -41,6 +41,11 @@
   min-width: min(42rem, 100%);
 }
 
+.comparison-controls .passage-jump label {
+  display: grid;
+  gap: 0.25rem;
+}
+
 .comparison-landing label {
   display: grid;
   gap: 0.25rem;
