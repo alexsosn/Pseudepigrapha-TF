@@ -28,6 +28,7 @@ Open `/compare` to choose an OCP work, chapter, and verse. The result page is ce
 - generated passage content comes from `Translations.passage()`, including occurrence-aware source/translation unit alignment;
 - Previous/Next links are derived from the actual TF `verse` topology of a source version that contains the current passage. If a preferred selected version lacks that passage, navigation falls back to another source version of the same work rather than assuming identical cross-version coverage;
 - Previous/Next links retain the selected source versions and witnesses.
+- The open comparison form also has editable **Chapter** and **Verse** fields. Submitting a new reference directly jumps to that passage while retaining the form's selected source versions and manuscript witnesses; nonexistent/ambiguous references still follow the existing error behavior.
 
 A source ambiguity remains an error rather than a UI guess. For example, if one manuscript is assigned to multiple competing readings at the same unit, the comparison route returns a readable HTTP 400 diagnostic from the underlying apparatus contract.
 
