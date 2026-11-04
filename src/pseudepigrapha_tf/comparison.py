@@ -766,7 +766,8 @@ def render_passage_comparison(model: Mapping[str, object]) -> str:
         f'<title>{_h(title)} {_h(chapter)}:{_h(verse)}</title>',
         '<link rel="stylesheet" href="/data/static/comparison.css">',
         '</head><body><main class="comparison-page">',
-        '<nav class="comparison-nav"><a href="/">Text-Fabric browser</a></nav>',
+        '<nav class="comparison-nav"><a href="/compare">Choose another work</a> · '
+        '<a href="/">Text-Fabric browser</a></nav>',
         f'<header><h1>{_h(title)}</h1><div class="passage-reference">{_h(chapter)}:{_h(verse)}</div></header>',
     ]
 

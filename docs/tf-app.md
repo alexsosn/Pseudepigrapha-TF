@@ -16,7 +16,9 @@ The launcher deliberately uses the same browser-mode loading contract as Text-Fa
 
 ## Verse comparison workflow
 
-Open `/compare` to choose an OCP work, chapter, and verse. The result page is centered on one passage and keeps source-critical evidence separate from generated text:
+Open `/compare` to choose an OCP work, chapter, and verse. The chooser displays an upstream OCP work title alongside the stable work identifier when all non-generated source versions agree on a nonblank title. If titles are missing or disagree, it displays the identifier without guessing. The identifier remains the actual GET `work` value.
+
+The opened comparison includes a **Choose another work** link back to the unfiltered `/compare` chooser. Switching works this way does not carry over version or witness choices belonging to the previous work. The result page is centered on one passage and keeps source-critical evidence separate from generated text:
 
 - source-version selectors contain textual OCP source/critical versions only; generated translations are never peer source choices;
 - two available source versions are selected by default when possible, while an explicitly selected version that lacks the requested passage remains visible as `not present`;
