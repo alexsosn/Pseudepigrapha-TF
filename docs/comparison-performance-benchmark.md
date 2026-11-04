@@ -12,10 +12,11 @@ From a repository checkout with the project's development dependencies installed
 git clone https://github.com/OnlineCriticalPseudepigrapha/Online-Critical-Pseudepigrapha.git /tmp/ocp
 git -C /tmp/ocp checkout c939dcbacad78c5d18d2c4282cad23c47e19ac07
 python -m pip install -e '.[dev]'
+DATA_VERSION="$(python -c 'from pseudepigrapha_tf.release_identity import TF_DATA_VERSION; print(TF_DATA_VERSION)')"
 pseudepigrapha-tf convert /tmp/ocp/static/docs \
-  --output /tmp/pseudepigrapha-tf/1.0 \
+  --output "/tmp/pseudepigrapha-tf/${DATA_VERSION}" \
   --upstream-commit c939dcbacad78c5d18d2c4282cad23c47e19ac07
-python tests/pinned_comparison_acceptance.py /tmp/pseudepigrapha-tf/1.0
+python tests/pinned_comparison_acceptance.py "/tmp/pseudepigrapha-tf/${DATA_VERSION}"
 ```
 
 This command also runs the scholarly acceptance checks; it should fail rather than record an apparently successful benchmark if semantics or status codes regress.
