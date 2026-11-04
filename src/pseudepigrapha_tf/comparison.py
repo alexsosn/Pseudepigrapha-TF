@@ -41,7 +41,9 @@ def comparison_href(
     if not (work_text and chapter_text and verse_text):
         raise ValueError("work, chapter, and verse are required for comparison navigation")
 
-    versions = _unique_strings(selected_versions or ())
+    versions = _unique_strings(
+        () if selected_versions is None else selected_versions
+    )
     pairs: list[tuple[str, str]] = [
         ("work", work_text),
         ("chapter", chapter_text),
