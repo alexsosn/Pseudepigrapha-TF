@@ -345,3 +345,27 @@ def test_landing_html_still_escapes_untrusted_work_ids(monkeypatch):
     assert '&lt;script&gt;' in html
     assert '<script>' not in html
     assert '<option value="Normal">Normal</option>' in html
+
+
+
+def test_compare_http_distinguishes_absent_from_explicitly_empty_source_selection(monkeypatch):
+    flask_app = Flask(__name__)
+    tf_app = FakeTfApp()
+    calls = []
+
+    def build(api, work, chapter, verse, *, selected_versions=None,
+              selected_witnesses=None, apparatus=None, translations=None):
+        calls.append(selected_versions)
+        return {"work": work, "chapter": chapter, "verse": verse}
+
+    monkeypatch.setattr(web, "build_passage_comparison", build)
+    monkeypatch.setattr(web, "render_passage_comparison", lambda model: "<main>ok</main>")
+    web.register_comparison_route(flask_app, tf_app)
+    client = flask_app.test_client()
+
+    base = "/compare?work=Work&chapter=1&verse=2"
+    assert client.get(base).status_code == 200
+    assert client.get(base + "&version=").status_code == 200
+    assert client.get(base + "&version=&version=").status_code == 200
+    assert client.get(base + "&version=&version=Work__Greek").status_code == 200
+    assert calls == [None, (), (), ("Work__Greek",)]
