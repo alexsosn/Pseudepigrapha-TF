@@ -165,8 +165,24 @@ def verify(tf_dir: Path) -> None:
         repeated_landing_again = _get(client, "/compare?work=1En")
     assert render_landing.call_count == 1
     assert first_landing == repeated_landing == repeated_landing_again
-    assert '<option value="1En">1En</option>' in first_landing
-    assert '<option value="TJob">TJob</option>' in first_landing
+    # The visible option label derives from the real pinned OCP work title;
+    # source version disagreements or blank titles must fall back to the id.
+    for source_work in ("1En", "TJob"):
+        source_books = tuple(
+            n for n in api.F.otype.s("book")
+            if api.F.ocp_book.v(n) == source_work
+            and api.F.version_kind.v(n) != "generated_translation"
+        )
+        assert source_books, source_work
+        source_titles = {
+            str(api.F.title.v(n) or "").strip() for n in source_books
+        }
+        label = (
+            f"{next(iter(source_titles))} ({source_work})"
+            if len(source_titles) == 1 and "" not in source_titles
+            else source_work
+        )
+        assert f'<option value="{source_work}">{escape(label, quote=True)}</option>' in first_landing
     assert '<option value="3Macc">' not in first_landing
     assert 'name="chapter"' in first_landing and 'name="verse"' in first_landing
 
@@ -199,6 +215,10 @@ def verify(tf_dir: Path) -> None:
     enoch_translation = enoch.index('data-translation-id=', enoch_ethiopic)
     enoch_greek = enoch.index('data-version-id="1En__Greek"')
     assert enoch_ethiopic < enoch_translation < enoch_greek
+    # A bookmarked comparison provides a normal link to the original chooser,
+    # where the work list is still the cached original inventory.
+    assert '<a href="/compare">Choose another work</a>' in enoch
+    assert _get(client, "/compare") == first_landing
 
     # A real researcher can turn off every source version without the server
     # silently restoring two defaults. Direct Previous/Next remains in this
