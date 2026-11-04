@@ -364,5 +364,5 @@ def test_unchecked_source_versions_remain_empty_through_form_and_passage_navigat
     assert 'name="version" value="Work__B" checked' not in form
     assert 'class="comparison-empty"' in html
     assert "Select at least one source version" in html
-    assert html.count('version="') == 0  # Empty version ids are not fabricated.
+    assert 'data-version-id="' not in html  # No source cards are fabricated.
     assert html.count('&amp;version="') == 2  # Previous/Next retain explicit zero.
