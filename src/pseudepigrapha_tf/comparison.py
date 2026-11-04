@@ -30,7 +30,7 @@ def comparison_href(
     chapter: object,
     verse: object,
     *,
-    selected_versions: Iterable[object] = (),
+    selected_versions: Iterable[object] | None = None,
     selected_witnesses: Mapping[str, Iterable[object]] | None = None,
 ) -> str:
     """Build a deterministic comparison URL while preserving selection state."""
@@ -41,13 +41,18 @@ def comparison_href(
     if not (work_text and chapter_text and verse_text):
         raise ValueError("work, chapter, and verse are required for comparison navigation")
 
-    versions = _unique_strings(selected_versions)
+    versions = _unique_strings(
+        () if selected_versions is None else selected_versions
+    )
     pairs: list[tuple[str, str]] = [
         ("work", work_text),
         ("chapter", chapter_text),
         ("verse", verse_text),
     ]
     pairs.extend(("version", version_id) for version_id in versions)
+    if selected_versions is not None and not versions:
+        # No version key means defaults; an empty key means all unchecked.
+        pairs.append(("version", ""))
 
     if selected_witnesses is not None:
         for version_id in versions:
@@ -797,6 +802,7 @@ def render_passage_comparison(model: Mapping[str, object]) -> str:
         (
             '<form id="comparison-controls" class="comparison-controls" action="/compare" method="get">',
             f'<input type="hidden" name="work" value="{_h(work)}">',
+            '<input type="hidden" name="version" value="">',
             '<fieldset class="passage-jump"><legend>Passage</legend>',
             f'<label>Chapter <input name="chapter" value="{_h(chapter)}" required></label>',
             f'<label>Verse <input name="verse" value="{_h(verse)}" required></label>',
@@ -824,9 +830,14 @@ def render_passage_comparison(model: Mapping[str, object]) -> str:
         )
     )
 
-    parts.extend(
-        _render_version_card(version) for version in model.get("versions", ())
-    )
+    versions = tuple(model.get("versions", ()))
+    if not versions:
+        parts.append(
+            '<p class="comparison-empty">Select at least one source version '
+            'to display a comparison.</p>'
+        )
+    else:
+        parts.extend(_render_version_card(version) for version in versions)
     parts.append("</div>")
 
     metadata_only = tuple(model.get("metadata_only_versions", ()))

@@ -20,6 +20,7 @@ Open `/compare` to choose an OCP work, chapter, and verse. The result page is ce
 
 - source-version selectors contain textual OCP source/critical versions only; generated translations are never peer source choices;
 - two available source versions are selected by default when possible, while an explicitly selected version that lacks the requested passage remains visible as `not present`;
+- on the opened comparison form, explicitly unchecking **all** source versions shows an empty comparison with a prompt to reselect; the empty choice persists through Previous/Next. A fresh URL with no `version` filter still selects the ordinary defaults;
 - metadata-only versions are listed separately and are not fabricated into textual passages;
 - each source-version card shows its primary source text and historical manuscript comparison;
 - manuscript segments preserve the distinct `reading`, `[omission]`, and `[unattested]` states supplied by `Apparatus`;
