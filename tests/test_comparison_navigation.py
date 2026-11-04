@@ -334,3 +334,35 @@ def test_comparison_jump_section_values_are_html_attribute_escaped():
     assert 'name="chapter" value="1&quot; onfocus=&quot;alert(1)" required' in form
     assert 'name="verse" value="&lt;verse&gt;" required' in form
     assert 'name="chapter" value="1" onfocus="' not in form
+
+
+
+def test_comparison_href_distinguishes_default_from_explicit_zero_versions():
+    assert comparison.comparison_href("Work", "1", "2") == "/compare?work=Work&chapter=1&verse=2"
+    assert comparison.comparison_href(
+        "Work", "1", "2", selected_versions=()
+    ) == "/compare?work=Work&chapter=1&verse=2&version="
+    assert comparison.comparison_href(
+        "Work", "1", "2", selected_versions=("Work__A",)
+    ) == "/compare?work=Work&chapter=1&verse=2&version=Work__A"
+
+
+def test_unchecked_source_versions_remain_empty_through_form_and_passage_navigation():
+    model = _render_model()
+    model["version_choices"] = tuple(
+        {**choice, "selected": False} for choice in model["version_choices"]
+    )
+    model["versions"] = ()
+
+    html = comparison.render_passage_comparison(model)
+    form = html.split('<form id="comparison-controls"', 1)[1].split("</form>", 1)[0]
+
+    assert '<input type="hidden" name="version" value="">' in form
+    assert 'name="version" value="Work__A"' in form
+    assert 'name="version" value="Work__B"' in form
+    assert 'name="version" value="Work__A" checked' not in form
+    assert 'name="version" value="Work__B" checked' not in form
+    assert 'class="comparison-empty"' in html
+    assert "Select at least one source version" in html
+    assert html.count('version="') == 0  # Empty version ids are not fabricated.
+    assert html.count('&amp;version="') == 2  # Previous/Next retain explicit zero.
