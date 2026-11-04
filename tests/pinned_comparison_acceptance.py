@@ -200,6 +200,19 @@ def verify(tf_dir: Path) -> None:
     enoch_greek = enoch.index('data-version-id="1En__Greek"')
     assert enoch_ethiopic < enoch_translation < enoch_greek
 
+    # A real researcher can turn off every source version without the server
+    # silently restoring two defaults. Direct Previous/Next remains in this
+    # explicitly empty state, with all version choices still available to recheck.
+    no_versions = _get(client, "/compare?work=1En&chapter=1&verse=2&version=")
+    assert '<input type="hidden" name="version" value="">' in no_versions
+    assert 'class="comparison-empty"' in no_versions
+    assert 'data-version-id=' not in no_versions
+    assert 'name="version" value="1En__Ethiopic" checked' not in no_versions
+    assert 'name="version" value="1En__Greek" checked' not in no_versions
+    assert 'rel="prev"' in no_versions and 'rel="next"' in no_versions
+    assert '&amp;version="' in no_versions
+
+
     # PssSol has both a normal high-witness passage and a genuine source
     # ambiguity at 1:5. The latter must remain a readable fail-closed 400 rather
     # than silently choosing one of two readings for the same manuscript/unit.
