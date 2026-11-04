@@ -20,9 +20,12 @@ def _h(value: object) -> str:
     return escape(str(value), quote=True)
 
 
-def list_comparison_works(api: Any) -> tuple[str, ...]:
-    """Return source/critical OCP work identifiers available for comparison."""
+def list_comparison_work_options(api: Any) -> tuple[tuple[str, str], ...]:
+    """List canonical source-work IDs with source-backed display labels.
 
+    Only a unanimous, nonblank OCP work title across source versions is shown.
+    Missing or conflicting titles cannot justify a chosen editorial label.
+    """
     otype = getattr(api.F, "otype", None)
     books = getattr(otype, "s", None) if otype is not None else None
     ocp_book = getattr(api.F, "ocp_book", None)
@@ -30,20 +33,39 @@ def list_comparison_works(api: Any) -> tuple[str, ...]:
         raise ValueError("otype and ocp_book features must be loaded for comparison browsing")
 
     version_kind = getattr(api.F, "version_kind", None)
-    works: set[str] = set()
+    title = getattr(api.F, "title", None)
+    source_titles: dict[str, set[str]] = {}
     for node in books("book"):
         if version_kind is not None and version_kind.v(node) == "generated_translation":
             continue
         work = str(ocp_book.v(node) or "").strip()
-        if work:
-            works.add(work)
-    return tuple(sorted(works))
+        if not work:
+            continue
+        # Record blank titles as evidence too. One blank among several source
+        # versions must not silently become a canonical title from a sibling.
+        source_titles.setdefault(work, set()).add(
+            str(title.v(node) or "").strip() if title is not None else ""
+        )
+
+    choices: list[tuple[str, str]] = []
+    for work, titles in sorted(source_titles.items()):
+        if len(titles) == 1 and "" not in titles:
+            upstream_title = next(iter(titles))
+            choices.append((work, f"{upstream_title} ({work})"))
+        else:
+            choices.append((work, work))
+    return tuple(choices)
+
+
+def list_comparison_works(api: Any) -> tuple[str, ...]:
+    """Return the stable, sorted source-work identifiers (legacy id-only API)."""
+    return tuple(work for work, _ in list_comparison_work_options(api))
 
 
 def _landing_html(api: Any) -> str:
     options = "".join(
-        f'<option value="{_h(work)}">{_h(work)}</option>'
-        for work in list_comparison_works(api)
+        f'<option value="{_h(work)}">{_h(label)}</option>'
+        for work, label in list_comparison_work_options(api)
     )
     return (
         '<!doctype html><html><head><meta charset="utf-8">'
