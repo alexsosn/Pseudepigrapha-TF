@@ -335,8 +335,6 @@ def test_comparison_jump_section_values_are_html_attribute_escaped():
     assert 'name="verse" value="&lt;verse&gt;" required' in form
     assert 'name="chapter" value="1" onfocus="' not in form
 
-
-
 def test_comparison_href_distinguishes_default_from_explicit_zero_versions():
     assert comparison.comparison_href("Work", "1", "2") == "/compare?work=Work&chapter=1&verse=2"
     assert comparison.comparison_href(
@@ -366,3 +364,17 @@ def test_unchecked_source_versions_remain_empty_through_form_and_passage_navigat
     assert "Select at least one source version" in html
     assert 'data-version-id="' not in html  # No source cards are fabricated.
     assert html.count('&amp;version="') == 2  # Previous/Next retain explicit zero.
+
+
+
+def test_comparison_href_never_truth_tests_an_iterable_selection():
+    class NonBooleanIterable:
+        def __bool__(self):
+            raise AssertionError("Iterable truthiness must not be required")
+
+        def __iter__(self):
+            return iter(("Work__A",))
+
+    assert comparison.comparison_href(
+        "Work", "1", "2", selected_versions=NonBooleanIterable()
+    ) == "/compare?work=Work&chapter=1&verse=2&version=Work__A"
