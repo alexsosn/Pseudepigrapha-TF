@@ -140,7 +140,9 @@ def register_comparison_route(flask_app: Any, tf_app: Any) -> Any:
                 work,
                 chapter,
                 verse,
-                selected_versions=selected_versions or None,
+                selected_versions=(
+                    selected_versions if "version" in request.args else None
+                ),
                 selected_witnesses=selected_witnesses,
                 apparatus=apparatus,
                 translations=translations,
