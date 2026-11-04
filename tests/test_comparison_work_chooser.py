@@ -60,6 +60,18 @@ def test_comparison_work_options_use_only_unambiguous_source_titles():
     )
 
 
+
+def test_mixed_missing_and_nonblank_source_titles_do_not_claim_a_canonical_title():
+    api = work_api()
+    api.F.otype.nodes += (10, 11)
+    api.F.ocp_book.values.update({10: "Partial", 11: "Partial"})
+    api.F.version_kind.values.update({10: "source", 11: "source"})
+    api.F.title.values.update({10: "Partial upstream title", 11: ""})
+
+    assert ("Partial", "Partial") in web.list_comparison_work_options(api)
+
+
+
 def test_existing_list_comparison_works_still_returns_stable_ids():
     api = work_api()
     assert web.list_comparison_works(api) == (
