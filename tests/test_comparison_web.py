@@ -96,6 +96,13 @@ def test_compare_route_landing_lists_source_works_without_requiring_a_technical_
     flask_app = Flask(__name__)
     tf_app = FakeTfApp()
     monkeypatch.setattr(web, "list_comparison_works", lambda api: ("1En", "2Bar"))
+    # Patch both helpers during RED; old code uses the id-only listing.
+    monkeypatch.setattr(
+        web,
+        "list_comparison_work_options",
+        lambda api: (("1En", "1 Enoch (1En)"), ("2Bar", "2 Baruch (2Bar)")),
+        raising=False,
+    )
 
     web.register_comparison_route(flask_app, tf_app)
     response = flask_app.test_client().get("/compare")
@@ -104,6 +111,7 @@ def test_compare_route_landing_lists_source_works_without_requiring_a_technical_
     assert response.status_code == 200
     assert "1En" in html
     assert "2Bar" in html
+    assert '<option value="1En">1 Enoch (1En)</option>' in html
     assert 'name="work"' in html
     assert 'name="chapter"' in html
     assert 'name="verse"' in html
