@@ -348,9 +348,12 @@ def test_landing_cache_does_not_remember_initial_render_failure(monkeypatch):
 
 
 def test_landing_html_still_escapes_untrusted_work_ids(monkeypatch):
-    monkeypatch.setattr(web, 'list_comparison_works', lambda api: ('<script>', 'Normal'))
+    monkeypatch.setattr(
+        web, 'list_comparison_work_options',
+        lambda api: (('<script>', 'Unsafe <script> title'), ('Normal', 'Normal')),
+    )
     html = web._landing_html(object())
-    assert '&lt;script&gt;' in html
+    assert '<option value="&lt;script&gt;">Unsafe &lt;script&gt; title</option>' in html
     assert '<script>' not in html
     assert '<option value="Normal">Normal</option>' in html
 
