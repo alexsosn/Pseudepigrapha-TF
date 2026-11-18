@@ -65,7 +65,10 @@ class Apparatus:
             return False
         otype_info = features.get("otype")
         metadata = getattr(otype_info, "metaData", None) if otype_info is not None else None
-        return isinstance(metadata, dict) and str(metadata.get("generatedTranslationLayer", "")) == "1"
+        return isinstance(metadata, dict) and (
+            str(metadata.get("generatedTranslationLayer", "")) == "1"
+            or str(metadata.get("parallelTranslationLayer", "")) == "1"
+        )
 
     def _version_kind_feature(self):
         if self._generated_layer_declared():
@@ -81,7 +84,7 @@ class Apparatus:
         if not self._generated_layer_declared():
             return
         version_kind = self._require_feature("version_kind")
-        if self._required_feature_value(version_kind, "version_kind", unit) == "generated_translation":
+        if self._required_feature_value(version_kind, "version_kind", unit) in {"generated_translation", "parallel_translation"}:
             raise ValueError(
                 f"unit {unit} belongs to a generated translation; use Translations for aligned text, "
                 "not historical apparatus semantics"
@@ -107,7 +110,7 @@ class Apparatus:
 
     def _is_generated_book(self, book_node: int) -> bool:
         version_kind = self._version_kind_feature()
-        return version_kind is not None and version_kind.v(book_node) == "generated_translation"
+        return version_kind is not None and version_kind.v(book_node) in {"generated_translation", "parallel_translation"}
 
     def _witnesses(self, owner: int) -> dict[str, dict[str, object]]:
         """Return historical witnesses, excluding source-declared synthetic provenance nodes."""
@@ -450,7 +453,7 @@ class Apparatus:
                 (
                     (self._book_id(node), node)
                     for node in textual_by_work.get(work, ())
-                    if version_kind is None or version_kind.v(node) != "generated_translation"
+                    if version_kind is None or version_kind.v(node) not in {"generated_translation", "parallel_translation"}
                 ),
                 key=lambda item: item[0],
             )
