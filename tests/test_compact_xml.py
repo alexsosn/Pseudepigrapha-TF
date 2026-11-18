@@ -96,7 +96,7 @@ def test_compact_source_reloads_sections_and_aligned_translation(tmp_path):
     assert write_tf(data, tf_dir)
     api = Fabric(locations=[str(tf_dir)], modules=[""], silent="deep").load(
         " ".join(set(Apparatus.PASSAGE_FEATURES)
-                 | set(Translations.REQUIRED_FEATURES)
+                 | set(Translations.PARALLEL_FEATURES)
                  | {"source_format", "version_source_id", "division_source_ids",
                     "division_source_types", "unit_id", "reading_option_source",
                     "synthetic_witness"}), silent="deep"
