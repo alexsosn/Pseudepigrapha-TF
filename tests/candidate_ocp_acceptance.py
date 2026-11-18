@@ -181,7 +181,7 @@ def verify(upstream_repo: Path) -> None:
         aligned_counts = {}
         for work, expected in expected_alignment_counts.items():
             versions = tuple(v for v in translations.versions(work=work)
-                             if v["version_kind"] == "parallel_translation")
+                             if api.F.version_kind.v(v["node"]) == "parallel_translation")
             assert len(versions) == 1, (work, versions)
             record = versions[0]
             source_book = record["source_node"]
