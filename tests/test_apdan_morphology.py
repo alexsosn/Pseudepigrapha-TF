@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+import json
 
 import pytest
 from tf.fabric import Fabric
@@ -155,3 +156,24 @@ def test_apdan_module_requires_noncommercial_consent_and_isolation(corpus, tmp_p
     assert md["sourceDeclaredLicense"] == "CC-BY-NC-4.0"
     assert md["sourceDeclaredAvailability"] == "restricted"
     assert md["redistributionPermission"] == "not_attested"
+
+
+def test_researcher_cli_audits_without_distributing_annotation(corpus, tmp_path, capsys):
+    from pseudepigrapha_tf.cli import main
+
+    base, _ = corpus
+    raw = tmp_path / "ApDan.xml"
+    raw.write_text(SOURCE, encoding="utf-8")
+    tei = tmp_path / "ApDan_TEI.xml"
+    tei.write_text(TEI, encoding="utf-8")
+    assert main(["apdan-morph", str(base), str(raw), str(tei)]) == 0
+    report = json.loads(capsys.readouterr().out)
+    assert report["verses"] == 2 and report["words"] == 3
+    assert report["source_declared_license"] == "CC-BY-NC-4.0"
+    assert not any(p.name.startswith("apdan_tei_") for p in tmp_path.rglob("*.tf"))
+    with pytest.raises(ValueError, match="noncommercial|--accept-noncommercial"):
+        main([
+            "apdan-morph", str(base), str(raw), str(tei),
+            "--output", str(tmp_path / "morph"),
+        ])
+    assert not (tmp_path / "morph").exists()
