@@ -193,11 +193,18 @@ def align_apdan_morphology(api, source_xml: bytes, morph_tei: bytes) -> Morpholo
 
     generic = api.TF.features["otype"].metaData
     commit = str(generic.get("upstreamCommit", ""))
-    if commit == CANDIDATE_SHA:
-        if _git_blob_sha(source_xml) != CANDIDATE_SOURCE_BLOB:
-            raise ValueError("ApDan source Git blob SHA mismatches the reviewed OCP candidate")
-        if _git_blob_sha(morph_tei) != CANDIDATE_MORPH_BLOB:
-            raise ValueError("ApDan TEI Git blob SHA mismatches the reviewed restricted OCP candidate")
+    source_blob = _git_blob_sha(source_xml)
+    morph_blob = _git_blob_sha(morph_tei)
+    known_snapshot = (
+        source_blob == CANDIDATE_SOURCE_BLOB
+        and morph_blob == CANDIDATE_MORPH_BLOB
+    )
+    if commit == CANDIDATE_SHA and not known_snapshot:
+        raise ValueError("ApDan source/TEI Git blob SHA mismatches reviewed OCP candidate")
+    # Verify the *pair of actual source files*, not the temporary TF staging
+    # checkout, to recover an immutable source citation without claiming that
+    # the new corpus's content license is independently verified.
+    source_snapshot = CANDIDATE_SHA if known_snapshot else ""
 
     source_sha = hashlib.sha256(source_xml).hexdigest()
     owners = [
@@ -258,7 +265,7 @@ def align_apdan_morphology(api, source_xml: bytes, morph_tei: bytes) -> Morpholo
             "source_declared_license": "CC-BY-NC-4.0",
             "source_declared_availability": "restricted",
             "redistribution_permission": "not_attested",
-            "ocp_commit": commit,
+            "ocp_commit": source_snapshot,
             "source_xml_sha256": source_sha,
             "morph_tei_sha256": hashlib.sha256(morph_tei).hexdigest(),
         },
