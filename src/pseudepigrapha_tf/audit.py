@@ -582,7 +582,30 @@ def _parent_linkage_ok(
         if len(targets) != 1:
             return False
         target = next(iter(targets))
-        if target not in div_nodes or _feature(data, "source_ref", target) != _feature(data, "source_ref", unit):
+        if target not in div_nodes:
+            return False
+        div_ref = _feature(data, "source_ref", target)
+        unit_ref = _feature(data, "source_ref", unit)
+        if unit_ref == div_ref:
+            continue
+        if _feature(data, "source_format", unit) != "compact":
+            return False
+        # Compact XML locates a unit by its unique `unit/@id`, while the
+        # parent div carries only the fragment number. Both source identities
+        # are preserved independently without inventing a nested source div.
+        try:
+            parent_parts = json.loads(_feature(data, "source_ref_parts", target, "[]"))
+            unit_parts = json.loads(_feature(data, "source_ref_parts", unit, "[]"))
+        except (ValueError, TypeError):
+            return False
+        if (
+            not isinstance(parent_parts, list)
+            or not isinstance(unit_parts, list)
+            or len(unit_parts) != len(parent_parts) + 1
+            or unit_parts[:-1] != parent_parts
+            or unit_parts[-1] != unit_ref
+            or unit_ref != _feature(data, "unit_id", unit)
+        ):
             return False
     return True
 
