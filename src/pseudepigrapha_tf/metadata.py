@@ -27,10 +27,19 @@ _TOP_LEVEL_FEATURES = {
     "title": "intro_title_json",
     "version": "intro_version_json",
     "citation": "intro_citation_json",
+    # New, sparse top-level scalars present in OCP's 2026 intros export.
+    "author": "intro_author_json",
+    "editor": "intro_editor_json",
 }
 _FIELD_FEATURES = {name: f"intro_{name}_json" for name in PUBLIC_METADATA_FIELDS}
 ALL_INTRO_FEATURES = tuple(_TOP_LEVEL_FEATURES.values()) + tuple(_FIELD_FEATURES.values())
-_ALLOWED_ENTRY_KEYS = frozenset({"title", "version", "citation", "fields"})
+_OPTIONAL_TOP_LEVEL_KEYS = ("author", "editor")
+_OPTIONAL_INTRO_FEATURES = tuple(_TOP_LEVEL_FEATURES[key] for key in _OPTIONAL_TOP_LEVEL_KEYS)
+_BASE_INTRO_FEATURES = tuple(
+    feature for key, feature in _TOP_LEVEL_FEATURES.items()
+    if key not in _OPTIONAL_TOP_LEVEL_KEYS
+) + tuple(_FIELD_FEATURES.values())
+_ALLOWED_ENTRY_KEYS = frozenset({"title", "version", "citation", "author", "editor", "fields"})
 _REQUIRED_ENTRY_KEYS = frozenset({"title", "version", "fields"})
 _JSON_SCALAR_TYPES = (str, int, float, bool, type(None))
 
@@ -93,6 +102,10 @@ class PublicMetadataDocument:
     citation: Any
     citation_present: bool
     fields: Mapping[str, Any]
+    author: Any = None
+    author_present: bool = False
+    editor: Any = None
+    editor_present: bool = False
 
     @property
     def work_id(self) -> str:
@@ -105,6 +118,10 @@ class PublicMetadataDocument:
         }
         if self.citation_present:
             result["citation"] = self.citation
+        if self.author_present:
+            result["author"] = self.author
+        if self.editor_present:
+            result["editor"] = self.editor
         result["fields"] = dict(self.fields)
         return result
 
@@ -269,6 +286,16 @@ def load_public_metadata(
             citation=citation,
             citation_present=citation_present,
             fields=clean_fields,
+            author=(
+                _require_scalar(entry["author"], location=f"{filename}.author")
+                if "author" in entry else None
+            ),
+            author_present="author" in entry,
+            editor=(
+                _require_scalar(entry["editor"], location=f"{filename}.editor")
+                if "editor" in entry else None
+            ),
+            editor_present="editor" in entry,
         )
 
     return PublicMetadataCorpus(
@@ -290,6 +317,10 @@ def _encoded_features(document: PublicMetadataDocument) -> dict[str, str]:
     }
     if document.citation_present:
         features[_TOP_LEVEL_FEATURES["citation"]] = _encode_scalar(document.citation)
+    if document.author_present:
+        features[_TOP_LEVEL_FEATURES["author"]] = _encode_scalar(document.author)
+    if document.editor_present:
+        features[_TOP_LEVEL_FEATURES["editor"]] = _encode_scalar(document.editor)
     for name, value in document.fields.items():
         features[_FIELD_FEATURES[name]] = _encode_scalar(value)
     return features
@@ -302,6 +333,9 @@ def _intro_feature_description(name: str) -> str:
         return "JSON-scalar encoded public OCP document edition version from intros.json"
     if name == "intro_citation_json":
         return "JSON-scalar encoded per-document OCP citation from intros.json"
+    if name in _OPTIONAL_INTRO_FEATURES:
+        key = name[len("intro_") : -len("_json")]
+        return f"JSON-scalar encoded top-level OCP document {key} from intros.json"
     field = name[len("intro_") : -len("_json")]
     return f"JSON-scalar encoded public OCP {field} field from intros.json"
 
@@ -343,6 +377,10 @@ def attach_public_metadata(data: TFData, metadata: PublicMetadataCorpus) -> None
     # Keep the selective-load API stable even when a particular snapshot has no
     # values for one of the public fields.
     for feature in ALL_INTRO_FEATURES:
+        # Omit absent new optional features from old published source
+        # snapshots: do not silently alter the v1.1 TF feature contract.
+        if feature in _OPTIONAL_INTRO_FEATURES and not data.node_features.get(feature):
+            continue
         data.node_features.setdefault(feature, {})
         data.metadata[feature] = {
             "valueType": "str",
@@ -380,8 +418,11 @@ class WorkMetadata:
     REQUIRED_FEATURES = (
         "ocp_book",
         "source_file",
-        *ALL_INTRO_FEATURES,
+        *_BASE_INTRO_FEATURES,
     )
+    # Load explicitly only on newer datasets that contain these features.
+    # Older published v1.1 corpora do not have the sparse author/editor keys.
+    OPTIONAL_FEATURES = _OPTIONAL_INTRO_FEATURES
 
     def __init__(self, api: Any) -> None:
         self.api = api
@@ -418,6 +459,12 @@ class WorkMetadata:
         citation_raw = getattr(self.api.F, _TOP_LEVEL_FEATURES["citation"]).v(node)
         if citation_raw is not None:
             result["citation"] = json.loads(citation_raw)
+        for key in _OPTIONAL_TOP_LEVEL_KEYS:
+            feature = getattr(self.api.F, _TOP_LEVEL_FEATURES[key], None)
+            if feature is not None:
+                raw = feature.v(node)
+                if raw is not None:
+                    result[key] = json.loads(raw)
         fields: dict[str, Any] = {}
         for name, feature in _FIELD_FEATURES.items():
             raw = getattr(self.api.F, feature).v(node)
@@ -503,7 +550,10 @@ def _public_scalar_count(documents: Mapping[str, Any]) -> int:
     for entry in documents.values():
         if not isinstance(entry, dict):
             continue
-        count += sum(1 for key in ("title", "version", "citation") if key in entry)
+        count += sum(
+            1 for key in ("title", "version", "citation", "author", "editor")
+            if key in entry
+        )
         fields = entry.get("fields", {})
         if isinstance(fields, dict):
             count += len(fields)
