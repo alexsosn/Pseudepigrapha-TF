@@ -502,6 +502,13 @@ def _add_unit(builder: _Builder, book: Book, version: Version, vkey: str, unit: 
     if not unit.readings:
         raise ValueError(f"{book.filename}/{version.title}: unit {unit.unit_id!r} has no readings")
     ref_features = _ref_features(path, specs)
+    if version.source_format == "compact":
+        # The source's exact unit citation is unit/@id ("2.7"), not merely
+        # its containing div number ("2"). Preserve the parent on the edge.
+        ref_features = {
+            "source_ref": unit.unit_id,
+            "source_ref_parts": json.dumps([*path, unit.unit_id], ensure_ascii=False),
+        }
     pidx = next((i for i, r in enumerate(unit.readings) if r.option == "0"), 0)
     if unit.readings[pidx].option != "0":
         builder.warnings.append(
@@ -525,6 +532,7 @@ def _add_unit(builder: _Builder, book: Book, version: Version, vkey: str, unit: 
         ukey, "unit", slots, **_common(book, version), **ref_features,
         unit_id=unit.unit_id, unit_index=index, group=unit.group, parallel=unit.parallel,
         unit_linebreak=unit.linebreak,
+        source_format=version.source_format,
     )
     builder.edge("parent", ukey, parent_div)
 
