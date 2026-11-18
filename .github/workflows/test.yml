@@ -75,7 +75,7 @@ jobs:
       - name: Checkout immutable OCP 2026 candidate
         run: |
           git -C /tmp/ocp worktree add --detach /tmp/ocp-2026 853a64b623de296d2b8532a43593607772e7c45a
-      - name: Validate 60 OCP 2026 Grammateus works through native TF APIs
+      - name: Validate 66 OCP 2026 Grammateus and compact works through native TF APIs
         run: python tests/candidate_ocp_acceptance.py /tmp/ocp-2026
       - name: Convert and audit complete OCP XML set
         run: |
