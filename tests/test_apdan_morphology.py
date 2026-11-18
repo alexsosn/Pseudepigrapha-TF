@@ -104,6 +104,9 @@ def test_apdan_exact_word_morphology_is_on_existing_native_tf_slots(corpus):
         ('<w lemma="ζωή" pos="noun" msd="NNSF">Ζωή</w>', "", "word|missing|count"),
         ('<w lemma="λόγος" pos="noun" msd="NNSM">λόγος</w>', '<w lemma="λόγος" pos="noun" msd="NNSM">λόγος</w><w lemma="λόγος" pos="noun" msd="NNSM">λόγος</w>', "word|count"),
         ('<pc>.</pc>', '<foobar>.</foobar>', "unexpected|element|punctuation"),
+        ('</teiHeader>', '<w lemma="rogue" pos="noun" msd="N">ἄλλος</w></teiHeader>', "unmapped|outside|unexpected"),
+        ('</body>', '<pc>.</pc></body>', "unmapped|outside|punctuation"),
+        ('CC BY-NC 4.0</licence>', 'Public domain</licence>', "license|CC BY-NC"),
     ],
 )
 def test_apdan_bad_tei_fails_closed(corpus, old, new, match):
