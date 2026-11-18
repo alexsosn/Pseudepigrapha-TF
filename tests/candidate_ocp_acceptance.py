@@ -103,12 +103,16 @@ def verify(upstream_repo: Path) -> None:
         assert report["status"] == "ok", report["failed_checks"]
         assert report["source"]["versions"] == report["graph"]["versions"]
         assert report["source"]["readings"] == report["graph"]["readings"]
+        assert report["source"]["public_metadata_documents"] == 55
+        assert report["source"]["public_metadata_scalars"] == report["graph"]["public_metadata_scalars"]
         # Assembled in a temporary directory, not an attested full OCP checkout.
         assert report["provenance"]["source_identity_status"] != "verified"
         assert report["provenance"]["content_license_status"] != "verified"
 
-        from pseudepigrapha_tf import Apparatus
+        from pseudepigrapha_tf import Apparatus, WorkMetadata
         features = set(Apparatus.PASSAGE_FEATURES)
+        features.update(WorkMetadata.REQUIRED_FEATURES)
+        features.update(WorkMetadata.OPTIONAL_FEATURES)
         features.update({"ocp_book", "version_id", "version_kind", "source_ref"})
         TF = Fabric(locations=[str(tf_dir)], modules=[""], silent="deep")
         api = TF.load(" ".join(sorted(features)), silent="deep")
@@ -122,6 +126,10 @@ def verify(upstream_repo: Path) -> None:
                     api.F.version_id.v(node)
                 )
         assert all(name.removesuffix(".xml") in source_books for name in standard)
+        metadata_api = WorkMetadata(api)
+        assert metadata_api["5Ezra"]["author"] == "Pseudo-Ezra"
+        assert metadata_api["5Ezra"]["editor"] == "Robert L. Bensly (1895)"
+        assert metadata_api["6Ezra"]["author"] == "Pseudo-Ezra"
         A = Apparatus(api)
         passage_checks = {}
         for work in ("3Macc", "5Ezra", "6Ezra", "ApDan", "Jub", "T12P"):
