@@ -222,6 +222,9 @@ def verify(upstream_repo: Path) -> None:
         assert aligned_morph.summary["punctuation_elements"] == 220, aligned_morph.summary
         assert aligned_morph.summary["source_declared_license"] == "CC-BY-NC-4.0"
         assert aligned_morph.summary["redistribution_permission"] == "not_attested"
+        # Both files come from the pinned Git snapshot even though the
+        # temporary standalone TF staging directory has no Git HEAD.
+        assert aligned_morph.summary["ocp_commit"] == UPSTREAM_SHA
         assert not any((tf_dir / f"{name}.tf").exists()
                        for name in aligned_morph.features)
         overlay_dir = workdir / "restricted-cc-by-nc-apdan"
