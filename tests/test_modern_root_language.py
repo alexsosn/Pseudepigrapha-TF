@@ -30,10 +30,16 @@ def _modern_edition(*, work: str = "5Ezra", root_language: str = "Latin",
       <ms abbrev="Bensly" language="Latin" show="yes"><name>Bensly</name></ms>
       <ms abbrev="C" language="Latin" show="yes"><name>Codex C</name></ms>
     </manuscripts>
-    <text><div number="1"><div number="1"><unit id="0">
-      <reading option="0" mss="Bensly ">et venit</reading>
-      <reading option="1" mss="C ">venit</reading>
-    </unit></div></div></text>
+    <text><div number="1">
+      <div number="1"><unit id="1">
+        <reading option="0" mss="Bensly ">et venit</reading>
+        <reading option="1" mss="C ">venit</reading>
+      </unit></div>
+      <div number="2"><unit id="1">
+        <reading option="0" mss="Bensly ">et vidit</reading>
+        <reading option="1" mss="C ">vidit</reading>
+      </unit></div>
+    </div></text>
   </version>""")
     return (f'<book filename="{work}" title="{work}" language="{root_language}">'
             + "".join(versions) + "</book>").encode("utf-8")
@@ -52,8 +58,8 @@ def test_redundant_modern_root_language_produces_audited_tf(work, tmp_path):
     books, warnings = load_source_directory(tmp_path)
     assert not warnings
     tf = build_tf_data(books)
-    assert sum(t == "unit" for t in tf.node_features["otype"].values()) == 1
-    assert sum(t == "reading" for t in tf.node_features["otype"].values()) == 2
+    assert sum(t == "unit" for t in tf.node_features["otype"].values()) == 2
+    assert sum(t == "reading" for t in tf.node_features["otype"].values()) == 4
     report = build_conversion_report(tmp_path, books, tf)
     assert report["status"] == "ok", report["failed_checks"]
 
