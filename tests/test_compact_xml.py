@@ -134,6 +134,26 @@ def test_compact_source_reloads_sections_and_aligned_translation(tmp_path):
     assert linked["units"][0]["source_text"] == "Secunda vox."
 
 
+
+def test_compact_independent_audit_rejects_reversed_source_unit_order(tmp_path):
+    docs = _docs(tmp_path)
+    books, _ = load_source_directory(docs)
+    data = build_tf_data(books)
+    assert build_conversion_report(docs, books, data)["status"] == "ok"
+    kinds = data.node_features["otype"]
+    work = data.node_features["version_kind"]
+    ids = data.node_features["unit_id"]
+    first = next(n for n, kind in kinds.items()
+                 if kind == "unit" and work.get(n) == "source" and ids.get(n) == "1.1")
+    second = next(n for n, kind in kinds.items()
+                  if kind == "unit" and work.get(n) == "source" and ids.get(n) == "1.2")
+    order = data.node_features["unit_index"]
+    order[first], order[second] = order[second], order[first]
+    report = build_conversion_report(docs, books, data)
+    assert report["status"] == "failed"
+    assert not report["semantic_checks"]["parallel_translation_alignment"]
+
+
 @pytest.mark.parametrize(
     ("old", "new", "error"),
     [
