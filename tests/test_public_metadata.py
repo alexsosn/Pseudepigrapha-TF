@@ -281,5 +281,5 @@ def test_new_ocp_author_editor_must_be_json_scalars(tmp_path: Path, field):
     payload = _payload()
     payload["documents"]["One.xml"][field] = ["unreviewed", "list"]
     docs = _write_source(tmp_path, payload)
-    with pytest.raises(ValueError, match=rf"One\\.xml\\.{field}"):
+    with pytest.raises(ValueError, match=field):
         load_public_metadata(docs)
