@@ -226,7 +226,7 @@ def _validate_generated_alignment(data: TFData) -> None:
     unit_contract = EDGE_FEATURE_CONTRACTS["translation_unit_of"]
     for node, node_kind in kind.items():
         node_type = otype.get(node)
-        if node_kind != "generated_translation":
+        if node_kind not in {"generated_translation", "parallel_translation"}:
             continue
         if node_type == "book":
             targets = translation_of.get(node, set())
@@ -244,13 +244,13 @@ def _validate_generated_alignment(data: TFData) -> None:
                 errors.append(f"generated unit {node} translation_unit_of target is not a source unit")
 
     for source, targets in translation_of.items():
-        if otype.get(source) != "book" or kind.get(source) != "generated_translation":
+        if otype.get(source) != "book" or kind.get(source) not in {"generated_translation", "parallel_translation"}:
             errors.append(f"translation_of source {source} is not a generated book")
         for target in targets:
             if otype.get(target) != "book" or kind.get(target) != "source":
                 errors.append(f"translation_of target {target} is not a source book")
     for source, targets in translation_unit_of.items():
-        if otype.get(source) != "unit" or kind.get(source) != "generated_translation":
+        if otype.get(source) != "unit" or kind.get(source) not in {"generated_translation", "parallel_translation"}:
             errors.append(f"translation_unit_of source {source} is not a generated unit")
         for target in targets:
             if otype.get(target) != "unit" or kind.get(target) != "source":
@@ -767,13 +767,43 @@ def build_tf_data(
                         manuscripts,
                     )
                 _stamp_version_identity(builder, start, version_id)
-                _stamp_version_kind(builder, start, first_slot, "source")
+                if version.kind not in {"source", "parallel_translation"}:
+                    raise ValueError(f"{book.filename}/{version.title}: invalid source kind {version.kind!r}")
+                if version.kind == "parallel_translation" and version.source_format != "compact":
+                    raise ValueError("parallel translation must have validated compact source format")
+                _stamp_version_kind(builder, start, first_slot, version.kind)
                 vkey = f"book:{bidx}:version:{vidx}"
-                source_graphs[vidx - 1] = _SourceGraphVersion(
+                version_graph = _SourceGraphVersion(
                     version_id=version_id,
                     book_key=f"{vkey}:book",
                     units_by_identity=_unit_key_index(builder, start),
                 )
+                if version.kind == "source":
+                    source_graphs[vidx - 1] = version_graph
+                else:
+                    # A source-declared parallel English translation is *not*
+                    # OCP-Trans generated content or a historical witness.
+                    source_graph = source_graphs.get(0)
+                    if source_graph is None:
+                        raise ValueError(
+                            f"{book.filename}/{version.title}: no original source version"
+                        )
+                    builder.edge("translation_of", version_graph.book_key, source_graph.book_key)
+                    if set(version_graph.units_by_identity) != set(source_graph.units_by_identity):
+                        raise ValueError(
+                            f"{book.filename}/{version.title}: parallel/source unit identity mismatch"
+                        )
+                    for identity, translated_keys in version_graph.units_by_identity.items():
+                        source_keys = source_graph.units_by_identity[identity]
+                        if len(translated_keys) != len(source_keys):
+                            raise ValueError(
+                                f"{book.filename}/{version.title}: parallel/source unit multiplicity mismatch at {identity!r}"
+                            )
+                        for translated_key, source_key in zip(translated_keys, source_keys):
+                            builder.edge("translation_unit_of", translated_key, source_key)
+                    for obj in builder.objects[start:]:
+                        if obj.kind == "manuscript":
+                            obj.features["synthetic_witness"] = 1
                 if book_anchor is None and builder.next_slot > first_slot:
                     book_anchor = first_slot
             else:
@@ -864,6 +894,11 @@ def build_tf_data(
         # the always-loaded otype feature even when provenance features are not
         # part of a researcher's selective load.
         data.metadata[""]["generatedTranslationLayer"] = "1"
+    if any(
+        value == "parallel_translation"
+        for value in data.node_features.get("version_kind", {}).values()
+    ):
+        data.metadata[""]["parallelTranslationLayer"] = "1"
 
     data.metadata["otext"]["fmt:version_metadata-default"] = "{version_title}"
     data.metadata["otext"]["fmt:ellipsis-default"] = "{ellipsis_text}"
@@ -890,7 +925,7 @@ def build_tf_data(
         }
     if "version_kind" in data.metadata:
         data.metadata["version_kind"]["description"] = (
-            "source or generated_translation classification stored on TF book, unit, and version_metadata nodes"
+            "source, parallel_translation or generated_translation classification stored on version-owned TF nodes"
         )
     if "generation_marker" in data.metadata:
         data.metadata["generation_marker"]["description"] = "explicit upstream generated-translation provenance marker on the generated TF book"
@@ -902,11 +937,11 @@ def build_tf_data(
         data.metadata["generated_language"]["description"] = "target language recorded on the generated translation TF book"
     data.metadata["translation_of"] = {
         "valueType": "str",
-        "description": "generated translation TF book to its exact source-version TF book",
+        "description": "source-declared translation TF book to its exact source-version TF book",
     }
     data.metadata["translation_unit_of"] = {
         "valueType": "str",
-        "description": "generated translation unit to occurrence-aligned source unit",
+        "description": "source-declared translation unit to occurrence-aligned source unit",
     }
     if "version_id" in data.metadata:
         data.metadata["version_id"]["description"] = (
