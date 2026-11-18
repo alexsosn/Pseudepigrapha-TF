@@ -97,8 +97,12 @@ def _parse_tei(morph_tei: bytes) -> tuple[dict[str, tuple[tuple[str, str, str, s
     if availability is None or availability.get("status") != "restricted":
         raise ValueError("TEI requires source-declared restricted availability / CC BY-NC license")
     licenses = availability.findall(TEI + "licence")
-    if len(licenses) != 1 or licenses[0].get("target") != SOURCE_LICENSE_URL:
-        raise ValueError("TEI must declare the reviewed CC BY-NC 4.0 license")
+    if (
+        len(licenses) != 1
+        or licenses[0].get("target") != SOURCE_LICENSE_URL
+        or "BY-NC 4.0" not in "".join(licenses[0].itertext())
+    ):
+        raise ValueError("TEI must declare consistent CC BY-NC 4.0 license and URL")
     text = root.find(TEI + "text")
     body = text.find(TEI + "body") if text is not None else None
     if text is None or text.get(XML_LANG) != "grc" or body is None:
@@ -158,6 +162,11 @@ def _parse_tei(morph_tei: bytes) -> tuple[dict[str, tuple[tuple[str, str, str, s
         raise ValueError("TEI contains no annotated verses")
     if len(inventory) != len(list(body.iter(TEI + "ab"))):
         raise ValueError("TEI contains verse elements outside reviewed chapter structure")
+    if (
+        sum(len(words) for words in inventory.values()) != sum(1 for _ in root.iter(TEI + "w"))
+        or punctuation != sum(1 for _ in root.iter(TEI + "pc"))
+    ):
+        raise ValueError("unmapped TEI word or punctuation outside reviewed verses")
     return inventory, punctuation
 
 
