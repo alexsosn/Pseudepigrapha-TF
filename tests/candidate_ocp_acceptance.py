@@ -1,7 +1,7 @@
 """Real OCP 2026 candidate -> native Text-Fabric researcher acceptance.
 
 This is an intentionally partial *staging* corpus: the full upstream snapshot
-contains seven root files needing separately reviewed format/identity handling.
+contains one namespaced TEI root file needing separate source-equivalence review.
 No published data version or general converter exclusion is implied.
 """
 from __future__ import annotations
@@ -18,17 +18,13 @@ from tf.fabric import Fabric
 
 
 UPSTREAM_SHA = "853a64b623de296d2b8532a43593607772e7c45a"
-# Six root documents use a distinct compact <manuscript> dialect. One file
-# is namespaced TEI, an alternate representation of the root ApDan source.
+# Six compact-dialect originals and translations are now supported; the
+# separately named TEI root remains outside this format-bound staging test.
 # No source is silently excluded from *production* conversion by this test.
-UNSUPPORTED_ROOT_FILES = frozenset({
-    "ApDan_TEI.xml",
-    "CithDavid.xml",
-    "Demetr.xml",
-    "Justus.xml",
-    "OrMois.xml",
-    "ThrenSeila.xml",
-    "VisKenaz.xml",
+UNSUPPORTED_ROOT_FILES = frozenset({"ApDan_TEI.xml"})
+COMPACT_ROOT_FILES = frozenset({
+    "CithDavid.xml", "Demetr.xml", "Justus.xml",
+    "OrMois.xml", "ThrenSeila.xml", "VisKenaz.xml",
 })
 CHANGED_STANDARD_FILES = frozenset({
     "3Macc.xml", "5Ezra.xml", "6Ezra.xml", "AndronAsaph.xml",
@@ -68,7 +64,8 @@ def verify(upstream_repo: Path) -> None:
     assert UNSUPPORTED_ROOT_FILES <= nonempty
     assert CHANGED_STANDARD_FILES <= nonempty
     standard = sorted(nonempty - UNSUPPORTED_ROOT_FILES)
-    assert len(standard) == 60, (len(standard), standard)
+    assert len(standard) == 66, (len(standard), standard)
+    assert COMPACT_ROOT_FILES <= set(standard)
 
     with TemporaryDirectory(prefix="ocp-2026-standard-") as workdir:
         workdir = Path(workdir)
@@ -77,20 +74,16 @@ def verify(upstream_repo: Path) -> None:
         staged_docs.mkdir()
         for filename in standard:
             shutil.copyfile(docs / filename, staged_docs / filename)
-        # The new intros.json contains six records belonging to the
-        # unsupported compact-dialect books. Filter only this temporary test
-        # dataset; preserve all included metadata values without editing the
-        # original source and never attest the staged source as the full OCP.
+        # The source includes 61 metadata records, now including all six
+        # compact works. Staging excludes only separate ApDan_TEI.xml.
         original_intros = json.loads((docs / "intros.json").read_text(encoding="utf-8"))
         metadata = original_intros["documents"]
         assert len(metadata) == 61, len(metadata)
         assert set(metadata) <= nonempty
         staged_metadata = {name: value for name, value in metadata.items() if name in standard}
         excluded_metadata = set(metadata) - set(staged_metadata)
-        assert excluded_metadata == UNSUPPORTED_ROOT_FILES - {"ApDan_TEI.xml"}, (
-            excluded_metadata
-        )
-        assert len(staged_metadata) == 55, len(staged_metadata)
+        assert not excluded_metadata, excluded_metadata
+        assert len(staged_metadata) == 61, len(staged_metadata)
         staged_intros = dict(original_intros)
         staged_intros["documents"] = staged_metadata
         (staged_docs / "intros.json").write_text(
@@ -103,14 +96,17 @@ def verify(upstream_repo: Path) -> None:
         assert report["status"] == "ok", report["failed_checks"]
         assert report["source"]["versions"] == report["graph"]["versions"]
         assert report["source"]["readings"] == report["graph"]["readings"]
-        assert report["source"]["public_metadata_documents"] == 55
+        assert report["source"]["public_metadata_documents"] == 61
+        assert report["semantic_checks"]["parallel_translation_alignment"]
         assert report["source"]["public_metadata_scalars"] == report["graph"]["public_metadata_scalars"]
         # Assembled in a temporary directory, not an attested full OCP checkout.
         assert report["provenance"]["source_identity_status"] != "verified"
         assert report["provenance"]["content_license_status"] != "verified"
 
-        from pseudepigrapha_tf import Apparatus, WorkMetadata
+        from pseudepigrapha_tf import Apparatus, Translations, WorkMetadata
         features = set(Apparatus.PASSAGE_FEATURES)
+        features.update(Translations.REQUIRED_FEATURES)
+        features.update({"source_format", "version_source_id", "division_source_ids", "division_source_types"})
         features.update(WorkMetadata.REQUIRED_FEATURES)
         features.update(WorkMetadata.OPTIONAL_FEATURES)
         features.update({"ocp_book", "version_id", "version_kind", "source_ref"})
@@ -132,7 +128,8 @@ def verify(upstream_repo: Path) -> None:
         assert metadata_api["6Ezra"]["author"] == "Pseudo-Ezra"
         A = Apparatus(api)
         passage_checks = {}
-        for work in ("3Macc", "5Ezra", "6Ezra", "ApDan", "Jub", "T12P"):
+        for work in ("3Macc", "5Ezra", "6Ezra", "ApDan", "Jub", "T12P",
+                     "CithDavid", "Demetr", "Justus", "OrMois", "ThrenSeila", "VisKenaz"):
             # Choose a textual source version rather than assuming the final
             # version in upstream order is textual (some are metadata-only).
             candidates = [
@@ -174,12 +171,38 @@ def verify(upstream_repo: Path) -> None:
         passage_checks["T12P_shallow_title"] = (t12p, "Reuben", "Title")
         passage_checks["T12P_deep_verse"] = (t12p, "Reuben 1", "1")
 
+        # Use the public Text-Fabric API to walk every non-generated parallel
+        # English unit back to the exact original in each of the six works.
+        translations = Translations(api)
+        expected_alignment_counts = {
+            "CithDavid": 6, "Demetr": 27, "Justus": 7,
+            "OrMois": 5, "ThrenSeila": 6, "VisKenaz": 8,
+        }
+        aligned_counts = {}
+        for work, expected in expected_alignment_counts.items():
+            versions = tuple(v for v in translations.versions(work=work)
+                             if v["version_kind"] == "parallel_translation")
+            assert len(versions) == 1, (work, versions)
+            record = versions[0]
+            source_book = record["source_node"]
+            translation_book = record["node"]
+            assert api.F.version_kind.v(source_book) == "source"
+            assert api.F.version_kind.v(translation_book) == "parallel_translation"
+            assert api.F.version_source_id.v(translation_book) == "English"
+            assert api.F.source_format.v(translation_book) == "compact"
+            pairs = translations.aligned_units(translation_book)
+            assert len(pairs) == expected, (work, len(pairs), expected)
+            assert all(p["translation_unit_id"] == p["source_unit_id"] for p in pairs)
+            assert all(p["translation_text"] and p["source_text"] for p in pairs)
+            aligned_counts[work] = len(pairs)
+
         print(json.dumps({
             "candidate_sha": UPSTREAM_SHA,
             "root_xml_nonempty": len(nonempty),
             "root_xml_converted": len(standard),
             "root_xml_excluded_for_review": sorted(UNSUPPORTED_ROOT_FILES),
             "real_tf_passages": passage_checks,
+            "compact_parallel_aligned_units": aligned_counts,
             "source_counts": report["source"],
         }, ensure_ascii=False, default=str))
 
