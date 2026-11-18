@@ -112,8 +112,8 @@ EDGE_DESCRIPTIONS = {
     "witness": "reading/orphan_reading node to cited manuscript nodes",
     "manuscript_of": "manuscript node to its TF book/version",
     "resource_of": "resource node to its TF book/version",
-    "translation_of": "generated translation TF book to its exact source-version TF book",
-    "translation_unit_of": "generated translation unit to its occurrence-aligned source unit",
+    "translation_of": "source-linked generated or parallel translation TF book to its exact source-version TF book",
+    "translation_unit_of": "source-linked generated or parallel translation unit to occurrence-aligned source unit",
 }
 
 EDGE_FEATURE_CONTRACTS = {
@@ -177,7 +177,7 @@ EDGE_FEATURE_CONTRACTS = {
         "cardinality": "exactly 1", "technicalSupport": False,
         "corpusDependent": True,
 
-        "sourceQualifier": "version_kind=generated_translation", "minTargets": 1, "maxTargets": 1,
+        "sourceQualifier": "version_kind=generated_translation|parallel_translation", "minTargets": 1, "maxTargets": 1,
         "cardinalityRules": (),
     },
     "translation_unit_of": {
@@ -185,7 +185,7 @@ EDGE_FEATURE_CONTRACTS = {
         "cardinality": "exactly 1", "technicalSupport": False,
         "corpusDependent": True,
 
-        "sourceQualifier": "version_kind=generated_translation", "minTargets": 1, "maxTargets": 1,
+        "sourceQualifier": "version_kind=generated_translation|parallel_translation", "minTargets": 1, "maxTargets": 1,
         "cardinalityRules": (),
     },
 }
