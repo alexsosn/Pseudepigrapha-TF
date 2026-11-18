@@ -122,6 +122,9 @@ def test_compact_source_reloads_sections_and_aligned_translation(tmp_path):
     assert api.T.nodeFromSection((original_id, "2", "2.1")) is not None
     source_passage = Apparatus(api).passage(original_id, "1", "1.2")
     assert source_passage["units"]
+    assert source_passage["source_refs"] == ("1.2",), source_passage
+    source_unit = source_passage["units"][0]["node"]
+    assert api.F.source_ref.v(source_unit) == "1.2"
     with pytest.raises(ValueError, match="translation|Translations"):
         Apparatus(api).passage(english_id, "1", "1.2")
     translated = Translations(api)
