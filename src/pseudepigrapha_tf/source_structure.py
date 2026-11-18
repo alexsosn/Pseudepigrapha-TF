@@ -235,13 +235,30 @@ def validate_source_structure(
     book_filename = root.attrib.get("filename", "")
 
     if not legacy and "language" in root.attrib:
-        wrapped_versions = [version for version in root.findall("version") if is_wrapped_legacy_version(version)]
-        if (
-            len(wrapped_versions) != 1
-            or wrapped_versions[0].attrib.get("language", "") != root.attrib.get("language", "")
-        ):
+        root_language = root.attrib["language"]
+        versions = root.findall("version")
+        wrapped_versions = [version for version in versions if is_wrapped_legacy_version(version)]
+        # In upstream 5Ezra/6Ezra, book/@language is an exact, nonblank
+        # restatement of the language on every modern version. The converter
+        # already preserves version/@language, so accepting this equivalence
+        # loses no independent source information. Anything conflicting or
+        # missing must still fail closed.
+        redundant_modern_language = (
+            bool(root_language.strip())
+            and bool(versions)
+            and not wrapped_versions
+            and all(version.get("language") == root_language for version in versions)
+        )
+        # Preserve OCP's existing Esdr-style wrapped-legacy exception, where
+        # generated translations may have languages different from the source.
+        matching_wrapped_legacy_language = (
+            len(wrapped_versions) == 1
+            and wrapped_versions[0].get("language", "") == root_language
+        )
+        if not (redundant_modern_language or matching_wrapped_legacy_language):
             raise SourceStructureError(
-                f"{location}: root book language is only supported when it exactly duplicates one wrapped legacy version"
+                f"{location}: root book language must exactly duplicate all modern "
+                "version languages or one wrapped legacy version"
             )
 
     # Carry the containing version title, source div path, and hybrid-body flag
