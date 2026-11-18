@@ -4,6 +4,24 @@ Pseudepigrapha-TF preserves OCP source identity rather than silently normalizing
 
 When loading an OCP source *directory*, every non-empty top-level `WorkId.xml` must declare that exact `WorkId` in its `<book filename="WorkId">` attribute, including case. This is enforced whether or not the optional `intros.json` metadata export is present; a mismatched name fails rather than silently changing researcher-facing work identity. Individual in-memory `parse_bytes()` calls can still parse text without a filesystem name. Empty `.xml` placeholders retain their documented skip behavior.
 
+## Modern root language compatibility (OCP 2026 candidate)
+
+New upstream OCP `5Ezra.xml` and `6Ezra.xml` have `<book language="Latin">`
+in addition to the same `language="Latin"` on their sole modern
+`<version>`. The converter accepts this redundant root metadata when it
+is nonblank and **every** direct modern version declares the identical
+language. The existing wrapped-legacy exception is retained for OCP sources
+whose generated translation versions naturally use different languages.
+Missing or contradictory source-version languages still fail validation.
+The language continues to be recorded on the source version's native TF
+features; there is no inferred book-level language when editions disagree.
+
+This narrowly scoped parser compatibility change does **not** mean that the
+new OCP snapshot has been imported or released. See issue #228 for the
+remaining inventory, TEI, provenance, native TF, and acceptance gates.
+In particular, namespaced `ApDan_TEI.xml` is not Grammateus XML and
+`CithDavid.xml` has additional unsupported source vocabulary.
+
 ## Blank attributes
 
 The pinned Grammateus DTD declares many attributes as `CDATA #REQUIRED`, but requiredness guarantees presence, not a non-empty value. OCP also uses empty strings as legitimate metadata, so the converter does **not** apply a blanket non-empty rule.
