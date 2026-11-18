@@ -562,6 +562,19 @@ def _parallel_translation_alignment_ok(
         translation_units = graph_units_by_version.get(translation_version_id, [])
         if len(source_units) != len(original_keys) or len(translation_units) != len(translation_keys):
             return False
+        # A set-equality audit would miss a converter that reverses two source
+        # units while retaining their IDs and edges. Compare source document
+        # order to the actual native TF unit_index for *both* versions.
+        def ordered_graph_keys(nodes: list[int]) -> list[tuple[str, str]]:
+            return [
+                (str(source_ref.get(n, "")), str(unit_ids.get(n, "")))
+                for n in sorted(nodes, key=lambda node: _unit_order(data, node))
+            ]
+
+        if ordered_graph_keys(source_units) != original_keys:
+            return False
+        if ordered_graph_keys(translation_units) != translation_keys:
+            return False
         source_index: dict[tuple[str, str], int] = {}
         for unit in source_units:
             key = (str(source_ref.get(unit, "")), str(unit_ids.get(unit, "")))
