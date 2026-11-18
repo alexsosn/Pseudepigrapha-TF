@@ -6,6 +6,6 @@
 
 **Category:** Source/version identity and provenance
 
-source or generated_translation classification stored on TF book, unit, and version_metadata nodes
+source, parallel_translation or generated_translation classification stored on version-owned TF nodes
 
 **Observed node types in render graph:** `book`, `unit`
