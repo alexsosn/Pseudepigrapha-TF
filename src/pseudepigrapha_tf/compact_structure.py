@@ -67,6 +67,8 @@ def validate_compact_source_structure(root: ET.Element, *, source_path: str = ""
     source, english = versions
     if source.get("id") == english.get("id"):
         raise ValueError(f"{location}: duplicate compact version id {source.get('id')!r}")
+    if source.get("title") == english.get("title"):
+        raise ValueError(f"{location}: duplicate compact version title")
     if (source.get("id"), source.get("lang")) not in {("Greek", "grc"), ("Latin", "lat")}:
         raise ValueError(f"{location}: compact source version id/language mismatch")
     if (english.get("id"), english.get("lang"), english.get("title")) != (
