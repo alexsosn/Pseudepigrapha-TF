@@ -487,6 +487,11 @@ jobs:
           PY
       - name: Verify 1 Enoch comparison workflow
         run: python tests/pinned_comparison_acceptance.py /tmp/pseudepigrapha-tf/1.1
+      # RED-first candidate migration gate: the initial test-only commit uses
+      # the old pinned checkout and must reject it; follow-up implementation
+      # changes only the checkout to the exact 2026 upstream candidate.
+      - name: Validate OCP 2026 candidate Grammateus data against native TF APIs
+        run: python tests/candidate_ocp_acceptance.py /tmp/ocp
       # Expensive matched experiment is deliberately confined to the research PR,
       # not the routine full-corpus gate on main or unrelated pull requests.
       - name: Matched pre-cache vs cached comparison measurements
