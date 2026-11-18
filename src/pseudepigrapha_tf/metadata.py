@@ -157,7 +157,13 @@ def _validate_xml_identities(source_dir: Path) -> set[str]:
             raise ValueError(f"{xml_path.name}: cannot validate XML work identity: {exc}") from exc
         declared = root.attrib.get("filename", "")
         expected = xml_path.stem
-        if declared != expected:
+        # The validated compact dialect stores the literal full basename
+        # (e.g. CithDavid.xml); the standard Grammateus root uses the stem.
+        from .compact_structure import is_compact_source, validate_compact_source_structure
+
+        if is_compact_source(root):
+            validate_compact_source_structure(root, source_path=xml_path.name)
+        elif declared != expected:
             raise ValueError(
                 f"{xml_path.name}: XML root filename identity {declared!r} does not match {expected!r}"
             )

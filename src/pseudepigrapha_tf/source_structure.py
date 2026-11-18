@@ -3,6 +3,7 @@ from __future__ import annotations
 from xml.etree import ElementTree as ET
 
 from .source_versions import is_wrapped_legacy_version
+from .compact_structure import is_compact_source, validate_compact_source_structure
 
 
 class SourceStructureError(ValueError):
@@ -229,6 +230,13 @@ def validate_source_structure(
     left in the legacy dialect. Only that version subtree switches dialect; the
     surrounding book and all sibling versions remain subject to modern rules.
     """
+
+    if is_compact_source(root):
+        try:
+            validate_compact_source_structure(root, source_path=source_path)
+        except ValueError as exc:
+            raise SourceStructureError(str(exc)) from exc
+        return
 
     location = source_path or "<memory>"
     source_name = source_path.replace("\\", "/").rsplit("/", 1)[-1] if source_path else ""

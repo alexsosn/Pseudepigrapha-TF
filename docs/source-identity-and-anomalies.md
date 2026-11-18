@@ -64,6 +64,47 @@ alignment. The same slot is never counted in both a shallow and
 deep chapter. Tests check original divisions/readings, independent
 section coverage, and both public TF lookup paths on real T12P XML.
 
+## OCP 2026 compact editions and parallel English
+
+The six newer compact XML files (CithDavid, Demetr, Justus, OrMois,
+ThrenSeila, VisKenaz) use `book/@filename` with the literal `.xml`
+suffix, `version/@id,@lang`, `division/@id,@title,@type` and
+`manuscript/@id,@name`. The strict compact parser validates that
+vocabulary and preserves the original source basename separately
+from the stable TF work key, plus the version and division identifiers.
+
+The original-language edition remains `version_kind=source`.
+The source-declared English companion is
+`version_kind=parallel_translation`. It is **not** marked
+`generated_translation`, has no inferred generator/model and its
+`Eng` label is flagged as synthetic translation provenance, never
+a historical manuscript. `Translations` supplies explicit
+`translation_of` and `translation_unit_of` links, matched by
+actual source div and unit identifiers with multiplicity checks.
+`Apparatus` excludes these parallel texts from historical witness
+results. A compact-only TF corpus can load
+`Translations.PARALLEL_FEATURES`; the published 1.1 corpus continues
+to support `Translations.REQUIRED_FEATURES` for OCP-Trans generated text.
+
+The source has a single `<div number="2">` containing multiple
+`<unit id="2.1">, <unit id="2.2">`, and so on. The fixed TF
+book/chapter/verse address is therefore the version ID, source div
+number, and **exact unit ID**, for example
+`("Demetr__Greek_Text_FGrH_722_Denis_1970", "2", "2.1")`
+(the book ID should be resolved from `api.F.book` rather than hardcoded
+by researchers). The original `unit_id` and parent div `source_ref`
+remain available and the projected verse has its own exact unit
+`source_ref`. These TF verse nodes do not pretend that OCP contains
+additional XML divisions.
+
+The full 2026 candidate is still **not a released corpus**. PR #233
+audited a 60-work subset, and the grouped #234 gate advances that
+temporary candidate to 66 nonempty root Grammateus/compact documents
+with all 61 public work metadata records. The separate
+`ApDan_TEI.xml` and generated `tei/` mirrors require their own
+source-equivalence and license analysis before whole-source attestation
+or publication.
+
 ## Blank attributes
 
 The pinned Grammateus DTD declares many attributes as `CDATA #REQUIRED`, but requiredness guarantees presence, not a non-empty value. OCP also uses empty strings as legitimate metadata, so the converter does **not** apply a blanket non-empty rule.

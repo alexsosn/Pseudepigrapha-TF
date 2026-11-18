@@ -51,6 +51,10 @@ _IDENTITY_FEATURES = frozenset(
         "division_labels",
         "division_delimiters",
         "division_texts",
+        "source_format",
+        "version_source_id",
+        "division_source_ids",
+        "division_source_types",
     }
 )
 _APPARATUS_FEATURES = frozenset(

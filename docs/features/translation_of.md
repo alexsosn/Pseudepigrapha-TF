@@ -6,13 +6,13 @@
 
 **Category:** Generated-translation features/relations
 
-generated translation TF book to its exact source-version TF book
+source-linked generated or parallel translation TF book to its exact source-version TF book
 
 **Direction:** `book` → `book`
 
 **Cardinality:** exactly 1
 
-**Source qualifier:** `version_kind=generated_translation`
+**Source qualifier:** `version_kind=generated_translation|parallel_translation`
 
 **Supported by converter:** yes
 

@@ -13,6 +13,7 @@ from .model import Book, DivisionSpec
 from .parser import InvalidSourceError
 from .source_structure import SourceStructureError, validate_source_structure
 from .source_versions import GENERATED_TRANSLATION_MARKER, is_wrapped_legacy_version
+from .compact_structure import is_compact_source
 
 
 def _plain_text(element: ET.Element | None) -> str:
@@ -130,14 +131,16 @@ def _raw_inventory(source_dir: Path) -> dict:
         # Inventory *all* raw groups, independently of the parser's model,
         # so a future regression cannot hide dropped declared manuscripts.
         for manuscripts in container.findall("manuscripts"):
-            for ms in manuscripts.findall("ms"):
-                name = ms.find("name")
+            for ms in [*manuscripts.findall("ms"), *manuscripts.findall("manuscript")]:
+                compact = ms.tag == "manuscript"
+                name = ms.find("name") if not compact else None
                 bibliography = ms.findall("bibliography")
                 inventory["manuscripts"].append({
                     "ocp_book": ocp_book, "version_title": version_title,
-                    "abbrev": ms.get("abbrev", ""), "language": ms.get("language", ""),
-                    "show": ms.get("show", ""), "name": _plain_text(name),
-                    "name_xml": _inner_xml(name) if name is not None else "",
+                    "abbrev": ms.get("id", "") if compact else ms.get("abbrev", ""),
+                    "language": ms.get("language", ""), "show": ms.get("show", ""),
+                    "name": ms.get("name", "") if compact else _plain_text(name),
+                    "name_xml": escape(ms.get("name", "")) if compact else (_inner_xml(name) if name is not None else ""),
                     "bibliography": [_plain_text(b) for b in bibliography],
                     "bibliography_xml": [_inner_xml(b) for b in bibliography],
                 })
@@ -154,7 +157,11 @@ def _raw_inventory(source_dir: Path) -> dict:
 
     def add_unit(unit: ET.Element, ocp_book: str, version_title: str,
                  path: tuple[str, ...], specs: tuple[DivisionSpec, ...]) -> None:
-        source_ref = _reference(path, specs)
+        source_ref = (
+            unit.get("id", "")
+            if specs and specs[0].source_id
+            else _reference(path, specs)
+        )
         inventory["units"].append({
             "ocp_book": ocp_book, "version_title": version_title, "source_ref": source_ref,
             "unit_id": unit.get("id", ""), "group": unit.get("group", "0"),
@@ -251,6 +258,7 @@ def _raw_inventory(source_dir: Path) -> dict:
             inventory["division_specs"].append({
                 "ocp_book": ocp_book, "version_title": version_title, "index": index,
                 "label": spec.label, "delimiter": spec.delimiter, "text": spec.text,
+                "source_id": spec.source_id, "source_type": spec.source_type,
             })
 
     raw_work_sources: dict[str, str] = {}
@@ -271,7 +279,10 @@ def _raw_inventory(source_dir: Path) -> dict:
             )
         except SourceStructureError as exc:
             raise InvalidSourceError(str(exc)) from exc
+        compact = is_compact_source(root)
         ocp_book = root.get("filename", "")
+        if compact:
+            ocp_book = ocp_book[:-4]
         # Independently check raw file ownership instead of inheriting the
         # parser/loader's identity assumption, which could conceal a source
         # collision in the source-to-graph semantic parity inventory.
@@ -308,11 +319,17 @@ def _raw_inventory(source_dir: Path) -> dict:
                     "text_structure": root.get("textStructure", ""),
                     "version_title": version_title,
                     "author": version.get("author", ""),
-                    "language": version.get("language", ""),
+                    "language": version.get("lang", "") if compact else version.get("language", ""),
                     "fragment": version.get("fragment", ""),
                     "source_file": path.name,
                     "source_sha256": source_sha256,
-                    "version_kind": "generated_translation" if generated else "source",
+                    "version_kind": (
+                        "generated_translation" if generated else
+                        "parallel_translation" if compact and version.get("id") == "English"
+                        else "source"
+                    ),
+                    "source_format": "compact" if compact else "",
+                    "version_source_id": version.get("id", "") if compact else "",
                 })
 
                 if generated:
@@ -353,9 +370,11 @@ def _raw_inventory(source_dir: Path) -> dict:
                     divisions = version.find("divisions")
                     specs = tuple(
                         DivisionSpec(
-                            d.get("label", ""),
-                            d.get("delimiter", d.get("Delimiter", "")),
-                            _plain_text(d),
+                            d.get("title", "") if compact else d.get("label", ""),
+                            "" if compact else d.get("delimiter", d.get("Delimiter", "")),
+                            "" if compact else _plain_text(d),
+                            source_id=d.get("id", "") if compact else "",
+                            source_type=d.get("type", "") if compact else "",
                         )
                         for d in (
                             divisions.findall("division")
@@ -386,6 +405,7 @@ def _raw_inventory(source_dir: Path) -> dict:
                 "source_file": path.name,
                 "source_sha256": source_sha256,
                 "version_kind": "source",
+                "source_format": "", "version_source_id": "",
             })
             specs = (DivisionSpec("Chapter", ":"), DivisionSpec("Verse", ""))
             add_specs(ocp_book, version_title, specs)
@@ -444,15 +464,21 @@ def _graph_inventory(
             "source_file": _feature(data, "source_file", node),
             "source_sha256": _feature(data, "source_sha256", node),
             "version_kind": _feature(data, "version_kind", node, "source"),
+            "source_format": _feature(data, "source_format", node),
+            "version_source_id": _feature(data, "version_source_id", node),
         })
         labels = json.loads(_feature(data, "division_labels", node, "[]"))
         delimiters = json.loads(_feature(data, "division_delimiters", node, "[]"))
         texts = json.loads(_feature(data, "division_texts", node, "[]"))
+        source_ids = json.loads(_feature(data, "division_source_ids", node, "[]"))
+        source_types = json.loads(_feature(data, "division_source_types", node, "[]"))
         for index, label in enumerate(labels, 1):
             inventory["division_specs"].append({
                 "ocp_book": ocp_book, "version_title": version_title, "index": index,
                 "label": label, "delimiter": delimiters[index - 1] if index <= len(delimiters) else "",
                 "text": texts[index - 1] if index <= len(texts) else "",
+                "source_id": source_ids[index - 1] if index <= len(source_ids) else "",
+                "source_type": source_types[index - 1] if index <= len(source_types) else "",
             })
     for node in _nodes(data, "div", node_index):
         inventory["divs"].append({
@@ -556,7 +582,30 @@ def _parent_linkage_ok(
         if len(targets) != 1:
             return False
         target = next(iter(targets))
-        if target not in div_nodes or _feature(data, "source_ref", target) != _feature(data, "source_ref", unit):
+        if target not in div_nodes:
+            return False
+        div_ref = _feature(data, "source_ref", target)
+        unit_ref = _feature(data, "source_ref", unit)
+        if unit_ref == div_ref:
+            continue
+        if _feature(data, "source_format", unit) != "compact":
+            return False
+        # Compact XML locates a unit by its unique `unit/@id`, while the
+        # parent div carries only the fragment number. Both source identities
+        # are preserved independently without inventing a nested source div.
+        try:
+            parent_parts = json.loads(_feature(data, "source_ref_parts", target, "[]"))
+            unit_parts = json.loads(_feature(data, "source_ref_parts", unit, "[]"))
+        except (ValueError, TypeError):
+            return False
+        if (
+            not isinstance(parent_parts, list)
+            or not isinstance(unit_parts, list)
+            or len(unit_parts) != len(parent_parts) + 1
+            or unit_parts[:-1] != parent_parts
+            or unit_parts[-1] != unit_ref
+            or unit_ref != _feature(data, "unit_id", unit)
+        ):
             return False
     return True
 

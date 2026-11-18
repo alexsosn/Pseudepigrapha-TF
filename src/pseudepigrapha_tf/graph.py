@@ -94,7 +94,11 @@ FEATURE_DESCRIPTIONS = {
     "verse_index": "1-based verse occurrence index within one OCP version",
     "version_fragment": "literal upstream version/@fragment value",
     "version_id": "stable converter identifier for the exact upstream version owning this node",
-    "version_kind": "source or generated_translation classification stored on TF book, unit, and version_metadata nodes",
+    "version_kind": "source, parallel_translation or generated_translation classification on version-owned TF nodes",
+    "source_format": "source XML dialect, compact for source-declared 2026 compact editions",
+    "version_source_id": "literal compact OCP version/@id, distinct from TF version_id",
+    "division_source_ids": "JSON array of literal compact OCP division/@id values",
+    "division_source_types": "JSON array of literal compact OCP division/@type values",
     "version_title": "literal upstream OCP version title",
     "w_annotated": "1 when the upstream OCP word explicitly carries annotation markup",
     "w_lang": "literal OCP <w>/@lang when present",
@@ -108,8 +112,8 @@ EDGE_DESCRIPTIONS = {
     "witness": "reading/orphan_reading node to cited manuscript nodes",
     "manuscript_of": "manuscript node to its TF book/version",
     "resource_of": "resource node to its TF book/version",
-    "translation_of": "generated translation TF book to its exact source-version TF book",
-    "translation_unit_of": "generated translation unit to its occurrence-aligned source unit",
+    "translation_of": "source-linked generated or parallel translation TF book to its exact source-version TF book",
+    "translation_unit_of": "source-linked generated or parallel translation unit to occurrence-aligned source unit",
 }
 
 EDGE_FEATURE_CONTRACTS = {
@@ -173,7 +177,7 @@ EDGE_FEATURE_CONTRACTS = {
         "cardinality": "exactly 1", "technicalSupport": False,
         "corpusDependent": True,
 
-        "sourceQualifier": "version_kind=generated_translation", "minTargets": 1, "maxTargets": 1,
+        "sourceQualifier": "version_kind=generated_translation|parallel_translation", "minTargets": 1, "maxTargets": 1,
         "cardinalityRules": (),
     },
     "translation_unit_of": {
@@ -181,7 +185,7 @@ EDGE_FEATURE_CONTRACTS = {
         "cardinality": "exactly 1", "technicalSupport": False,
         "corpusDependent": True,
 
-        "sourceQualifier": "version_kind=generated_translation", "minTargets": 1, "maxTargets": 1,
+        "sourceQualifier": "version_kind=generated_translation|parallel_translation", "minTargets": 1, "maxTargets": 1,
         "cardinalityRules": (),
     },
 }
@@ -498,6 +502,13 @@ def _add_unit(builder: _Builder, book: Book, version: Version, vkey: str, unit: 
     if not unit.readings:
         raise ValueError(f"{book.filename}/{version.title}: unit {unit.unit_id!r} has no readings")
     ref_features = _ref_features(path, specs)
+    if version.source_format == "compact":
+        # The source's exact unit citation is unit/@id ("2.7"), not merely
+        # its containing div number ("2"). Preserve the parent on the edge.
+        ref_features = {
+            "source_ref": unit.unit_id,
+            "source_ref_parts": json.dumps([*path, unit.unit_id], ensure_ascii=False),
+        }
     pidx = next((i for i, r in enumerate(unit.readings) if r.option == "0"), 0)
     if unit.readings[pidx].option != "0":
         builder.warnings.append(
@@ -521,6 +532,7 @@ def _add_unit(builder: _Builder, book: Book, version: Version, vkey: str, unit: 
         ukey, "unit", slots, **_common(book, version), **ref_features,
         unit_id=unit.unit_id, unit_index=index, group=unit.group, parallel=unit.parallel,
         unit_linebreak=unit.linebreak,
+        source_format=version.source_format,
     )
     builder.edge("parent", ukey, parent_div)
 
@@ -640,6 +652,25 @@ def _add_version(builder: _Builder, book: Book, version: Version, book_id: str,
                 )
                 own_slots.update(direct)
                 slots.update(direct)
+                if version.source_format == "compact":
+                    if level != 1 or not isinstance(item, Unit):
+                        raise ValueError("compact sections require direct units in one-level divs")
+                    verse_counter += 1
+                    chapter_name = div.number
+                    verse_name = item.unit_id
+                    address = (chapter_name, verse_name)
+                    occurrence = section_occurrences.get(address, 0) + 1
+                    section_occurrences[address] = occurrence
+                    if occurrence != 1:
+                        raise ValueError(f"duplicate compact TF unit section {address!r}")
+                    builder.node(
+                        f"{dkey}:unit-verse:{unit_counter}", "verse", direct,
+                        **_common(book, version),
+                        source_ref=item.unit_id,
+                        source_ref_parts=json.dumps([div.number, item.unit_id], ensure_ascii=False),
+                        verse=verse_name, verse_index=verse_counter,
+                        section_occurrence=occurrence,
+                    )
         label = specs[level - 1].label if level <= len(specs) else ""
         is_empty = not slots
         builder.node(
@@ -658,12 +689,20 @@ def _add_version(builder: _Builder, book: Book, version: Version, book_id: str,
         # passage that OCP does not actually supply.
         if slots:
             if len(specs) == 1 and level == 1:
-                verse_counter += 1
-                verse_label, occurrence = normalized_verse(dpath)
-                builder.node(
-                    f"{dkey}:verse", "verse", slots, **_common(book, version), **_ref_features(dpath, specs),
-                    verse=verse_label, verse_index=verse_counter, section_occurrence=occurrence,
-                )
+                if version.source_format == "compact":
+                    chapter_counter += 1
+                    builder.node(
+                        f"{dkey}:chapter", "chapter", slots, **_common(book, version),
+                        **_ref_features(dpath, specs),
+                        chapter=div.number, chapter_index=chapter_counter,
+                    )
+                else:
+                    verse_counter += 1
+                    verse_label, occurrence = normalized_verse(dpath)
+                    builder.node(
+                        f"{dkey}:verse", "verse", slots, **_common(book, version), **_ref_features(dpath, specs),
+                        verse=verse_label, verse_index=verse_counter, section_occurrence=occurrence,
+                    )
             elif len(specs) >= 2 and level == chapter_level:
                 # In a three-level hierarchy, a shallow textual leaf is
                 # addressed by its real parent and its own div number, e.g.
@@ -713,7 +752,7 @@ def _add_version(builder: _Builder, book: Book, version: Version, book_id: str,
 
     for top_index, div in enumerate(version.divs, 1):
         version_slots.update(visit(div, 1, top_index, (), None))
-    if len(specs) == 1:
+    if len(specs) == 1 and version.source_format != "compact":
         builder.node(
             f"{vkey}:synthetic-chapter", "chapter", version_slots, **_common(book, version),
             chapter="1", chapter_index=1,
@@ -758,6 +797,16 @@ def _add_version(builder: _Builder, book: Book, version: Version, book_id: str,
         text_structure=book.text_structure, version_title=version.title, author=version.author,
         language=version.language, version_fragment=version.fragment, source_file=book.source_path,
         source_sha256=book.source_sha256,
+        source_format=version.source_format,
+        version_source_id=version.source_id,
+        division_source_ids=(
+            json.dumps([d.source_id for d in specs], ensure_ascii=False)
+            if version.source_format == "compact" else None
+        ),
+        division_source_types=(
+            json.dumps([d.source_type for d in specs], ensure_ascii=False)
+            if version.source_format == "compact" else None
+        ),
         division_labels=json.dumps([d.label for d in specs], ensure_ascii=False),
         division_delimiters=json.dumps([d.delimiter for d in specs], ensure_ascii=False),
         division_texts=json.dumps([d.text for d in specs], ensure_ascii=False),

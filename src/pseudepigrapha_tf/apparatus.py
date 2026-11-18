@@ -65,7 +65,10 @@ class Apparatus:
             return False
         otype_info = features.get("otype")
         metadata = getattr(otype_info, "metaData", None) if otype_info is not None else None
-        return isinstance(metadata, dict) and str(metadata.get("generatedTranslationLayer", "")) == "1"
+        return isinstance(metadata, dict) and (
+            str(metadata.get("generatedTranslationLayer", "")) == "1"
+            or str(metadata.get("parallelTranslationLayer", "")) == "1"
+        )
 
     def _version_kind_feature(self):
         if self._generated_layer_declared():
@@ -81,9 +84,11 @@ class Apparatus:
         if not self._generated_layer_declared():
             return
         version_kind = self._require_feature("version_kind")
-        if self._required_feature_value(version_kind, "version_kind", unit) == "generated_translation":
+        value = self._required_feature_value(version_kind, "version_kind", unit)
+        if value in {"generated_translation", "parallel_translation"}:
+            label = "generated" if value == "generated_translation" else "parallel"
             raise ValueError(
-                f"unit {unit} belongs to a generated translation; use Translations for aligned text, "
+                f"unit {unit} belongs to a {label} translation; use Translations for aligned text, "
                 "not historical apparatus semantics"
             )
 
@@ -107,7 +112,7 @@ class Apparatus:
 
     def _is_generated_book(self, book_node: int) -> bool:
         version_kind = self._version_kind_feature()
-        return version_kind is not None and version_kind.v(book_node) == "generated_translation"
+        return version_kind is not None and version_kind.v(book_node) in {"generated_translation", "parallel_translation"}
 
     def _witnesses(self, owner: int) -> dict[str, dict[str, object]]:
         """Return historical witnesses, excluding source-declared synthetic provenance nodes."""
@@ -422,8 +427,10 @@ class Apparatus:
             raise ValueError(f"expected one containing book for {reference!r}, found {book_nodes}")
         book_node = book_nodes[0]
         if self._is_generated_book(book_node):
+            kind = self._feature("version_kind", book_node)
+            label = "generated" if kind == "generated_translation" else "parallel"
             raise ValueError(
-                f"{book!r} is a generated translation; use Translations for aligned translation text, "
+                f"{book!r} is a {label} translation; use Translations for aligned translation text, "
                 "not historical apparatus semantics"
             )
         return self._passage_from_context(reference, verse_node, self._witnesses(book_node))
@@ -450,7 +457,7 @@ class Apparatus:
                 (
                     (self._book_id(node), node)
                     for node in textual_by_work.get(work, ())
-                    if version_kind is None or version_kind.v(node) != "generated_translation"
+                    if version_kind is None or version_kind.v(node) not in {"generated_translation", "parallel_translation"}
                 ),
                 key=lambda item: item[0],
             )

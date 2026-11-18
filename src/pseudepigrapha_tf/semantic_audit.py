@@ -31,11 +31,15 @@ def _metadata_version_inventory(
                 "source_file": base._feature(data, "source_file", node),
                 "source_sha256": base._feature(data, "source_sha256", node),
                 "version_kind": base._feature(data, "version_kind", node, "source"),
+                "source_format": base._feature(data, "source_format", node),
+                "version_source_id": base._feature(data, "version_source_id", node),
             }
         )
         labels = json.loads(base._feature(data, "division_labels", node, "[]"))
         delimiters = json.loads(base._feature(data, "division_delimiters", node, "[]"))
         texts = json.loads(base._feature(data, "division_texts", node, "[]"))
+        source_ids = json.loads(base._feature(data, "division_source_ids", node, "[]"))
+        source_types = json.loads(base._feature(data, "division_source_types", node, "[]"))
         for index, label in enumerate(labels, 1):
             division_specs.append(
                 {
@@ -45,6 +49,8 @@ def _metadata_version_inventory(
                     "label": label,
                     "delimiter": delimiters[index - 1] if index <= len(delimiters) else "",
                     "text": texts[index - 1] if index <= len(texts) else "",
+                    "source_id": source_ids[index - 1] if index <= len(source_ids) else "",
+                    "source_type": source_types[index - 1] if index <= len(source_types) else "",
                 }
             )
     return versions, division_specs
@@ -481,6 +487,122 @@ def _generated_provenance_features_ok(
     )
 
 
+def _parallel_translation_alignment_ok(
+    raw: dict, data: TFData, node_index: dict[str, list[int]]
+) -> bool:
+    """Independently reconcile compact originals, translations and their TF edges.
+
+    This uses raw XML inventory, not the parser's Version objects or the
+    converter's _unit_key_index, so a matching parser/graph mistake cannot
+    automatically certify a wrong source-to-translation relationship.
+    """
+    raw_versions = [v for v in raw["versions"] if v["version_kind"] == "parallel_translation"]
+    kind = data.node_features.get("version_kind", {})
+    otype = data.node_features.get("otype", {})
+    book_nodes = [n for n in node_index.get("book", []) if kind.get(n) == "parallel_translation"]
+    if len(raw_versions) != len(book_nodes):
+        return False
+    if not raw_versions:
+        return True
+
+    version_ids = data.node_features.get("version_id", {})
+    book_names = data.node_features.get("ocp_book", {})
+    version_titles = data.node_features.get("version_title", {})
+    source_ref = data.node_features.get("source_ref", {})
+    unit_ids = data.node_features.get("unit_id", {})
+    manuscript_abbrevs = data.node_features.get("ms_abbrev", {})
+    synthetic = data.node_features.get("synthetic_witness", {})
+    translation_of = data.edge_features.get("translation_of", {})
+    translation_unit_of = data.edge_features.get("translation_unit_of", {})
+
+    by_work_title = {
+        (str(book_names.get(n, "")), str(version_titles.get(n, ""))): n
+        for n in node_index.get("book", [])
+    }
+    graph_units_by_version: dict[str, list[int]] = {}
+    for node in node_index.get("unit", []):
+        graph_units_by_version.setdefault(str(version_ids.get(node, "")), []).append(node)
+    manuscript_nodes_by_version: dict[str, list[int]] = {}
+    for node in node_index.get("manuscript", []):
+        manuscript_nodes_by_version.setdefault(str(version_ids.get(node, "")), []).append(node)
+    raw_unit_keys: dict[tuple[str, str], list[tuple[str, str]]] = {}
+    for record in raw["units"]:
+        key = str(record["ocp_book"]), str(record["version_title"])
+        raw_unit_keys.setdefault(key, []).append(
+            (str(record["source_ref"]), str(record["unit_id"]))
+        )
+
+    for record in raw_versions:
+        work = str(record["ocp_book"])
+        translation_title = str(record["version_title"])
+        original_candidates = [
+            v for v in raw["versions"]
+            if v["ocp_book"] == work and v["version_kind"] == "source"
+            and v.get("source_format") == "compact"
+        ]
+        if len(original_candidates) != 1:
+            return False
+        original = original_candidates[0]
+        original_title = str(original["version_title"])
+        translation_book = by_work_title.get((work, translation_title))
+        source_book = by_work_title.get((work, original_title))
+        if translation_book is None or source_book is None:
+            return False
+        if kind.get(translation_book) != "parallel_translation" or kind.get(source_book) != "source":
+            return False
+        if translation_of.get(translation_book, set()) != {source_book}:
+            return False
+        original_keys = raw_unit_keys.get((work, original_title), [])
+        translation_keys = raw_unit_keys.get((work, translation_title), [])
+        if not original_keys or original_keys != translation_keys:
+            return False
+        original_version_id = str(version_ids.get(source_book, ""))
+        translation_version_id = str(version_ids.get(translation_book, ""))
+        source_units = graph_units_by_version.get(original_version_id, [])
+        translation_units = graph_units_by_version.get(translation_version_id, [])
+        if len(source_units) != len(original_keys) or len(translation_units) != len(translation_keys):
+            return False
+        # A set-equality audit would miss a converter that reverses two source
+        # units while retaining their IDs and edges. Compare source document
+        # order to the actual native TF unit_index for *both* versions.
+        def ordered_graph_keys(nodes: list[int]) -> list[tuple[str, str]]:
+            return [
+                (str(source_ref.get(n, "")), str(unit_ids.get(n, "")))
+                for n in sorted(nodes, key=lambda node: _unit_order(data, node))
+            ]
+
+        if ordered_graph_keys(source_units) != original_keys:
+            return False
+        if ordered_graph_keys(translation_units) != translation_keys:
+            return False
+        source_index: dict[tuple[str, str], int] = {}
+        for unit in source_units:
+            key = (str(source_ref.get(unit, "")), str(unit_ids.get(unit, "")))
+            if key in source_index:
+                return False
+            source_index[key] = unit
+        if set(source_index) != set(original_keys):
+            return False
+        for unit in translation_units:
+            key = (str(source_ref.get(unit, "")), str(unit_ids.get(unit, "")))
+            target = source_index.get(key)
+            if target is None or translation_unit_of.get(unit, set()) != {target}:
+                return False
+        # Source-declared "Eng" is editorial provenance, not a manuscript or
+        # a machine-generated OCP-Trans layer. Never manufacture a generator.
+        if any(data.node_features.get(key, {}).get(translation_book) for key in
+               ("generation_marker", "generation_method", "generation_model", "generated_language")):
+            return False
+        witness_nodes = manuscript_nodes_by_version.get(translation_version_id, [])
+        if len(witness_nodes) != 1:
+            return False
+        if any(manuscript_abbrevs.get(n) != "Eng" or synthetic.get(n) != 1 for n in witness_nodes):
+            return False
+        if any(synthetic.get(n) == 1 for n in manuscript_nodes_by_version.get(original_version_id, [])):
+            return False
+    return True
+
+
 def build_conversion_report(source_dir: str | Path, books: list[Book], data: TFData) -> dict:
     """Build an independent source→TF parity report, including source anomalies."""
 
@@ -551,6 +673,7 @@ def build_conversion_report(source_dir: str | Path, books: list[Book], data: TFD
         "generated_translation_exclusions": base._canonical(raw_excluded_translations)
         == base._canonical(model_excluded_translations),
         "generated_translation_alignment": generated_alignment_ok,
+        "parallel_translation_alignment": _parallel_translation_alignment_ok(raw, data, node_index),
         "generated_translation_provenance": generated_provenance_ok,
         "versions": base._canonical(raw["versions"]) == base._canonical(graph["versions"]),
         "division_specs": base._canonical(raw["division_specs"]) == base._canonical(graph["division_specs"]),
