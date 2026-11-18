@@ -146,6 +146,27 @@ aligned[0]["translation_text"]
 
 The synthetic `OCP-Trans` witness remains provenance for the generated layer but is excluded from historical manuscript/apparatus semantics. A genuine scholarly English source version, such as pinned `4Q548`, is therefore not reclassified merely because it is English.
 
+## OCP 2026 compact editions (development candidate)
+
+The newer OCP snapshot has six additional compact-dialect works: CithDavid,
+Demetr, Justus, OrMois, ThrenSeila and VisKenaz. The converter preserves the
+source-declared Greek/Latin original and its parallel English version without
+reclassifying the English as a historical witness or a machine-generated
+translation. Compact `unit/@id` values are individual addressable TF verses,
+and the original XML identifiers remain in native TF features.
+
+For a candidate dataset containing these works, load the `Translations`
+helper with `Translations.PARALLEL_FEATURES` (or the full
+`Translations.REQUIRED_FEATURES` if the generated layer is also present).
+`version_kind` distinguishes `source`, `parallel_translation` and
+`generated_translation`. Explicit `translation_of` and
+`translation_unit_of` edges retain source-unit identity.
+
+**Not yet published in the 1.1 corpus:** the 2026 snapshot still needs
+the independent `ApDan_TEI.xml` and generated `tei/` format review,
+whole-source provenance and licensing checks, and release smoke tests.
+See [the source and fidelity notes](docs/source-identity-and-anomalies.md).
+
 ## Browse and compare
 
 The published corpus works with the standard Text-Fabric advanced app loaded by `tf.app.use()` above. Pseudepigrapha-TF also provides a local `/compare` view for passage-centered comparison across source versions, manuscripts, and generated translations.
