@@ -597,6 +597,10 @@ def _add_version(builder: _Builder, book: Book, version: Version, book_id: str,
     verse_level = max(1, len(specs))
     section_occurrences: dict[tuple[str, str], int] = {}
     empty_div_parents: dict[str, str | None] = {}
+    # For a three-or-more-level source, some textual units can occur directly
+    # under the chapter-level div (T12P's patriarch/Title). Group sibling
+    # shallow leaves under one projected TF chapter without creating an OCP div.
+    shallow_chapters: dict[tuple[str, ...], str] = {}
 
     def normalized_verse(dpath: tuple[str, ...]) -> tuple[str, int]:
         source_verse = dpath[-1]
@@ -619,17 +623,23 @@ def _add_version(builder: _Builder, book: Book, version: Version, book_id: str,
         dpath = path + (div.number,)
         dkey = f"{vkey}:div:{div_serial}"
         slots: set[int] = set()
+        child_slots: set[int] = set()
+        own_slots: set[int] = set()
         child_index = 0
         for item in div.items:
             if isinstance(item, Div):
                 child_index += 1
-                slots.update(visit(item, level + 1, child_index, dpath, dkey))
+                nested = visit(item, level + 1, child_index, dpath, dkey)
+                child_slots.update(nested)
+                slots.update(nested)
             else:
                 unit_counter += 1
-                slots.update(_add_unit(
+                direct = _add_unit(
                     builder, book, version, vkey, item, unit_counter, manuscripts,
                     dpath, specs, dkey, endings,
-                ))
+                )
+                own_slots.update(direct)
+                slots.update(direct)
         label = specs[level - 1].label if level <= len(specs) else ""
         is_empty = not slots
         builder.node(
@@ -655,11 +665,43 @@ def _add_version(builder: _Builder, book: Book, version: Version, book_id: str,
                     verse=verse_label, verse_index=verse_counter, section_occurrence=occurrence,
                 )
             elif len(specs) >= 2 and level == chapter_level:
-                chapter_counter += 1
-                builder.node(
-                    f"{dkey}:chapter", "chapter", slots, **_common(book, version), **_ref_features(dpath, specs),
-                    chapter=_reference(dpath, specs), chapter_index=chapter_counter,
-                )
+                # In a three-level hierarchy, a shallow textual leaf is
+                # addressed by its real parent and its own div number, e.g.
+                # T12P "Reuben / Title". It must not disappear from TF's
+                # verse coverage or be counted inside the deeper "Reuben 1"
+                # chapter. Keep the original source_ref on its verse.
+                if len(specs) >= 3 and own_slots:
+                    shallow_parent = dpath[:-1]
+                    shallow_key = shallow_chapters.get(shallow_parent)
+                    if shallow_key is None:
+                        chapter_counter += 1
+                        shallow_key = f"{vkey}:shallow-chapter:{len(shallow_chapters) + 1}"
+                        builder.node(
+                            shallow_key, "chapter", own_slots,
+                            **_common(book, version),
+                            **_ref_features(shallow_parent, specs),
+                            chapter=_reference(shallow_parent, specs),
+                            chapter_index=chapter_counter,
+                        )
+                        shallow_chapters[shallow_parent] = shallow_key
+                    else:
+                        builder.by_key[shallow_key].slots.update(own_slots)
+                    verse_counter += 1
+                    verse_label, occurrence = normalized_verse(dpath)
+                    builder.node(
+                        f"{dkey}:shallow-verse", "verse", own_slots,
+                        **_common(book, version), **_ref_features(dpath, specs),
+                        verse=verse_label, verse_index=verse_counter,
+                        section_occurrence=occurrence,
+                    )
+                chapter_slots = child_slots if len(specs) >= 3 else slots
+                if chapter_slots:
+                    chapter_counter += 1
+                    builder.node(
+                        f"{dkey}:chapter", "chapter", chapter_slots,
+                        **_common(book, version), **_ref_features(dpath, specs),
+                        chapter=_reference(dpath, specs), chapter_index=chapter_counter,
+                    )
             elif len(specs) >= 2 and level == verse_level:
                 verse_counter += 1
                 verse_label, occurrence = normalized_verse(dpath)

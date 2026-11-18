@@ -22,6 +22,48 @@ remaining inventory, TEI, provenance, native TF, and acceptance gates.
 In particular, namespaced `ApDan_TEI.xml` is not Grammateus XML and
 `CithDavid.xml` has additional unsupported source vocabulary.
 
+## OCP 2026 candidate: public author/editor metadata
+
+The upstream OCP `intros.json` at
+`853a64b623de296d2b8532a43593607772e7c45a` introduces sparse
+top-level `author` and `editor` strings on 17 documents. The converter
+now preserves each supplied JSON scalar, including its presence, as
+`intro_author_json` and `intro_editor_json` on native
+`document_metadata` nodes. The independent raw-JSON-vs-TF audit compares
+these keys too. No author or editor is inferred for documents lacking them.
+
+The **published v1.1** dataset does not contain these two features and its
+existing `WorkMetadata.REQUIRED_FEATURES` selective-load contract is
+unchanged. On a *newer dataset containing the features*, explicitly load
+`WorkMetadata.OPTIONAL_FEATURES` in addition to `REQUIRED_FEATURES`
+before constructing `WorkMetadata(api)`, then `M["5Ezra"]["author"]`
+can return the newly supplied source value. Do not request the optional
+features from the older published corpus.
+
+The in-repository 2026 candidate acceptance stages 60 of 67 nonempty
+root-level XML files, with six compact-dialect files and the separate
+`ApDan_TEI.xml` intentionally blocked from the *staging test only*.
+Its 55 public metadata documents have exact values preserved. The six
+excluded books' metadata values are omitted from this temporary staging
+source, with the expected omitted identities asserted; this is **not** a
+lossless full-corpus migration or a release. The original complete upstream
+`intros.json` and XML files remain unchanged.
+
+## Mixed-depth T12P textual loci
+
+The 2026 candidate `T12P.xml` declares three levels
+(Testament / Chapter / Verse), but the twelve patriarch titles are
+source text at the shallower `Testament / Title` address. The converter
+preserves those units and the exact upstream `source_ref`, and projects
+their existing text into the fixed three-level Text-Fabric API as chapter
+`Reuben`, verse `Title` (for Reuben). The ordinary source
+`Reuben / 1 / 1` is chapter `Reuben 1`, verse `1`.
+This TF chapter projection is a technical address for the existing
+source text, not an additional OCP editorial division or inferred
+alignment. The same slot is never counted in both a shallow and
+deep chapter. Tests check original divisions/readings, independent
+section coverage, and both public TF lookup paths on real T12P XML.
+
 ## Blank attributes
 
 The pinned Grammateus DTD declares many attributes as `CDATA #REQUIRED`, but requiredness guarantees presence, not a non-empty value. OCP also uses empty strings as legitimate metadata, so the converter does **not** apply a blanket non-empty rule.

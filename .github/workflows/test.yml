@@ -70,6 +70,13 @@ jobs:
         run: |
           git clone https://github.com/OnlineCriticalPseudepigrapha/Online-Critical-Pseudepigrapha.git /tmp/ocp
           git -C /tmp/ocp checkout c939dcbacad78c5d18d2c4282cad23c47e19ac07
+      # Stage new OCP in a separate worktree; never disturb the existing
+      # published v1.1 release contract and full old-pinned acceptance below.
+      - name: Checkout immutable OCP 2026 candidate
+        run: |
+          git -C /tmp/ocp worktree add --detach /tmp/ocp-2026 853a64b623de296d2b8532a43593607772e7c45a
+      - name: Validate 60 OCP 2026 Grammateus works through native TF APIs
+        run: python tests/candidate_ocp_acceptance.py /tmp/ocp-2026
       - name: Convert and audit complete OCP XML set
         run: |
           time pseudepigrapha-tf convert /tmp/ocp/static/docs \

@@ -79,6 +79,12 @@ def _public_metadata_from_emitter() -> dict[str, dict[str, Any]]:
                 citation=None,
                 citation_present=False,
                 fields={},
+                # Exercise the real emitter for newly supported sparse
+                # top-level keys, not a documentation-only applicability map.
+                author="probe author",
+                author_present=True,
+                editor="probe editor",
+                editor_present=True,
             )
         },
         source_sha256="0" * 64,
