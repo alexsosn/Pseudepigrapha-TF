@@ -120,7 +120,7 @@ def test_edge_pages_are_generated_from_reusable_endpoint_contracts():
     translation = pages["translation_of.md"]
     assert "**Direction:** `book` → `book`" in translation
     assert "**Cardinality:** exactly 1" in translation
-    assert "`version_kind=generated_translation`" in translation
+    assert "`version_kind=generated_translation|parallel_translation`" in translation
 
     resource = pages["resource_of.md"]
     assert "**Direction:** `resource` → `book`, `version_metadata`" in resource
