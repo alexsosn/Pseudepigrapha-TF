@@ -77,8 +77,26 @@ def verify(upstream_repo: Path) -> None:
         staged_docs.mkdir()
         for filename in standard:
             shutil.copyfile(docs / filename, staged_docs / filename)
-        # Reuse the same public metadata input as a normal converter build.
-        shutil.copyfile(docs / "intros.json", staged_docs / "intros.json")
+        # The new intros.json contains six records belonging to the
+        # unsupported compact-dialect books. Filter only this temporary test
+        # dataset; preserve all included metadata values without editing the
+        # original source and never attest the staged source as the full OCP.
+        original_intros = json.loads((docs / "intros.json").read_text(encoding="utf-8"))
+        metadata = original_intros["documents"]
+        assert len(metadata) == 61, len(metadata)
+        assert set(metadata) <= nonempty
+        staged_metadata = {name: value for name, value in metadata.items() if name in standard}
+        excluded_metadata = set(metadata) - set(staged_metadata)
+        assert excluded_metadata == UNSUPPORTED_ROOT_FILES - {"ApDan_TEI.xml"}, (
+            excluded_metadata
+        )
+        assert len(staged_metadata) == 55, len(staged_metadata)
+        staged_intros = dict(original_intros)
+        staged_intros["documents"] = staged_metadata
+        (staged_docs / "intros.json").write_text(
+            json.dumps(staged_intros, ensure_ascii=False, indent=2) + "\n",
+            encoding="utf-8",
+        )
 
         assert cli_main(["convert", str(staged_docs), "--output", str(tf_dir)]) == 0
         report = json.loads((tf_dir / "conversion-report.json").read_text())
@@ -97,22 +115,30 @@ def verify(upstream_repo: Path) -> None:
         assert api is not None
         assert tuple(api.T.sectionTypes) == ("book", "chapter", "verse")
 
-        source_books = {
-            api.F.ocp_book.v(node): api.F.version_id.v(node)
-            for node in api.F.otype.s("book")
-            if api.F.version_kind.v(node) == "source"
-        }
+        source_books: dict[str, list[str]] = {}
+        for node in api.F.otype.s("book"):
+            if api.F.version_kind.v(node) == "source":
+                source_books.setdefault(api.F.ocp_book.v(node), []).append(
+                    api.F.version_id.v(node)
+                )
         assert all(name.removesuffix(".xml") in source_books for name in standard)
         A = Apparatus(api)
         passage_checks = {}
         for work in ("3Macc", "5Ezra", "6Ezra", "ApDan", "Jub", "T12P"):
-            version_id = source_books[work]
-            verses = [
-                node for node in api.F.otype.s("verse")
-                if api.F.ocp_book.v(node) == work
-                and api.F.version_id.v(node) == version_id
+            # Choose a textual source version rather than assuming the final
+            # version in upstream order is textual (some are metadata-only).
+            candidates = [
+                (version_id, [
+                    node for node in api.F.otype.s("verse")
+                    if api.F.ocp_book.v(node) == work
+                    and api.F.version_id.v(node) == version_id
+                ])
+                for version_id in source_books[work]
             ]
-            assert verses, work
+            assert any(verses for _, verses in candidates), (work, candidates)
+            version_id, verses = next(
+                (version_id, verses) for version_id, verses in candidates if verses
+            )
             first_verse = verses[0]
             section = api.T.sectionFromNode(first_verse)
             assert section[0] == version_id, (work, section)
