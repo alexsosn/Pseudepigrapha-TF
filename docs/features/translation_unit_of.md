@@ -6,13 +6,13 @@
 
 **Category:** Generated-translation features/relations
 
-generated translation unit to its occurrence-aligned source unit
+source-linked generated or parallel translation unit to occurrence-aligned source unit
 
 **Direction:** `unit` → `unit`
 
 **Cardinality:** exactly 1
 
-**Source qualifier:** `version_kind=generated_translation`
+**Source qualifier:** `version_kind=generated_translation|parallel_translation`
 
 **Supported by converter:** yes
 
