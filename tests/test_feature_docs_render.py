@@ -71,6 +71,18 @@ def test_optional_metadata_page_exposes_canonical_supported_node_applicability()
     assert "**Observed node types in render graph:** none in this render graph" in page
     assert "**Supported node types:** `document_metadata`" in page
 
+    # Both sparse 2026 OCP top-level metadata fields must be documented via
+    # the actual metadata emitter, even when the old fixture does not use them.
+    for name in ("intro_author_json", "intro_editor_json"):
+        item = feature_docs.serialized_feature_contract(
+            data, include_supported=True
+        )["node"][name]
+        assert item["observedNodeTypes"] == ()
+        assert item["supportedNodeTypes"] == ("document_metadata",)
+        assert item["metadata"]["documentationCategory"] == "Public work metadata"
+        help_page = feature_docs.render_feature_docs(data)[f"{name}.md"]
+        assert "**Supported node types:** `document_metadata`" in help_page
+
 
 def test_supported_probe_fails_closed_without_feature_applicability_evidence():
     data = TFData(
