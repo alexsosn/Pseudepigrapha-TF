@@ -2,7 +2,7 @@ from __future__ import annotations
 
 
 class Translations:
-    """Convenience access to the explicit OCP generated-translation layer."""
+    """Source-linked generated and source-declared parallel OCP translations."""
 
     REQUIRED_FEATURES = (
         "book",
@@ -22,6 +22,13 @@ class Translations:
         "translation_of",
         "translation_unit_of",
         "reading_of",
+    )
+
+    # Minimal load contract for compact-only corpora without OCP-Trans
+    # generation metadata. Generated-only callers may keep REQUIRED_FEATURES.
+    PARALLEL_FEATURES = tuple(
+        name for name in REQUIRED_FEATURES
+        if name not in {"generated_language", "generation_marker", "generation_method", "generation_model"}
     )
 
     def __init__(self, api) -> None:
@@ -60,8 +67,8 @@ class Translations:
 
     def source_version(self, generated_book: int) -> int:
         version_kind = self._require_feature("version_kind")
-        if version_kind.v(generated_book) != "generated_translation":
-            raise ValueError(f"node {generated_book} is not a generated translation book")
+        if version_kind.v(generated_book) not in {"generated_translation", "parallel_translation"}:
+            raise ValueError(f"node {generated_book} is not a translation book")
         targets = tuple(self._require_edge("translation_of").f(generated_book))
         if len(targets) != 1:
             raise ValueError(
@@ -75,7 +82,7 @@ class Translations:
         work: str | None = None,
         language: str | None = None,
     ) -> tuple[dict[str, object], ...]:
-        """List generated translation books with source and provenance metadata."""
+        """List source-linked translations, retaining separate generation metadata."""
 
         otype = self._require_feature("otype")
         version_kind = self._require_feature("version_kind")
@@ -87,7 +94,7 @@ class Translations:
             all_generated: list[int] = []
             by_work: dict[str, list[int]] = {}
             for node in tuple(otype.s("book")):
-                if version_kind.v(node) != "generated_translation":
+                if version_kind.v(node) not in {"generated_translation", "parallel_translation"}:
                     continue
                 node_work = str(self._feature("ocp_book", node, ""))
                 all_generated.append(node)
@@ -124,6 +131,7 @@ class Translations:
                     "language": target_language,
                     "source_node": source,
                     "source_id": self._book_id(source),
+                    "version_kind": str(version_kind.v(node)),
                     "generation_marker": str(self._feature("generation_marker", node, "")),
                     "generation_method": str(self._feature("generation_method", node, "")),
                     "generation_model": str(self._feature("generation_model", node, "")),
