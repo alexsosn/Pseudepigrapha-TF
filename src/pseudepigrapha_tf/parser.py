@@ -23,6 +23,7 @@ from .model import (
     _validated_blank_unit_id,
 )
 from .source_structure import SourceStructureError, validate_source_structure
+from .compact_structure import is_compact_source
 from .source_versions import (
     GENERATED_TRANSLATION_MARKER,
     GeneratedTranslationClassificationError,
@@ -343,6 +344,37 @@ def _generated_translation_records(
     return tuple(records)
 
 
+def _parse_compact_version(element: ET.Element) -> Version:
+    """Keep source-declared source/translation versions distinct from OCP-Trans."""
+    divisions_el = element.find("divisions")
+    manuscripts_el = element.find("manuscripts")
+    text_el = element.find("text")
+    assert divisions_el is not None and manuscripts_el is not None and text_el is not None
+    specs = tuple(
+        DivisionSpec(
+            label=d.get("title", ""), delimiter="", text="",
+            source_id=d.get("id", ""), source_type=d.get("type", ""),
+        )
+        for d in divisions_el.findall("division")
+    )
+    manuscripts = tuple(
+        Manuscript(
+            abbrev=ms.get("id", ""), language="", show="",
+            name=ms.get("name", ""), name_xml=escape(ms.get("name", "")),
+            bibliography=(), bibliography_xml=(),
+        )
+        for ms in manuscripts_el.findall("manuscript")
+    )
+    return Version(
+        title=element.get("title", ""), author="",
+        language=element.get("lang", ""), fragment="",
+        divisions=specs, resources=(), manuscripts=manuscripts,
+        divs=tuple(_parse_div(d) for d in text_el.findall("div")),
+        source_id=element.get("id", ""), source_format="compact",
+        kind=("parallel_translation" if element.get("id") == "English" else "source"),
+    )
+
+
 def parse_bytes(data: bytes, *, source_path: str = "") -> Book:
     if not data.strip():
         raise EmptySourceError(f"empty XML source: {source_path or '<memory>'}")
@@ -366,6 +398,16 @@ def parse_bytes(data: bytes, *, source_path: str = "") -> Book:
         )
     except SourceStructureError as exc:
         raise InvalidSourceError(str(exc)) from exc
+
+    if is_compact_source(root):
+        return Book(
+            filename=root.get("filename", "")[:-4],
+            title=root.get("title", ""),
+            text_structure="",
+            versions=tuple(_parse_compact_version(element) for element in version_elements),
+            source_path=source_path,
+            source_sha256=source_sha256,
+        )
 
     source_elements: list[ET.Element] = []
     generated_elements: list[ET.Element] = []
