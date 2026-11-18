@@ -22,11 +22,14 @@ Generated from the converter's serialization-normalized supported feature and ed
 - [`author`](author.md)
 - [`division_delimiters`](division_delimiters.md)
 - [`division_labels`](division_labels.md)
+- [`division_source_ids`](division_source_ids.md)
+- [`division_source_types`](division_source_types.md)
 - [`division_texts`](division_texts.md)
 - [`language`](language.md)
 - [`ocp_book`](ocp_book.md)
 - [`source_child_index`](source_child_index.md)
 - [`source_file`](source_file.md)
+- [`source_format`](source_format.md)
 - [`source_ref`](source_ref.md)
 - [`source_ref_parts`](source_ref_parts.md)
 - [`source_sha256`](source_sha256.md)
@@ -36,6 +39,7 @@ Generated from the converter's serialization-normalized supported feature and ed
 - [`version_fragment`](version_fragment.md)
 - [`version_id`](version_id.md)
 - [`version_kind`](version_kind.md)
+- [`version_source_id`](version_source_id.md)
 - [`version_title`](version_title.md)
 
 ## Apparatus and witness features/relations
