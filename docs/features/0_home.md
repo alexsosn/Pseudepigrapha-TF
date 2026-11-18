@@ -81,10 +81,12 @@ Generated from the converter's serialization-normalized supported feature and ed
 
 ## Public work metadata
 
+- [`intro_author_json`](intro_author_json.md)
 - [`intro_bibliography_json`](intro_bibliography_json.md)
 - [`intro_citation_json`](intro_citation_json.md)
 - [`intro_copyright_json`](intro_copyright_json.md)
 - [`intro_corrections_json`](intro_corrections_json.md)
+- [`intro_editor_json`](intro_editor_json.md)
 - [`intro_introduction_json`](intro_introduction_json.md)
 - [`intro_label`](intro_label.md)
 - [`intro_manuscripts_json`](intro_manuscripts_json.md)
