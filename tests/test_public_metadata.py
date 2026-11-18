@@ -215,3 +215,71 @@ def test_independent_raw_json_audit_detects_metadata_tampering(tmp_path: Path):
     )
     assert bad["status"] == "failed"
     assert "public_metadata_values" in bad["failed_checks"]
+
+
+
+def test_new_ocp_author_editor_metadata_roundtrips_as_native_tf_features(tmp_path: Path):
+    """Candidate 2026 intros.json introduces top-level author/editor scalars."""
+    payload = _payload()
+    payload["documents"]["One.xml"]["author"] = "Pseudo-Ezra"
+    payload["documents"]["One.xml"]["editor"] = "Robert L. Bensly (1895)"
+    docs = _write_source(tmp_path, payload)
+
+    books, _, metadata, data = _build_with_metadata(docs)
+    assert metadata.documents["One.xml"].as_dict() == payload["documents"]["One.xml"]
+    one = next(
+        n for n, kind in data.node_features["otype"].items()
+        if kind == "document_metadata" and data.node_features["ocp_book"][n] == "One"
+    )
+    assert json.loads(data.node_features["intro_author_json"][one]) == "Pseudo-Ezra"
+    assert json.loads(data.node_features["intro_editor_json"][one]) == "Robert L. Bensly (1895)"
+    # No fake values or feature nodes for sources without these fields.
+    empty = next(
+        n for n, kind in data.node_features["otype"].items()
+        if kind == "document_metadata" and data.node_features["ocp_book"][n] == "Empty"
+    )
+    assert empty not in data.node_features["intro_author_json"]
+    assert empty not in data.node_features["intro_editor_json"]
+
+    report = augment_conversion_report_with_public_metadata(
+        build_conversion_report(docs, books, data), docs, data
+    )
+    assert report["status"] == "ok", report["failed_checks"]
+    assert report["semantic_checks"]["public_metadata_values"]
+
+    out = tmp_path / "tf"
+    assert write_tf(data, out)
+    fabric = Fabric(locations=[str(out)], modules=[""], silent="deep")
+    api = fabric.load(
+        " ".join((*WorkMetadata.REQUIRED_FEATURES, *WorkMetadata.OPTIONAL_FEATURES)),
+        silent="deep",
+    )
+    assert api is not None
+    M = WorkMetadata(api)
+    assert M["One"] == payload["documents"]["One.xml"]
+    assert M["Empty"] == payload["documents"]["Empty.xml"]
+
+    data.node_features["intro_author_json"][one] = json.dumps("forged author")
+    corrupted = augment_conversion_report_with_public_metadata(
+        build_conversion_report(docs, books, data), docs, data
+    )
+    assert corrupted["status"] == "failed"
+    assert not corrupted["semantic_checks"]["public_metadata_values"]
+
+
+def test_missing_new_ocp_metadata_does_not_change_old_published_feature_contract(tmp_path: Path):
+    docs = _write_source(tmp_path, _payload())
+    _, _, _, data = _build_with_metadata(docs)
+    assert "intro_author_json" not in data.node_features
+    assert "intro_editor_json" not in data.node_features
+    assert "intro_author_json" not in WorkMetadata.REQUIRED_FEATURES
+    assert "intro_editor_json" not in WorkMetadata.REQUIRED_FEATURES
+
+
+@pytest.mark.parametrize("field", ["author", "editor"])
+def test_new_ocp_author_editor_must_be_json_scalars(tmp_path: Path, field):
+    payload = _payload()
+    payload["documents"]["One.xml"][field] = ["unreviewed", "list"]
+    docs = _write_source(tmp_path, payload)
+    with pytest.raises(ValueError, match=rf"One\\.xml\\.{field}"):
+        load_public_metadata(docs)
