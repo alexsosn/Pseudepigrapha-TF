@@ -174,6 +174,13 @@ def verify(upstream_repo: Path) -> None:
         # Use the public Text-Fabric API to walk every non-generated parallel
         # English unit back to the exact original in each of the six works.
         translations = Translations(api)
+        for work in ("CithDavid", "Demetr", "Justus", "OrMois", "ThrenSeila", "VisKenaz"):
+            version_id, chapter, verse_id = passage_checks[work]
+            source_passage = A.passage(version_id, chapter, verse_id)
+            # The original XML unit/@id is the exact cited textual locus:
+            # `div/@number` alone would collapse 1.1, 1.2, 1.3, etc.
+            assert source_passage["source_refs"] == (verse_id,), (work, source_passage["source_refs"])
+            assert all(unit["source_ref"] == verse_id for unit in source_passage["units"])
         expected_alignment_counts = {
             "CithDavid": 6, "Demetr": 27, "Justus": 7,
             "OrMois": 5, "ThrenSeila": 6, "VisKenaz": 8,
