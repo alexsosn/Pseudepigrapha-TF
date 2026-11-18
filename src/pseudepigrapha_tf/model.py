@@ -46,6 +46,8 @@ class DivisionSpec:
     label: str
     delimiter: str = ""
     text: str = ""
+    source_id: str = ""
+    source_type: str = ""
 
 
 @dataclass(frozen=True)
@@ -136,6 +138,9 @@ class Version:
     resources: tuple[Resource, ...]
     manuscripts: tuple[Manuscript, ...]
     divs: tuple[Div, ...]
+    source_id: str = ""
+    source_format: str = ""
+    kind: str = "source"
 
 
 @dataclass(frozen=True)
