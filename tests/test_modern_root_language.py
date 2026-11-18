@@ -82,8 +82,11 @@ def test_inconsistent_modern_root_language_fails_closed(root_language, version_l
 def test_wrapped_legacy_root_language_remains_supported():
     wrapped = b"""<book filename="Legacy" title="Legacy" language="Latin">
       <version title="Latin" author="Anonymous" language="Latin">
+        <manuscripts>
+          <ms abbrev="A" language="Latin" show="yes"><name>A</name></ms>
+        </manuscripts>
         <text><chapter number="1"><verse reference="1"><unit id="1">
-          <reading option="0" mss="">text</reading>
+          <reading option="0" mss="A ">text</reading>
         </unit></verse></chapter></text>
       </version>
     </book>"""
