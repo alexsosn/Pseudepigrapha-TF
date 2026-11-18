@@ -157,7 +157,11 @@ def _raw_inventory(source_dir: Path) -> dict:
 
     def add_unit(unit: ET.Element, ocp_book: str, version_title: str,
                  path: tuple[str, ...], specs: tuple[DivisionSpec, ...]) -> None:
-        source_ref = _reference(path, specs)
+        source_ref = (
+            unit.get("id", "")
+            if specs and specs[0].source_id
+            else _reference(path, specs)
+        )
         inventory["units"].append({
             "ocp_book": ocp_book, "version_title": version_title, "source_ref": source_ref,
             "unit_id": unit.get("id", ""), "group": unit.get("group", "0"),
