@@ -158,6 +158,22 @@ def verify(upstream_repo: Path) -> None:
             assert result["units"], (work, section)
             passage_checks[work] = section
 
+        # Real T12P has title units at testament/Title (two levels),
+        # alongside ordinary testament/chapter/verse (three levels).
+        # Test exact primary source refs and reachability for both forms.
+        t12p = source_books["T12P"][0]
+        for chapter, verse, source_ref in (
+            ("Reuben", "Title", "Reuben Title"),
+            ("Reuben 1", "1", "Reuben 1:1"),
+        ):
+            node = api.T.nodeFromSection((t12p, chapter, verse))
+            assert node is not None, (t12p, chapter, verse)
+            assert api.F.source_ref.v(node) == source_ref
+            assert api.T.text(node).strip()
+            assert A.passage(t12p, chapter, verse)["units"]
+        passage_checks["T12P_shallow_title"] = (t12p, "Reuben", "Title")
+        passage_checks["T12P_deep_verse"] = (t12p, "Reuben 1", "1")
+
         print(json.dumps({
             "candidate_sha": UPSTREAM_SHA,
             "root_xml_nonempty": len(nonempty),
