@@ -84,9 +84,11 @@ class Apparatus:
         if not self._generated_layer_declared():
             return
         version_kind = self._require_feature("version_kind")
-        if self._required_feature_value(version_kind, "version_kind", unit) in {"generated_translation", "parallel_translation"}:
+        value = self._required_feature_value(version_kind, "version_kind", unit)
+        if value in {"generated_translation", "parallel_translation"}:
+            label = "generated" if value == "generated_translation" else "parallel"
             raise ValueError(
-                f"unit {unit} belongs to a generated translation; use Translations for aligned text, "
+                f"unit {unit} belongs to a {label} translation; use Translations for aligned text, "
                 "not historical apparatus semantics"
             )
 
@@ -425,8 +427,10 @@ class Apparatus:
             raise ValueError(f"expected one containing book for {reference!r}, found {book_nodes}")
         book_node = book_nodes[0]
         if self._is_generated_book(book_node):
+            kind = self._feature("version_kind", book_node)
+            label = "generated" if kind == "generated_translation" else "parallel"
             raise ValueError(
-                f"{book!r} is a generated translation; use Translations for aligned translation text, "
+                f"{book!r} is a {label} translation; use Translations for aligned translation text, "
                 "not historical apparatus semantics"
             )
         return self._passage_from_context(reference, verse_node, self._witnesses(book_node))
