@@ -131,7 +131,6 @@ class Translations:
                     "language": target_language,
                     "source_node": source,
                     "source_id": self._book_id(source),
-                    "version_kind": str(version_kind.v(node)),
                     "generation_marker": str(self._feature("generation_marker", node, "")),
                     "generation_method": str(self._feature("generation_method", node, "")),
                     "generation_model": str(self._feature("generation_model", node, "")),
