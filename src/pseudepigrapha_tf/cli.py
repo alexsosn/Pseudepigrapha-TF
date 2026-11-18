@@ -73,6 +73,19 @@ def _parser() -> argparse.ArgumentParser:
     )
     browse.add_argument("--port", type=int, default=8000, help="browser port (default: 8000)")
     browse.add_argument("--debug", action="store_true", help="enable Text-Fabric/Flask debug mode")
+
+    morph = sub.add_parser(
+        "apdan-morph",
+        help="verify CC BY-NC ApDan TEI word alignment and optionally create an isolated local TF module",
+    )
+    morph.add_argument("data", type=Path, help="existing native Text-Fabric source edition feature directory")
+    morph.add_argument("source_xml", type=Path, help="original OCP static/docs/ApDan.xml")
+    morph.add_argument("morph_tei", type=Path, help="rights-restricted OCP static/docs/ApDan_TEI.xml")
+    morph.add_argument("--output", type=Path, help="separate local CC BY-NC feature module (no default output)")
+    morph.add_argument(
+        "--accept-noncommercial", action="store_true",
+        help="explicitly accept locally generating a restricted CC BY-NC feature module",
+    )
     return parser
 
 
@@ -136,6 +149,28 @@ def main(argv: list[str] | None = None) -> int:
             port=args.port,
             debug=args.debug,
         )
+    if args.command == "apdan-morph":
+        from tf.fabric import Fabric
+        from .apdan_morphology import align_apdan_morphology, write_apdan_morphology_module
+
+        if args.output is not None and not args.accept_noncommercial:
+            raise ValueError("writing an ApDan CC BY-NC module requires explicit --accept-noncommercial")
+        api = Fabric(locations=[str(args.data)], modules=[""], silent="deep").load(
+            "ocp_book version_title source_file source_sha256 source_ref "
+            "g_word_utf8 version_kind", silent="deep",
+        )
+        if api is None:
+            raise ValueError("cannot load the existing native TF corpus")
+        alignment = align_apdan_morphology(
+            api, args.source_xml.read_bytes(), args.morph_tei.read_bytes(),
+        )
+        if args.output is not None:
+            write_apdan_morphology_module(
+                alignment, base_tf_directory=args.data, output=args.output,
+                accept_noncommercial=args.accept_noncommercial,
+            )
+        print(json.dumps(alignment.summary, ensure_ascii=False, sort_keys=True))
+        return 0
     if args.command != "convert":
         return 2
 

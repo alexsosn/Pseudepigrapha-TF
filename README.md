@@ -167,6 +167,45 @@ the independent `ApDan_TEI.xml` and generated `tei/` format review,
 whole-source provenance and licensing checks, and release smoke tests.
 See [the source and fidelity notes](docs/source-identity-and-anomalies.md).
 
+## Optional ApDan TEI morphology (local CC BY-NC module)
+
+The newer OCP snapshot contains `static/docs/ApDan_TEI.xml` with
+**2,150 Greek word annotations** (`lemma`, `pos`, `msd`) across 170
+verses. Its own TEI header declares `availability=restricted`,
+**CC BY-NC 4.0**, and a Logos/Heiser–Penner/Lexham provenance claim.
+That source declaration does **not independently establish the right to
+redistribute the annotations**. This restricted source is **excluded**
+from the normal `convert` pipeline and every default published corpus.
+
+After materializing a compatible Text-Fabric edition locally, inspect
+alignment without writing any annotated features:
+
+```bash
+pseudepigrapha-tf apdan-morph /path/to/tf /path/to/OCP/static/docs/ApDan.xml /path/to/OCP/static/docs/ApDan_TEI.xml
+```
+
+To generate an optional, **separate, noncommercial local module** from
+copies you are entitled to use, deliberately opt in and choose an output
+directory outside the base Text-Fabric dataset:
+
+```bash
+pseudepigrapha-tf apdan-morph /path/to/tf /path/to/OCP/static/docs/ApDan.xml /path/to/OCP/static/docs/ApDan_TEI.xml \
+  --accept-noncommercial --output /path/to/restricted-apdan-module
+```
+
+The module uses native word features `apdan_tei_lemma`,
+`apdan_tei_pos`, `apdan_tei_msd`, with source SHA-256 digests,
+source-declared license and restricted status in each feature header.
+The audit checks exact source-text/TF word surfaces, 170 verse identities
+and the TEI word forms before emitting any annotation. TEI punctuation is
+counted but **not** inserted into source text. The module is never
+bundled with the default CC BY corpus. Do not distribute this restricted
+output without independently checking the applicable rights.
+
+See [source and provenance notes](docs/source-identity-and-anomalies.md)
+and [full migration issue #228](https://github.com/alexsosn/Pseudepigrapha-TF/issues/228).
+The 2026 full-source data release remains blocked by rights and E2E gates.
+
 ## Browse and compare
 
 The published corpus works with the standard Text-Fabric advanced app loaded by `tf.app.use()` above. Pseudepigrapha-TF also provides a local `/compare` view for passage-centered comparison across source versions, manuscripts, and generated translations.

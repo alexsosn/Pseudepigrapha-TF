@@ -109,7 +109,8 @@ def verify(upstream_repo: Path) -> None:
         features.update({"source_format", "version_source_id", "division_source_ids", "division_source_types"})
         features.update(WorkMetadata.REQUIRED_FEATURES)
         features.update(WorkMetadata.OPTIONAL_FEATURES)
-        features.update({"ocp_book", "version_id", "version_kind", "source_ref"})
+        features.update({"ocp_book", "version_id", "version_kind", "source_ref",
+                         "source_file", "source_sha256", "g_word_utf8"})
         TF = Fabric(locations=[str(tf_dir)], modules=[""], silent="deep")
         api = TF.load(" ".join(sorted(features)), silent="deep")
         assert api is not None
@@ -203,7 +204,49 @@ def verify(upstream_repo: Path) -> None:
             assert all(p["translation_text"] and p["source_text"] for p in pairs)
             aligned_counts[work] = len(pairs)
 
+        # Rights-isolated morphology acceptance. Read the restricted TEI
+        # from exact upstream test inputs, prove each of its 2,150 words maps
+        # to an existing Greek source slot, and serialize only an ephemeral
+        # opt-in CC BY-NC module. Never publish as a release artifact.
+        from pseudepigrapha_tf.apdan_morphology import (
+            align_apdan_morphology,
+            write_apdan_morphology_module,
+        )
+        aligned_morph = align_apdan_morphology(
+            api,
+            (docs / "ApDan.xml").read_bytes(),
+            (docs / "ApDan_TEI.xml").read_bytes(),
+        )
+        assert aligned_morph.summary["verses"] == 170, aligned_morph.summary
+        assert aligned_morph.summary["words"] == 2150, aligned_morph.summary
+        assert aligned_morph.summary["punctuation_elements"] == 220, aligned_morph.summary
+        assert aligned_morph.summary["source_declared_license"] == "CC-BY-NC-4.0"
+        assert aligned_morph.summary["redistribution_permission"] == "not_attested"
+        # Both files come from the pinned Git snapshot even though the
+        # temporary standalone TF staging directory has no Git HEAD.
+        assert aligned_morph.summary["ocp_commit"] == UPSTREAM_SHA
+        assert not any((tf_dir / f"{name}.tf").exists()
+                       for name in aligned_morph.features)
+        overlay_dir = workdir / "restricted-cc-by-nc-apdan"
+        assert write_apdan_morphology_module(
+            aligned_morph, base_tf_directory=tf_dir,
+            output=overlay_dir, accept_noncommercial=True,
+        )
+        assert all((overlay_dir / f"{name}.tf").is_file()
+                   for name in aligned_morph.features)
+        assert not any((tf_dir / f"{name}.tf").exists()
+                       for name in aligned_morph.features)
+        morph_api = Fabric(
+            locations=[str(tf_dir), str(overlay_dir)], modules=[""], silent="deep",
+        ).load("apdan_tei_lemma apdan_tei_pos apdan_tei_msd", silent="deep")
+        assert morph_api is not None
+        first_slot = min(aligned_morph.features["apdan_tei_lemma"])
+        assert morph_api.F.apdan_tei_lemma.v(first_slot) == aligned_morph.features["apdan_tei_lemma"][first_slot]
+        assert morph_api.F.apdan_tei_pos.v(first_slot) == aligned_morph.features["apdan_tei_pos"][first_slot]
+        assert morph_api.F.apdan_tei_msd.v(first_slot) == aligned_morph.features["apdan_tei_msd"][first_slot]
+
         print(json.dumps({
+            "apdan_morphology": aligned_morph.summary,
             "candidate_sha": UPSTREAM_SHA,
             "root_xml_nonempty": len(nonempty),
             "root_xml_converted": len(standard),
