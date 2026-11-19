@@ -210,7 +210,9 @@ def test_compact_parallel_english_is_not_a_source_in_real_compare_ui(tmp_path):
     tf_dir = tmp_path / "tf"
     assert write_tf(build_tf_data([book]), tf_dir)
     required = set(Apparatus.WORK_PASSAGE_FEATURES) | set(Translations.PARALLEL_FEATURES)
-    required.update({"title", "author", "language", "verse_index", "source_ref"})
+    # Compact XML intentionally has no author/@... metadata. The absent TF
+    # feature must stay absent, not be fabricated just to satisfy a load list.
+    required.update({"title", "language", "verse_index", "source_ref"})
     api = Fabric(locations=[str(tf_dir)], modules=[""], silent="deep").load(
         " ".join(sorted(required)), silent="deep",
     )
