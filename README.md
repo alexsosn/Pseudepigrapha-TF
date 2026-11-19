@@ -4,7 +4,7 @@ Pseudepigrapha-TF is a published [Text-Fabric](https://annotation.github.io/text
 
 The normal researcher path is to **load the published corpus directly**. You do not need to clone OCP or run the converter. Rebuilding from OCP is a maintainer/custom-snapshot workflow documented later in this README.
 
-Python 3.10+ and Text-Fabric 13.1.x are supported.
+The current development package requires **Python 3.12+** and Text-Fabric **13.1.x**. CI runs its full corpus/source-fidelity suite on 3.12 and independently builds and installs a wheel in a clean **Python 3.14** environment for a real Text-Fabric passage, apparatus, stock-browser and HTTP comparison smoke. Python 3.10 has reached end of life and is no longer supported. This support statement applies to code on `main`; published v1.1 dataset assets are unchanged.
 
 ## What the corpus contains
 
@@ -332,7 +332,7 @@ python -m pip install -e '.[dev]'
 pytest
 ```
 
-The full CI additionally converts/audits the pinned OCP corpus and reloads it through real Text-Fabric, including stock `complete.zip`, advanced-app, apparatus, translation, metadata, classification, and comparison acceptance.
+The full CI additionally converts/audits the pinned OCP corpus and reloads it through real Text-Fabric, including stock `complete.zip`, advanced-app, apparatus, translation, metadata, classification, and comparison acceptance. The separate Python 3.14 job tests a clean installed wheel (not an editable checkout). The grouped new-OCP candidate stage exercises all 66 supported source files and a real stock Text-Fabric Flask browser with `/compare` requests for the newly added compact Greek/Latin originals and their source-declared parallel English translations. That candidate remains **unpublished** pending source-specific rights and release checks.
 
 ### Contributor and implementation reference
 
