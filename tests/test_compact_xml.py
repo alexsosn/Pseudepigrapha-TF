@@ -198,3 +198,53 @@ def test_compact_translations_not_forged_machine_generated(tmp_path):
     }
     assert len(manuscript_nodes) == 1
     assert all(data.node_features["synthetic_witness"][node] == 1 for node in manuscript_nodes)
+
+
+def test_compact_parallel_english_is_not_a_source_in_real_compare_ui(tmp_path):
+    from pseudepigrapha_tf.comparison import (
+        PassageNavigator, build_passage_comparison, render_passage_comparison,
+    )
+    from pseudepigrapha_tf.web import list_comparison_work_options
+
+    book = load_source_directory(_docs(tmp_path))[0][0]
+    tf_dir = tmp_path / "tf"
+    assert write_tf(build_tf_data([book]), tf_dir)
+    required = set(Apparatus.WORK_PASSAGE_FEATURES) | set(Translations.PARALLEL_FEATURES)
+    # Compact XML intentionally has no author/@... metadata. The absent TF
+    # feature must stay absent, not be fabricated just to satisfy a load list.
+    required.update({"title", "language", "verse_index", "source_ref"})
+    api = Fabric(locations=[str(tf_dir)], modules=[""], silent="deep").load(
+        " ".join(sorted(required)), silent="deep",
+    )
+    assert api is not None
+    version_nodes = {
+        api.F.version_title.v(node): node for node in api.F.otype.s("book")
+    }
+    source = version_nodes["Latin Text"]
+    parallel = version_nodes["English Translation"]
+    original_id = api.F.book.v(source)
+    english_id = api.F.book.v(parallel)
+    model = build_passage_comparison(api, "Compact", "1", "1.2")
+    assert tuple(choice["id"] for choice in model["version_choices"]) == (original_id,)
+    assert len(model["versions"]) == 1
+    translations = model["versions"][0]["translations"]
+    assert len(translations) == 1
+    assert translations[0]["id"] == english_id
+    assert translations[0]["translation_kind"] == "parallel_translation"
+    assert translations[0]["text"] == "Second word."
+    html = render_passage_comparison(model)
+    assert "Source-declared parallel translation" in html
+    assert 'data-translation-kind="parallel_translation"' in html
+    assert f'data-translation-id="{english_id}"' in html
+    assert f'data-version-id="{english_id}"' not in html
+    assert 'data-witness="Eng"' not in html
+    choices = list_comparison_work_options(api)
+    assert choices == (("Compact", "Compact demonstration (Compact)"),)
+    neighbors = PassageNavigator(api).neighbors(
+        "Compact", "1", "1.2", preferred_versions=(english_id,),
+    )
+    assert neighbors["context_version"] == original_id
+    with pytest.raises(ValueError, match="unknown source version"):
+        build_passage_comparison(
+            api, "Compact", "1", "1.2", selected_versions=(english_id,),
+        )

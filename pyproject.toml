@@ -7,7 +7,7 @@ name = "pseudepigrapha-tf"
 version = "1.1.0"
 description = "Published Text-Fabric corpus and research tools for the Online Critical Pseudepigrapha"
 readme = "README.md"
-requires-python = ">=3.10"
+requires-python = ">=3.12"
 license = {text = "MIT"}
 authors = [{name = "Pseudepigrapha-TF contributors"}]
 dependencies = ["text-fabric[github]>=13.1,<14"]

@@ -27,6 +27,34 @@ jobs:
       - name: Unit and Text-Fabric integration tests
         run: pytest
 
+  python-314-installed-wheel-smoke:
+    # A fresh modern runtime, installed from the built wheel, without
+    # duplicating the expensive complete OCP candidate/source conversions.
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.14'
+          cache: pip
+      - name: Build distributable wheel for current Python
+        run: |
+          python -m pip install build
+          python -m build --wheel
+      - name: Install wheel and actual Text-Fabric dependencies in clean Python 3.14 venv
+        run: |
+          python -m venv /tmp/pseudepigrapha-python-314-venv
+          /tmp/pseudepigrapha-python-314-venv/bin/python -m pip install --upgrade pip
+          /tmp/pseudepigrapha-python-314-venv/bin/python -m pip install dist/pseudepigrapha_tf-1.1.0-py3-none-any.whl
+          echo "/tmp/pseudepigrapha-python-314-venv/bin" >> "$GITHUB_PATH"
+      - name: Python 3.14 researcher source, apparatus, stock browser and compare HTTP smoke
+        run: |
+          cd /tmp
+          python "$GITHUB_WORKSPACE/tests/modern_runtime_acceptance.py" \
+            "$GITHUB_WORKSPACE/tests/fixtures/sample.xml" \
+            "$GITHUB_WORKSPACE/app"
+
   pinned-upstream-integration:
     runs-on: ubuntu-latest
     timeout-minutes: 30

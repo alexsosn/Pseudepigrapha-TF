@@ -105,7 +105,9 @@ class PassageNavigator:
         if work_text not in self._source_books:
             source_books: dict[str, int] = {}
             for book_node in self._work_nodes.get(work_text, ()):
-                if version_kind is not None and version_kind.v(book_node) == "generated_translation":
+                if version_kind is not None and version_kind.v(book_node) in {
+                    "generated_translation", "parallel_translation"
+                }:
                     continue
                 section = self.api.T.sectionFromNode(book_node)
                 if not section or not section[0]:
@@ -300,7 +302,22 @@ def _translation_view(
     source_passage_present: bool = True,
 ) -> dict[str, object]:
     generated_id = str(record.get("id", ""))
+    # Translations.versions() has a stable public record shape; read the TF
+    # classification separately so the browser does not suggest that the six
+    # editorial English companions were machine generated.
+    version_node = record.get("node")
+    kind_feature = getattr(getattr(translations.api, "F", None), "version_kind", None)
+    kind = (
+        kind_feature.v(version_node)
+        if kind_feature is not None and isinstance(version_node, int)
+        else "generated_translation"
+    )
+    if kind not in {"generated_translation", "parallel_translation"}:
+        raise ValueError(
+            f"translation {generated_id!r} has unsupported TF version_kind {kind!r}"
+        )
     base = {
+        "translation_kind": str(kind),
         "node": record.get("node"),
         "id": generated_id,
         "title": str(record.get("title", "")),
@@ -627,9 +644,15 @@ def _render_translation(
         body = '<p class="state-not-present">not present</p>'
     else:
         body = f'<div class="translation-text">{_h(record.get("text", ""))}</div>'
+    translation_kind = str(record.get("translation_kind", "generated_translation"))
+    origin = (
+        "Source-declared parallel translation"
+        if translation_kind == "parallel_translation" else ""
+    )
     provenance = " · ".join(
         part
         for part in (
+            origin,
             str(record.get("generation_marker", "")),
             str(record.get("generation_method", "")),
             model,
@@ -642,7 +665,8 @@ def _render_translation(
         else ""
     )
     return (
-        f'<details class="translation-block" data-translation-id="{_h(record.get("id", ""))}"{open_attr}>'
+        f'<details class="translation-block" data-translation-id="{_h(record.get("id", ""))}" '
+        f'data-translation-kind="{_h(translation_kind)}"{open_attr}>'
         f'<summary>{_h(summary)}</summary>{body}{provenance_html}</details>'
     )
 

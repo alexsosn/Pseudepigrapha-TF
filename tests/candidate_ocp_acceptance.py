@@ -7,6 +7,7 @@ No published data version or general converter exclusion is implied.
 from __future__ import annotations
 
 import json
+from html import escape
 import shutil
 import subprocess
 import sys
@@ -245,7 +246,77 @@ def verify(upstream_repo: Path) -> None:
         assert morph_api.F.apdan_tei_pos.v(first_slot) == aligned_morph.features["apdan_tei_pos"][first_slot]
         assert morph_api.F.apdan_tei_msd.v(first_slot) == aligned_morph.features["apdan_tei_msd"][first_slot]
 
+        # Genuine researcher-facing browser E2E on the full *new* 66-work
+        # dataset and wheel, rather than relying on the legacy 1.1 smoke.
+        from pseudepigrapha_tf.web import load_local_comparison_web_app
+        from pseudepigrapha_tf.release_identity import TF_DATA_VERSION
+        app_dir = Path(__file__).resolve().parents[1] / "app"
+        browser = load_local_comparison_web_app(
+            tf_dir, app_dir, version=TF_DATA_VERSION, silent="deep",
+        )
+        client = browser.test_client()
+        root = client.get("/")
+        assert root.status_code == 200, root.get_data(as_text=True)[:700]
+        landing = client.get("/compare")
+        assert landing.status_code == 200
+        landing_html = landing.get_data(as_text=True)
+        assert '<option value="3Macc">' in landing_html
+        assert all(f'<option value="{work}">' in landing_html
+                   for work in expected_alignment_counts)
+        stylesheet = client.get("/data/static/comparison.css")
+        assert stylesheet.status_code == 200
+        assert ".translation-block" in stylesheet.get_data(as_text=True)
+
+        http_checks = {}
+        for work in expected_alignment_counts:
+            version_id, chapter, verse_id = passage_checks[work]
+            response = client.get("/compare", query_string={
+                "work": work, "chapter": chapter, "verse": verse_id,
+            })
+            markup = response.get_data(as_text=True)
+            assert response.status_code == 200, (work, markup[:1800])
+            assert f'data-version-id="{escape(version_id, quote=True)}"' in markup
+            parallel = tuple(
+                item for item in translations.versions(work=work)
+                if api.F.version_kind.v(item["node"]) == "parallel_translation"
+            )
+            assert len(parallel) == 1
+            translation_id = parallel[0]["id"]
+            assert f'data-translation-id="{escape(translation_id, quote=True)}"' in markup
+            assert f'data-version-id="{escape(translation_id, quote=True)}"' not in markup
+            assert 'data-witness="Eng"' not in markup
+            # No claimed generator or historical manuscript in the HTML.
+            assert 'data-translation-kind="parallel_translation"' in markup
+            assert "Source-declared parallel translation" in markup
+            translated = translations.passage(translation_id, chapter, verse_id)
+            assert translated["units"]
+            translation_text = translated["units"][0]["translation_text"]
+            assert escape(str(translation_text), quote=True) in markup
+            selected = client.get("/compare", query_string=[
+                ("work", work), ("chapter", chapter), ("verse", verse_id),
+                ("version", translation_id),
+            ])
+            assert selected.status_code == 400
+            assert "unknown source version" in selected.get_data(as_text=True)
+            http_checks[work] = {
+                "status": response.status_code,
+                "source_id": version_id, "parallel_id": translation_id,
+                "reference": f"{chapter}.{verse_id}",
+            }
+        for work, chapter, verse_id in (
+            ("3Macc", "1", "1"), ("1En", "1", "2")
+        ):
+            res = client.get("/compare", query_string={
+                "work": work, "chapter": chapter, "verse": verse_id,
+            })
+            assert res.status_code == 200, (work, res.get_data(as_text=True)[:1800])
+        # Exercise a real invalid work and reject it as a safe HTTP request.
+        invalid = client.get("/compare?work=not_a_real_work&chapter=1&verse=1")
+        assert invalid.status_code == 400
+        assert "Invalid comparison request" in invalid.get_data(as_text=True)
+
         print(json.dumps({
+            "new_candidate_browser_e2e": http_checks,
             "apdan_morphology": aligned_morph.summary,
             "candidate_sha": UPSTREAM_SHA,
             "root_xml_nonempty": len(nonempty),

@@ -36,7 +36,9 @@ def list_comparison_work_options(api: Any) -> tuple[tuple[str, str], ...]:
     title = getattr(api.F, "title", None)
     source_titles: dict[str, set[str]] = {}
     for node in books("book"):
-        if version_kind is not None and version_kind.v(node) == "generated_translation":
+        if version_kind is not None and version_kind.v(node) in {
+            "generated_translation", "parallel_translation"
+        }:
             continue
         work = str(ocp_book.v(node) or "").strip()
         if not work:
