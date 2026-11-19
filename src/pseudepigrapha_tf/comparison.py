@@ -105,7 +105,9 @@ class PassageNavigator:
         if work_text not in self._source_books:
             source_books: dict[str, int] = {}
             for book_node in self._work_nodes.get(work_text, ()):
-                if version_kind is not None and version_kind.v(book_node) == "generated_translation":
+                if version_kind is not None and version_kind.v(book_node) in {
+                    "generated_translation", "parallel_translation"
+                }:
                     continue
                 section = self.api.T.sectionFromNode(book_node)
                 if not section or not section[0]:
