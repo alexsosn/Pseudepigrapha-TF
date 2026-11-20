@@ -80,6 +80,36 @@ def _tei_license(root: ET.Element, filename: str) -> tuple[str, str]:
     )
 
 
+def _public_metadata_evidence(record: dict[str, object] | None) -> dict[str, object]:
+    """Literal upstream attribution/rights fields, not an inferred license."""
+    if record is None:
+        return {
+            "public_metadata_present": False,
+            "intro_author": None,
+            "intro_editor": None,
+            "intro_citation_html": None,
+            "per_work_copyright_html": None,
+        }
+    if not isinstance(record, dict) or not isinstance(record.get("fields"), dict):
+        raise ValueError("public source metadata has an unsupported schema")
+    fields = record["fields"]
+    evidence: dict[str, object] = {"public_metadata_present": True}
+    for source, dest in (
+        ("author", "intro_author"),
+        ("editor", "intro_editor"),
+        ("citation", "intro_citation_html"),
+    ):
+        value = record.get(source)
+        if value is not None and not isinstance(value, str):
+            raise ValueError(f"public source metadata {source} must be a literal string")
+        evidence[dest] = value
+    copyright_html = fields.get("copyright")
+    if copyright_html is not None and not isinstance(copyright_html, str):
+        raise ValueError("public source copyright field must be a literal string")
+    evidence["per_work_copyright_html"] = copyright_html
+    return evidence
+
+
 def classify_root_document(
     filename: str,
     data: bytes,
@@ -112,6 +142,11 @@ def classify_root_document(
 
     if root.tag != "book":
         raise ValueError(f"{filename}: unsupported source root/identity, expected Grammateus book")
+
+    # Keep editor/citation/copyright strings attached to the exact original
+    # document in evidence, without equating the asserted copyright to an
+    # independently confirmed right to redistribute.
+    result.update(_public_metadata_evidence(metadata_record))
 
     if filename in COMPACT_FILES:
         if not is_compact_source(root):
@@ -211,7 +246,8 @@ def build_2026_rights_evidence(upstream_root: str | Path) -> dict[str, object]:
     metadata_path = docs / "intros.json"
     if metadata_path.is_symlink() or not metadata_path.is_file():
         raise ValueError("missing public intros.json metadata")
-    metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+    intros_bytes = metadata_path.read_bytes()
+    metadata = json.loads(intros_bytes.decode("utf-8"))
     public_docs = metadata.get("documents") if isinstance(metadata, dict) else None
     if not isinstance(public_docs, dict) or len(public_docs) != 61:
         raise ValueError("unexpected OCP 2026 public metadata document inventory")
@@ -221,6 +257,8 @@ def build_2026_rights_evidence(upstream_root: str | Path) -> dict[str, object]:
         raise ValueError("expected 67 nonempty, unsymlinked OCP 2026 root source files")
     if not COMPACT_FILES <= {p.name for p in root_files} or RESTRICTED_TEI not in {p.name for p in root_files}:
         raise ValueError("reviewed compact/restricted source inventory is incomplete")
+    if not set(public_docs) <= {p.name for p in root_files}:
+        raise ValueError("public metadata includes a work outside reviewed root source inventory")
 
     entries: list[dict[str, object]] = []
     for path in root_files:
@@ -265,6 +303,12 @@ def build_2026_rights_evidence(upstream_root: str | Path) -> dict[str, object]:
     return {
         "source_repository": OCP_REPOSITORY,
         "source_commit": OCP_2026_SHA,
+        "public_metadata": {
+            "path": "static/docs/intros.json",
+            "sha256": sha256(intros_bytes).hexdigest(),
+            "git_blob_sha1": _blob_sha(intros_bytes),
+            "document_count": len(public_docs),
+        },
         "source_claim": {
             "license": "CC-BY-4.0",
             "scope": "repository-wide text/TEI statement, not independently cleared editions",
