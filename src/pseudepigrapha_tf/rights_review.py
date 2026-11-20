@@ -74,7 +74,8 @@ def _tei_license(root: ET.Element, filename: str) -> tuple[str, str]:
     if target == BY_URL and "BY 4.0" in license_label and status == "free":
         return "CC-BY-4.0", status
     raise ValueError(
-        f"{filename}: unknown or internally inconsistent TEI license/availability claim"
+        f"{filename}: unknown or inconsistent TEI license/availability claim "
+        "(expected a matching free CC BY or restricted CC BY-NC declaration)"
     )
 
 
