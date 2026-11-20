@@ -143,7 +143,9 @@ def classify_root_document(
     result.update(
         source_kind="grammateus_text",
         core_candidate=True,
-        rights_review_required=False,
+        # A repository-level declaration is recorded separately and cannot
+        # independently clear edition-specific rights for this new snapshot.
+        rights_review_required=True,
     )
     return result
 
