@@ -86,6 +86,17 @@ def test_compact_rights_source_identity_fails_closed(xml, metadata, message):
         classify_root_document("CithDavid.xml", xml.encode(), metadata)
 
 
+
+def test_general_2026_text_has_repo_wide_license_claim_not_independent_clearance():
+    source = b'<book filename="Other" title="Other"><version title="Greek"/></book>'
+    result = classify_root_document("Other.xml", source, None)
+    assert result["source_kind"] == "grammateus_text"
+    assert result["core_candidate"] is True
+    # No per-edition permission or translator/editor claim may be inferred
+    # from the source-wide README license badge.
+    assert result["rights_review_required"] is True
+    assert "license" not in result
+
 def test_restricted_morphology_is_excluded_from_public_core():
     result = classify_root_document("ApDan_TEI.xml", TEI.encode(), None)
     assert result["source_kind"] == "restricted_tei_morphology"
