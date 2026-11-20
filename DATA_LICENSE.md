@@ -25,6 +25,55 @@ Pinned upstream license evidence:
 - `https://github.com/OnlineCriticalPseudepigrapha/Online-Critical-Pseudepigrapha/blob/c939dcbacad78c5d18d2c4282cad23c47e19ac07/LICENSE.GPL`
 - `https://github.com/OnlineCriticalPseudepigrapha/Online-Critical-Pseudepigrapha/blob/c939dcbacad78c5d18d2c4282cad23c47e19ac07/README.md#license`
 
+## 2026 OCP source migration: rights claims are not release clearance
+
+The statements above describe the **published v1.1 pinned corpus source**
+(`c939dcb...`). They must not be extrapolated to the newer OCP source
+snapshot `853a64b623de296d2b8532a43593607772e7c45a` without
+reexamining the source- and edition-specific declarations.
+
+At that newer commit, the upstream `README.md` and
+`LICENSE.CC-BY-4.0` declare **CC BY 4.0** for editions and derived TEI.
+The source-specific `static/docs/ApDan_TEI.xml` header, however,
+explicitly declares **restricted availability and CC BY-NC 4.0** for
+word-level lemmatization/morphology attributed to
+Heiser–Penner / Lexham Press / Logos LLS:8.20.7.
+The separate generated `static/docs/tei/ApDan.xml` TEI mirror claims
+CC BY 4.0 and is identified as a conversion of the Grammateus source.
+These declarations concern different source layers and must remain
+distinguishable. The independent correctness of the ownership claims has
+not been established by the converter.
+
+Six newly introduced compact works (`CithDavid`, `Demetr`,
+`Justus`, `OrMois`, `ThrenSeila`, `VisKenaz`) each contain a
+source-declared Greek/Latin original **and** a separate editorial English
+translation. Their `intros.json` status fields mention parallel English
+translations, but contain neither a separate `fields.copyright`
+declaration nor explicit translator attribution. The source's general
+CC BY claim is recorded as **upstream's claim**, not as an independently
+attested permission from every possible contributor. The original text's
+historical bibliographic citation does not by itself identify who
+translated the English text.
+
+Under [#240](https://github.com/alexsosn/Pseudepigrapha-TF/issues/240),
+the deterministic `rights_review.build_2026_rights_evidence()` function
+records the exact OCP source file hashes and source assertions for all
+67 nonempty top-level XMLs and the TEI mirrors. The **66** core
+Grammateus/compact files remain an *unpublished* candidate. The
+67th `ApDan_TEI.xml` is excluded from the unrestricted text corpus,
+and the existing optional local **CC BY-NC** morphology module never
+receives unrestricted rights. The evidence output always reports
+`publication_allowed=false` and `rights_attestation=not_attested`.
+A clean upstream Git checkout and complete file hashes establish
+**identity**, not independent ownership.
+
+Publication of the new corpus still requires review of the applicable
+rights for the source editions and English translations, accurate
+attribution and licensing in the released manifest, and the usual
+release/remote-acquisition checks. The existing distribution validator
+remains fail-closed for the unverified 2026 source tuple.
+Neither this document nor a successful TF conversion is legal clearance.
+
 ## Attribution
 
 OCP supplies this general citation:

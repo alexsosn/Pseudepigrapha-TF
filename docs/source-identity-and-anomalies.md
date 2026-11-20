@@ -2,7 +2,15 @@
 
 Pseudepigrapha-TF preserves OCP source identity rather than silently normalizing malformed or incomplete records.
 
-When loading an OCP source *directory*, every non-empty top-level `WorkId.xml` must declare that exact `WorkId` in its `<book filename="WorkId">` attribute, including case. This is enforced whether or not the optional `intros.json` metadata export is present; a mismatched name fails rather than silently changing researcher-facing work identity. Individual in-memory `parse_bytes()` calls can still parse text without a filesystem name. Empty `.xml` placeholders retain their documented skip behavior.
+When loading an OCP source *directory*, modern/legacy Grammateus
+`WorkId.xml` declares the source stem as `<book filename="WorkId">`,
+whereas the six reviewed 2026 compact documents use the **literal full
+basename** `<book filename="WorkId.xml">`. Both contracts are validated
+against the real filesystem filename, including case, whether or not
+`intros.json` is present. A mismatch fails instead of silently changing
+the researcher-facing work identity. Individual in-memory `parse_bytes()`
+calls can still parse without filesystem identity. Empty `.xml`
+placeholders retain their documented skip behavior.
 
 ## Modern root language compatibility (OCP 2026 candidate)
 
@@ -16,11 +24,13 @@ Missing or contradictory source-version languages still fail validation.
 The language continues to be recorded on the source version's native TF
 features; there is no inferred book-level language when editions disagree.
 
-This narrowly scoped parser compatibility change does **not** mean that the
-new OCP snapshot has been imported or released. See issue #228 for the
-remaining inventory, TEI, provenance, native TF, and acceptance gates.
-In particular, namespaced `ApDan_TEI.xml` is not Grammateus XML and
-`CithDavid.xml` has additional unsupported source vocabulary.
+This compatibility path is included in the **unreleased 2026 candidate**.
+It does **not** mean the new OCP snapshot has been published or its rights
+independently verified. See issue #228 for remaining per-edition licensing,
+public release, and external acquisition gates. The distinct `ApDan_TEI.xml`
+is source-declared CC BY-NC and is available only as a separately licensed,
+local opt-in morphology module; the six compact editions are parsed by
+their own strict vocabulary and preserve editorial English separately.
 
 ## OCP 2026 candidate: public author/editor metadata
 
@@ -40,14 +50,15 @@ before constructing `WorkMetadata(api)`, then `M["5Ezra"]["author"]`
 can return the newly supplied source value. Do not request the optional
 features from the older published corpus.
 
-The in-repository 2026 candidate acceptance stages 60 of 67 nonempty
-root-level XML files, with six compact-dialect files and the separate
-`ApDan_TEI.xml` intentionally blocked from the *staging test only*.
-Its 55 public metadata documents have exact values preserved. The six
-excluded books' metadata values are omitted from this temporary staging
-source, with the expected omitted identities asserted; this is **not** a
-lossless full-corpus migration or a release. The original complete upstream
-`intros.json` and XML files remain unchanged.
+The in-repository 2026 candidate acceptance stages **66 of 67 nonempty**
+root-level XMLs, including all six compact original/English pairs, plus
+all **61 public metadata records**. The 67th `ApDan_TEI.xml` supplies
+a restricted and aligned morphology layer rather than an independent
+textual edition, and is not bundled with the candidate core. The generated
+`tei/` source mirrors are audited separately as derived representations.
+CI also creates an **ephemeral source-by-source rights-evidence inventory**
+with SHA-256 and Git blob hashes under issue #240; no rights evidence alone
+authorizes a new data release. The published dataset remains v1.1.
 
 ## Mixed-depth T12P textual loci
 

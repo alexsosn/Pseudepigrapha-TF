@@ -15,6 +15,7 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 
 from pseudepigrapha_tf.cli import main as cli_main
+from pseudepigrapha_tf.rights_review import build_2026_rights_evidence
 from tf.fabric import Fabric
 
 
@@ -68,8 +69,34 @@ def verify(upstream_repo: Path) -> None:
     assert len(standard) == 66, (len(standard), standard)
     assert COMPACT_ROOT_FILES <= set(standard)
 
+    # Independent, byte-hashed 2026 rights evidence on the *entire*
+    # original upstream tree before staging 66 of 67 textual roots.
+    # This is NOT legal clearance and must not change publication status.
+    rights = build_2026_rights_evidence(upstream_repo)
+    assert rights["source_commit"] == UPSTREAM_SHA
+    assert rights["publication_allowed"] is False
+    assert rights["rights_attestation"] == "not_attested"
+    counts = rights["counts"]
+    assert counts["root_xml"] == 67
+    assert counts["core_candidate_xml"] == 66
+    assert counts["compact_editorial_english_review_required"] == 6
+    assert counts["restricted_morphology_xml"] == 1
+    assert counts["public_metadata_documents"] == 61
+    assert counts["tei_mirror_nonempty"] > 0
+    assert {name for name in standard} == {
+        entry["path"].rsplit("/", 1)[-1]
+        for entry in rights["root_documents"] if entry["core_candidate"]
+    }
+
     with TemporaryDirectory(prefix="ocp-2026-standard-") as workdir:
         workdir = Path(workdir)
+        # Ephemeral CI-only rights evidence. Do not include it in unrestricted
+        # TF features, release manifest or any distributable archive.
+        (workdir / "rights-evidence.json").write_text(
+            json.dumps(rights, ensure_ascii=False, sort_keys=True, indent=2) + "\n",
+            encoding="utf-8",
+        )
+        assert not (workdir / "rights-evidence.json").is_relative_to(workdir / "tf")
         staged_docs = workdir / "docs"
         tf_dir = workdir / "tf"
         staged_docs.mkdir()
@@ -325,6 +352,10 @@ def verify(upstream_repo: Path) -> None:
             "real_tf_passages": passage_checks,
             "compact_parallel_aligned_units": aligned_counts,
             "source_counts": report["source"],
+            "rights_evidence_counts": rights["counts"],
+            "rights_review_blockers": rights["review_blockers"],
+            "rights_attestation": rights["rights_attestation"],
+            "publication_allowed": rights["publication_allowed"],
         }, ensure_ascii=False, default=str))
 
 
