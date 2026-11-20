@@ -2,7 +2,15 @@
 
 Pseudepigrapha-TF preserves OCP source identity rather than silently normalizing malformed or incomplete records.
 
-When loading an OCP source *directory*, every non-empty top-level `WorkId.xml` must declare that exact `WorkId` in its `<book filename="WorkId">` attribute, including case. This is enforced whether or not the optional `intros.json` metadata export is present; a mismatched name fails rather than silently changing researcher-facing work identity. Individual in-memory `parse_bytes()` calls can still parse text without a filesystem name. Empty `.xml` placeholders retain their documented skip behavior.
+When loading an OCP source *directory*, modern/legacy Grammateus
+`WorkId.xml` declares the source stem as `<book filename="WorkId">`,
+whereas the six reviewed 2026 compact documents use the **literal full
+basename** `<book filename="WorkId.xml">`. Both contracts are validated
+against the real filesystem filename, including case, whether or not
+`intros.json` is present. A mismatch fails instead of silently changing
+the researcher-facing work identity. Individual in-memory `parse_bytes()`
+calls can still parse without filesystem identity. Empty `.xml`
+placeholders retain their documented skip behavior.
 
 ## Modern root language compatibility (OCP 2026 candidate)
 
