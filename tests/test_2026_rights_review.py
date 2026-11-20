@@ -96,6 +96,25 @@ def test_general_2026_text_has_repo_wide_license_claim_not_independent_clearance
     # from the source-wide README license badge.
     assert result["rights_review_required"] is True
     assert "license" not in result
+    assert result["public_metadata_present"] is False
+    assert result["per_work_copyright_html"] is None
+
+
+def test_standard_metadata_preserves_literal_editor_citation_and_copyright():
+    source = b'<book filename="ApDan" title="ApDan"><version title="Greek"/></book>'
+    record = {
+        "editor": "Source-declared Editor",
+        "citation": "<p>Source citation</p>",
+        "fields": {"copyright": "<p>Public domain.</p>"},
+    }
+    result = classify_root_document("ApDan.xml", source, record)
+    assert result["source_kind"] == "grammateus_text"
+    assert result["public_metadata_present"] is True
+    assert result["intro_editor"] == "Source-declared Editor"
+    assert result["intro_citation_html"] == "<p>Source citation</p>"
+    assert result["per_work_copyright_html"] == "<p>Public domain.</p>"
+    assert result["rights_review_required"] is True
+
 
 def test_restricted_morphology_is_excluded_from_public_core():
     result = classify_root_document("ApDan_TEI.xml", TEI.encode(), None)
