@@ -13,6 +13,7 @@ from xml.etree import ElementTree as ET
 
 from .compact_structure import is_compact_source, validate_compact_source_structure
 from .provenance import OCP_REPOSITORY
+from .source import detect_git_commit, git_source_is_clean
 
 
 OCP_2026_SHA = "853a64b623de296d2b8532a43593607772e7c45a"
@@ -185,16 +186,21 @@ def _reviewed_file(root: Path, name: str, expected_blob: str) -> bytes:
 
 
 def build_2026_rights_evidence(upstream_root: str | Path) -> dict[str, object]:
-    """Audit one *exact byte inventory*. Caller must independently attest Git.
+    """Attest the exact clean Git source and audit the input byte inventory.
 
-    The result must *never* be interpreted as redistribution permission. Its
-    revision is a pinned source label; the separate candidate gate checks
-    Git HEAD and working-tree cleanliness before calling this function.
+    The result must *never* be interpreted as redistribution permission.
+    Reviewed file hashes and source Git identity are checked independently of
+    the source-declared copyright claims.
     """
     root = Path(upstream_root)
     docs = root / "static" / "docs"
     if not docs.is_dir():
         raise ValueError(f"missing OCP source directory: {docs}")
+    # Do not assign the pinned Git SHA to arbitrary bytes supplied from a
+    # lookalike directory. Check identity and even ignored/index-hidden changes,
+    # using the same conservative source attestation already used by convert.
+    if detect_git_commit(docs) != OCP_2026_SHA or not git_source_is_clean(docs):
+        raise ValueError("OCP 2026 rights evidence requires an exact clean source Git checkout")
     readme = _reviewed_file(root, "README.md", README_BLOB)
     _reviewed_file(root, "LICENSE.CC-BY-4.0", LICENSE_BLOB)
     if "Text editions and TEI XML files" not in readme.decode("utf-8"):
