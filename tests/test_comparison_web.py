@@ -115,6 +115,8 @@ def test_compare_route_landing_lists_source_works_without_requiring_a_technical_
     assert 'name="work"' in html
     assert 'name="chapter"' in html
     assert 'name="verse"' in html
+    assert 'name="chapter" required' not in html
+    assert 'name="verse" required' not in html
 
 
 def test_compare_route_returns_safe_400_for_invalid_selection(monkeypatch):
@@ -164,6 +166,80 @@ def test_stock_tf_browser_and_compare_route_coexist_on_one_flask_app(tmp_path):
     assert ".version-grid" in css
     assert ".source-version-card" in css
     assert "@media" in css
+
+
+def test_real_tf_browser_can_choose_a_source_backed_passage_without_guessing(tmp_path):
+    tf_app = _find_local_app(_materialize(tmp_path))
+    client = web.create_comparison_web_app(tf_app).test_client()
+
+    work = client.get("/compare")
+    assert work.status_code == 200
+    assert 'name="work"' in work.get_data(as_text=True)
+
+    version = client.get("/compare?work=Sample")
+    version_html = version.get_data(as_text=True)
+    assert version.status_code == 200, version_html
+    assert 'name="browse_version"' in version_html
+    assert 'value="Sample"' in version_html
+
+    chapter = client.get("/compare?work=Sample&browse_version=Sample")
+    chapter_html = chapter.get_data(as_text=True)
+    assert chapter.status_code == 200, chapter_html
+    assert 'name="chapter"' in chapter_html
+    assert '<option value="1">1</option>' in chapter_html
+
+    verse = client.get("/compare?work=Sample&browse_version=Sample&chapter=1")
+    verse_html = verse.get_data(as_text=True)
+    assert verse.status_code == 200, verse_html
+    assert 'name="verse"' in verse_html
+    assert '<option value="Heading">Heading</option>' in verse_html
+    assert '<option value="2">2</option>' in verse_html
+
+    result = client.get(
+        "/compare?work=Sample&browse_version=Sample&chapter=1&verse=2"
+    )
+    html = result.get_data(as_text=True)
+    assert result.status_code == 200, html
+    assert 'class="state-omission"' in html
+    assert 'name="browse_version" value="Sample"' in html
+
+    missing = client.get(
+        "/compare?work=Sample&browse_version=Sample&chapter=99"
+    )
+    assert missing.status_code == 400
+    assert "unknown chapter" in missing.get_data(as_text=True)
+
+    invalid_context = client.get(
+        "/compare",
+        query_string={
+            "work": "Sample", "chapter": "1", "verse": "2",
+            "browse_version": '<script>alert("x")</script>',
+        },
+    )
+    assert invalid_context.status_code == 400
+    assert "&lt;script&gt;" in invalid_context.get_data(as_text=True)
+    assert "<script>" not in invalid_context.get_data(as_text=True)
+
+
+def test_source_section_picker_escapes_untrusted_source_section_labels():
+    class UntrustedSections:
+        def source_versions(self, work):
+            return ('<script>"&',)
+
+        def chapters(self, work, version):
+            return ('1<&"',)
+
+        def verses(self, work, version, chapter):
+            return ('4~2<&"',)
+
+    navigator = UntrustedSections()
+    version = web._passage_picker_html(navigator, 'Work<&"', "", "")
+    assert '<option value="&lt;script&gt;&quot;&amp;">' in version
+    chapter = web._passage_picker_html(navigator, 'Work<&"', '<script>"&', "")
+    assert '<option value="1&lt;&amp;&quot;">' in chapter
+    verse = web._passage_picker_html(navigator, 'Work<&"', '<script>"&', '1<&"')
+    assert '<option value="4~2&lt;&amp;&quot;">' in verse
+    assert '<script>' not in version + chapter + verse
 
 
 def test_real_tf_ambiguous_witness_assignment_fails_closed_in_comparison_route(tmp_path):
@@ -292,7 +368,7 @@ def test_landing_html_is_lazy_and_cached_across_incomplete_requests(monkeypatch)
 
     first = client.get('/compare')
     second = client.get('/compare?chapter=1')
-    third = client.get('/compare?work=Source&chapter=1')
+    third = client.get('/compare?verse=1')
     for response in (first, second, third):
         assert response.status_code == 200
         assert response.mimetype == 'text/html'
@@ -320,7 +396,7 @@ def test_landing_cache_is_isolated_per_flask_app_and_api(monkeypatch):
     assert 'Corpus A' in left.get('/compare').get_data(as_text=True)
     assert 'Corpus B' in right.get('/compare').get_data(as_text=True)
     assert 'Corpus A' in left.get('/compare').get_data(as_text=True)
-    assert 'Corpus B' in right.get('/compare?work=Missing').get_data(as_text=True)
+    assert 'Corpus B' in right.get('/compare?chapter=1').get_data(as_text=True)
     assert len(calls) == 2
     assert calls[0] is not calls[1]
 

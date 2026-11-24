@@ -81,10 +81,66 @@ def _landing_html(api: Any) -> str:
         '<label>Work <select name="work" required>'
         '<option value="">Choose a work</option>'
         f'{options}</select></label>'
-        '<label>Chapter <input name="chapter" required></label>'
-        '<label>Verse <input name="verse" required></label>'
-        '<button type="submit">Open passage</button>'
+        '<label>Chapter (optional) <input name="chapter"></label>'
+        '<label>Verse (optional) <input name="verse"></label>'
+        '<button type="submit">Open or choose passage</button>'
         '</form></main></body></html>'
+    )
+
+
+def _passage_picker_html(
+    navigator: PassageNavigator, work: str, browse_version: str, chapter: str
+) -> str:
+    """Choose only section labels attested in a specified source version."""
+    versions = navigator.source_versions(work)
+    if not browse_version:
+        field = "browse_version"
+        label = "Source version"
+        choices = versions
+        heading = "Choose a source version"
+    elif not chapter:
+        field = "chapter"
+        label = "Chapter"
+        choices = navigator.chapters(work, browse_version)
+        heading = "Choose a chapter"
+    else:
+        field = "verse"
+        label = "Verse"
+        choices = navigator.verses(work, browse_version, chapter)
+        heading = "Choose a verse"
+
+    hidden = [f'<input type="hidden" name="work" value="{_h(work)}">']
+    if browse_version:
+        hidden.append(
+            f'<input type="hidden" name="browse_version" value="{_h(browse_version)}">'
+        )
+    if chapter and browse_version:
+        hidden.append(f'<input type="hidden" name="chapter" value="{_h(chapter)}">')
+    options = "".join(f'<option value="{_h(value)}">{_h(value)}</option>' for value in choices)
+    if not choices:
+        raise ValueError(f"source version {browse_version!r} has no addressable {label.lower()} labels")
+    context = (
+        f'<p>Source version: {_h(browse_version)}</p>' if browse_version else ""
+    )
+    chapter_context = f'<p>Chapter: {_h(chapter)}</p>' if chapter and browse_version else ""
+    return (
+        '<!doctype html><html><head><meta charset="utf-8">'
+        '<meta name="viewport" content="width=device-width, initial-scale=1">'
+        '<title>Choose passage</title>'
+        '<link rel="stylesheet" href="/data/static/comparison.css">'
+        '</head><body><main class="comparison-page">'
+        '<nav class="comparison-nav"><a href="/compare">Choose another work</a> · '
+        '<a href="/">Text-Fabric browser</a></nav>'
+        f'<h1>{_h(heading)}</h1><p>Work: {_h(work)}</p>'
+        f'{context}{chapter_context}'
+        '<p>Locations come from one source version. '
+        'Comparing other versions does not imply their passages align.</p>'
+        '<form class="comparison-landing" action="/compare" method="get">'
+        f'{"".join(hidden)}'
+        f'<label>{_h(label)} <select name="{field}" required>'
+        f'{options}</select></label>'
+        '<button type="submit">Continue</button></form>'
+        '</main></body></html>'
     )
 
 
@@ -148,17 +204,29 @@ def register_comparison_route(flask_app: Any, tf_app: Any) -> Any:
         work = (request.args.get("work") or "").strip()
         chapter = (request.args.get("chapter") or "").strip()
         verse = (request.args.get("verse") or "").strip()
-        if not (work and chapter and verse):
+        browse_version = (request.args.get("browse_version") or "").strip()
+        if not work:
             nonlocal landing_html
             if landing_html is None:
                 landing_html = _landing_html(tf_app.api)
             return Response(landing_html, mimetype="text/html")
+
+        if not (chapter and verse):
+            try:
+                html = _passage_picker_html(navigator, work, browse_version, chapter)
+            except (KeyError, ValueError) as error:
+                return Response(_error_html(error), status=400, mimetype="text/html")
+            return Response(html, mimetype="text/html")
 
         selected_versions = tuple(
             value for value in request.args.getlist("version") if value
         )
         selected_witnesses = _witness_selection(request.args)
         try:
+            if browse_version and browse_version not in navigator.source_versions(work):
+                raise ValueError(
+                    f"{browse_version!r} is not a source version of work {work!r}"
+                )
             model = build_passage_comparison(
                 tf_app.api,
                 work,
@@ -174,11 +242,15 @@ def register_comparison_route(flask_app: Any, tf_app: Any) -> Any:
             # The normal builder always exposes version choices. Keep route unit
             # tests free to substitute a deliberately tiny fake model.
             if "version_choices" in model:
+                if browse_version:
+                    model["browse_version"] = browse_version
                 model["navigation"] = navigator.neighbors(
                     work,
                     chapter,
                     verse,
-                    preferred_versions=_selected_version_ids(model),
+                    preferred_versions=(
+                        (browse_version,) if browse_version else ()
+                    ) + _selected_version_ids(model),
                 )
         except (KeyError, ValueError) as error:
             return Response(_error_html(error), status=400, mimetype="text/html")
