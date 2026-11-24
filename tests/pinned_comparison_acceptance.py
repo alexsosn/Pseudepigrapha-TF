@@ -157,14 +157,17 @@ def verify(tf_dir: Path) -> None:
 
     # Genuine complete OCP corpus: the landing inventory is built only on
     # first use, excludes absent/zero-byte 3Macc and generated translations,
-    # and is reused for plain/incomplete comparison requests in this app.
+    # and is reused for requests without a chosen work.
     # Patch only the counting boundary: HTML is rendered by the *real* loader.
     with patch.object(web, "_landing_html", wraps=web._landing_html) as render_landing:
         first_landing = _get(client, "/compare")
         repeated_landing = _get(client, "/compare?chapter=1")
-        repeated_landing_again = _get(client, "/compare?work=1En")
+        source_step = _get(client, "/compare?work=1En")
     assert render_landing.call_count == 1
-    assert first_landing == repeated_landing == repeated_landing_again
+    assert first_landing == repeated_landing
+    assert source_step != first_landing
+    assert 'name="browse_version"' in source_step
+    assert '<option value="1En__Ethiopic">' in source_step
     # The visible option label derives from the real pinned OCP work title;
     # source version disagreements or blank titles must fall back to the id.
     for source_work in ("1En", "TJob"):
@@ -184,7 +187,25 @@ def verify(tf_dir: Path) -> None:
         )
         assert f'<option value="{source_work}">{escape(label, quote=True)}</option>' in first_landing
     assert '<option value="3Macc">' not in first_landing
+    assert 'name="work"' in first_landing
     assert 'name="chapter"' in first_landing and 'name="verse"' in first_landing
+    assert 'name="chapter" required' not in first_landing
+
+    # A first-time researcher can discover the actual source-backed section
+    # labels instead of guessing the TF three-level address.
+    chapters = _get(client, "/compare?work=1En&browse_version=1En__Ethiopic")
+    assert 'name="chapter"' in chapters
+    assert '<option value="1">1</option>' in chapters
+    verses = _get(
+        client, "/compare?work=1En&browse_version=1En__Ethiopic&chapter=1"
+    )
+    assert 'name="verse"' in verses
+    assert '<option value="2">2</option>' in verses
+    chosen = _get(
+        client, "/compare?work=1En&browse_version=1En__Ethiopic&chapter=1&verse=2"
+    )
+    assert 'data-version-id="1En__Ethiopic"' in chosen
+    assert 'name="browse_version" value="1En__Ethiopic"' in chosen
 
     # Real route: ordinary passage, large witness inventory, metadata-only
     # sibling version, and Previous/Next navigation all coexist without

@@ -32,6 +32,7 @@ def comparison_href(
     *,
     selected_versions: Iterable[object] | None = None,
     selected_witnesses: Mapping[str, Iterable[object]] | None = None,
+    browse_version: str | None = None,
 ) -> str:
     """Build a deterministic comparison URL while preserving selection state."""
 
@@ -49,6 +50,8 @@ def comparison_href(
         ("chapter", chapter_text),
         ("verse", verse_text),
     ]
+    if browse_version:
+        pairs.append(("browse_version", str(browse_version)))
     pairs.extend(("version", version_id) for version_id in versions)
     if selected_versions is not None and not versions:
         # No version key means defaults; an empty key means all unchecked.
@@ -77,24 +80,15 @@ class PassageNavigator:
         self._source_books = {}
         self._verse_sections = {}
 
-    def neighbors(
-        self,
-        work: object,
-        chapter: object,
-        verse: object,
-        *,
-        preferred_versions: Iterable[object] = (),
-    ) -> dict[str, object]:
-        """Find passage neighbors, preferring real source versions in the requested order."""
-
-        work_text = str(work)
-        section_pair = (str(chapter), str(verse))
+    def _books_for_work(self, work_text: str) -> dict[str, int]:
         otype = getattr(self.api.F, "otype", None)
         books_for_type = getattr(otype, "s", None) if otype is not None else None
         ocp_book = getattr(self.api.F, "ocp_book", None)
         if books_for_type is None or ocp_book is None:
             raise ValueError("otype and ocp_book features must be loaded for passage navigation")
         version_kind = getattr(self.api.F, "version_kind", None)
+        if version_kind is None:
+            raise ValueError("version_kind must be loaded for source-only passage navigation")
 
         if self._work_nodes is None:
             by_work: dict[str, list[int]] = {}
@@ -102,12 +96,14 @@ class PassageNavigator:
                 by_work.setdefault(str(ocp_book.v(book_node) or ""), []).append(book_node)
             self._work_nodes = by_work
 
+        if work_text not in self._work_nodes:
+            raise KeyError(
+                f"OCP work has no source versions in loaded Text-Fabric data: {work_text!r}"
+            )
         if work_text not in self._source_books:
             source_books: dict[str, int] = {}
-            for book_node in self._work_nodes.get(work_text, ()):
-                if version_kind is not None and version_kind.v(book_node) in {
-                    "generated_translation", "parallel_translation"
-                }:
+            for book_node in self._work_nodes[work_text]:
+                if version_kind.v(book_node) != "source":
                     continue
                 section = self.api.T.sectionFromNode(book_node)
                 if not section or not section[0]:
@@ -127,6 +123,91 @@ class PassageNavigator:
             raise KeyError(
                 f"OCP work has no source versions in loaded Text-Fabric data: {work_text!r}"
             )
+        return source_books
+
+    def _book_for_version(self, work: object, source_version: object) -> tuple[str, int]:
+        work_text = str(work)
+        version_id = str(source_version)
+        books = self._books_for_work(work_text)
+        if version_id not in books:
+            raise ValueError(
+                f"{version_id!r} is not a source version of work {work_text!r}"
+            )
+        return version_id, books[version_id]
+
+    def _sections_for_book(
+        self, book_node: int, version_id: str
+    ) -> tuple[tuple[tuple[str, str], ...], dict[tuple[str, str], tuple[int, ...]]]:
+        if book_node not in self._verse_sections:
+            verse_nodes = tuple(self.api.L.d(book_node, otype="verse"))
+            verse_index = getattr(self.api.F, "verse_index", None)
+            if verse_index is not None:
+                verse_nodes = tuple(
+                    sorted(verse_nodes, key=lambda node: (verse_index.v(node) or 0, node))
+                )
+
+            sections: list[tuple[str, str]] = []
+            positions: dict[tuple[str, str], list[int]] = {}
+            for index, verse_node in enumerate(verse_nodes):
+                section = self.api.T.sectionFromNode(verse_node)
+                if not section or len(section) < 3:
+                    raise ValueError(
+                        f"cannot resolve TF passage section for verse node {verse_node}"
+                    )
+                if str(section[0]) != version_id:
+                    raise ValueError(
+                        f"verse node {verse_node} belongs to section {section[0]!r}, "
+                        f"expected {version_id!r}"
+                    )
+                pair = (str(section[1]), str(section[2]))
+                sections.append(pair)
+                positions.setdefault(pair, []).append(index)
+            self._verse_sections[book_node] = (
+                tuple(sections),
+                {pair: tuple(indexes) for pair, indexes in positions.items()},
+            )
+        return self._verse_sections[book_node]
+
+    def source_versions(self, work: object) -> tuple[str, ...]:
+        """List source-only TF section IDs for a work (never derived translations)."""
+        return tuple(self._books_for_work(str(work)))
+
+    def chapters(self, work: object, source_version: object) -> tuple[str, ...]:
+        """List actual TF chapter labels in one source version, preserving order."""
+        version_id, book_node = self._book_for_version(work, source_version)
+        sections, _ = self._sections_for_book(book_node, version_id)
+        return tuple(dict.fromkeys(chapter for chapter, _ in sections))
+
+    def verses(
+        self, work: object, source_version: object, chapter: object
+    ) -> tuple[str, ...]:
+        """List actual TF verse labels under one chapter of one source version."""
+        version_id, book_node = self._book_for_version(work, source_version)
+        chapter_text = str(chapter)
+        sections, _ = self._sections_for_book(book_node, version_id)
+        verses = tuple(dict.fromkeys(
+            verse for section_chapter, verse in sections
+            if section_chapter == chapter_text
+        ))
+        if not verses:
+            raise ValueError(
+                f"unknown chapter {chapter_text!r} in source version {version_id!r}"
+            )
+        return verses
+
+    def neighbors(
+        self,
+        work: object,
+        chapter: object,
+        verse: object,
+        *,
+        preferred_versions: Iterable[object] = (),
+    ) -> dict[str, object]:
+        """Find passage neighbors, preferring real source versions in the requested order."""
+
+        work_text = str(work)
+        section_pair = (str(chapter), str(verse))
+        source_books = self._books_for_work(work_text)
 
         preferred = tuple(
             version_id
@@ -139,36 +220,7 @@ class PassageNavigator:
 
         for version_id in candidates:
             book_node = source_books[version_id]
-            if book_node not in self._verse_sections:
-                verse_nodes = tuple(self.api.L.d(book_node, otype="verse"))
-                verse_index = getattr(self.api.F, "verse_index", None)
-                if verse_index is not None:
-                    verse_nodes = tuple(
-                        sorted(verse_nodes, key=lambda node: (verse_index.v(node) or 0, node))
-                    )
-
-                sections: list[tuple[str, str]] = []
-                positions: dict[tuple[str, str], list[int]] = {}
-                for index, verse_node in enumerate(verse_nodes):
-                    section = self.api.T.sectionFromNode(verse_node)
-                    if not section or len(section) < 3:
-                        raise ValueError(
-                            f"cannot resolve TF passage section for verse node {verse_node}"
-                        )
-                    if str(section[0]) != version_id:
-                        raise ValueError(
-                            f"verse node {verse_node} belongs to section {section[0]!r}, "
-                            f"expected {version_id!r}"
-                        )
-                    pair = (str(section[1]), str(section[2]))
-                    sections.append(pair)
-                    positions.setdefault(pair, []).append(index)
-                self._verse_sections[book_node] = (
-                    tuple(sections),
-                    {pair: tuple(indexes) for pair, indexes in positions.items()},
-                )
-
-            sections, positions = self._verse_sections[book_node]
+            sections, positions = self._sections_for_book(book_node, version_id)
             current_positions = positions.get(section_pair, ())
             if not current_positions:
                 continue
@@ -783,6 +835,7 @@ def render_passage_comparison(model: Mapping[str, object]) -> str:
     verse = str(model.get("verse", ""))
     title = str(model.get("title", "")) or work
     selected_versions, selected_witnesses = _selected_render_state(model)
+    browse_version = str(model.get("browse_version") or "")
 
     parts = [
         '<!doctype html><html><head><meta charset="utf-8">',
@@ -801,6 +854,11 @@ def render_passage_comparison(model: Mapping[str, object]) -> str:
         following = navigation.get("next")
         if previous is not None or following is not None:
             parts.append('<nav class="passage-navigation">')
+            context_version = str(navigation.get("context_version") or "")
+            if context_version:
+                parts.append(
+                    f'<span class="navigation-context">Navigation: {_h(context_version)}</span>'
+                )
             if previous is not None:
                 prev_chapter, prev_verse = previous
                 href = comparison_href(
@@ -809,6 +867,7 @@ def render_passage_comparison(model: Mapping[str, object]) -> str:
                     prev_verse,
                     selected_versions=selected_versions,
                     selected_witnesses=selected_witnesses,
+                    browse_version=browse_version,
                 )
                 parts.append(f'<a rel="prev" href="{_h(href)}">Previous</a>')
             if following is not None:
@@ -819,6 +878,7 @@ def render_passage_comparison(model: Mapping[str, object]) -> str:
                     next_verse,
                     selected_versions=selected_versions,
                     selected_witnesses=selected_witnesses,
+                    browse_version=browse_version,
                 )
                 parts.append(f'<a rel="next" href="{_h(href)}">Next</a>')
             parts.append("</nav>")
@@ -827,6 +887,8 @@ def render_passage_comparison(model: Mapping[str, object]) -> str:
         (
             '<form id="comparison-controls" class="comparison-controls" action="/compare" method="get">',
             f'<input type="hidden" name="work" value="{_h(work)}">',
+            (f'<input type="hidden" name="browse_version" value="{_h(browse_version)}">'
+             if browse_version else ""),
             '<input type="hidden" name="version" value="">',
             '<fieldset class="passage-jump"><legend>Passage</legend>',
             f'<label>Chapter <input name="chapter" value="{_h(chapter)}" required></label>',

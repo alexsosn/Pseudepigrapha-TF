@@ -96,6 +96,54 @@ def test_passage_neighbors_skip_preferred_version_without_current_passage_and_ig
     }
 
 
+def test_source_section_choices_preserve_independent_version_topologies():
+    api = navigation_api()
+    api.F.otype.values[4] = "book"
+    api.F.ocp_book.values[4] = "Work"
+    api.F.version_kind.values[4] = "parallel_translation"
+    api.F.otype.values[5] = "book"
+    api.F.ocp_book.values[5] = "Work"
+    api.F.version_kind.values[5] = "unclassified"
+    navigator = comparison.PassageNavigator(api)
+    assert navigator.source_versions("Work") == ("Work__A", "Work__B")
+    assert navigator.chapters("Work", "Work__A") == ("1", "2")
+    assert navigator.verses("Work", "Work__A", "1") == ("1", "2")
+    assert navigator.verses("Work", "Work__B", "1") == ("1",)
+    assert navigator.verses("Work", "Work__B", "2") == ("1",)
+
+    with pytest.raises(KeyError, match="no source versions"):
+        navigator.source_versions("Missing")
+    with pytest.raises(ValueError, match="not a source version"):
+        navigator.chapters("Work", "Work__A__translation__English")
+    with pytest.raises(ValueError, match="unknown chapter"):
+        navigator.verses("Work", "Work__A", "99")
+
+    api = navigation_api()
+    del api.F.version_kind
+    with pytest.raises(ValueError, match="version_kind must be loaded"):
+        comparison.PassageNavigator(api).source_versions("Work")
+
+
+def test_source_section_choices_preserve_non_numeric_and_repeated_labels():
+    api = navigation_api()
+    api.T.SECTIONS = dict(api.T.SECTIONS)
+    api.T.SECTIONS[102] = ("Work__A", "2/part", "4~2")
+    nav = comparison.PassageNavigator(api)
+    assert nav.chapters("Work", "Work__A") == ("1", "2/part", "2")
+    assert nav.verses("Work", "Work__A", "2/part") == ("4~2",)
+    assert nav.neighbors("Work", "2/part", "4~2")["previous"] == ("1", "1")
+
+
+def test_selected_navigation_source_does_not_switch_to_a_different_version():
+    nav = comparison.PassageNavigator(navigation_api())
+    result = nav.neighbors("Work", "1", "1", preferred_versions=("Work__B",))
+    assert result == {
+        "context_version": "Work__B",
+        "previous": None,
+        "next": ("2", "1"),
+    }
+
+
 def test_passage_neighbors_at_edges_return_none_without_crossing_to_another_version():
     first = comparison.passage_neighbors(
         navigation_api(),
@@ -210,6 +258,7 @@ def test_renderer_navigation_preserves_selected_versions_and_witnesses():
     html = comparison.render_passage_comparison(_render_model())
 
     assert 'class="passage-navigation"' in html
+    assert 'class="navigation-context">Navigation: Work__A</span>' in html
     assert '>Previous<' in html
     assert '>Next<' in html
     assert "chapter=1" in html and "verse=1" in html
@@ -219,6 +268,14 @@ def test_renderer_navigation_preserves_selected_versions_and_witnesses():
     assert "witness.Work__A=A+1" in html
     assert "witness.Work__B=S" in html
     assert "B%262" not in html
+
+
+def test_renderer_carries_selected_source_navigation_context_across_links():
+    model = _render_model()
+    model["browse_version"] = "Work__B"
+    html = comparison.render_passage_comparison(model)
+    assert 'name="browse_version" value="Work__B"' in html
+    assert 'verse=1&amp;browse_version=Work__B' in html
 
 
 def test_witness_selector_inputs_are_associated_with_the_comparison_submit_form():

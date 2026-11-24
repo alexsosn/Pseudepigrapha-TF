@@ -228,6 +228,15 @@ pseudepigrapha-tf browse /tmp/pseudepigrapha-tf/1.1 --app app
 
 Open `http://127.0.0.1:8000/compare`. The stock Text-Fabric browser remains available at `/`; the comparison route is an addition, not a replacement server.
 
+The comparison landing page lets you select a work, then choose an actual
+source version, chapter, and verse from the loaded corpus. Non-numeric section
+labels and duplicate-citation suffixes are shown as stored, so no reference
+guesswork is needed; if you know the chapter and verse, enter them directly
+on the landing page. The chosen source version provides the **navigation
+context**; comparison still displays its normal source-version selection and
+does not claim that differently structured versions are automatically aligned.
+Existing direct URLs such as `/compare?work=1En&chapter=1&verse=2` remain valid.
+
 The real pinned-corpus acceptance gate exercises, among other cases:
 
 - 1 Enoch with multiple source versions and distinguishable witness omission/unattested states;
