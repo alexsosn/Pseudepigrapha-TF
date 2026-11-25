@@ -130,11 +130,11 @@ def test_local_cli_and_unmapped_tf(corpus, tmp_path, capsys):
     raw = csv_bytes([row("CAVT-001", "", "Gap")])
     path = tmp_path / "master_crosswalk.csv"
     path.write_bytes(raw)
-    before = {p.name: p.read_bytes() for p in base.glob("*.tf")}
+    before = {p.name: p.read_bytes() for p in base.glob("*.tf") if p.is_file()}
     assert main(["catalog-lookup", str(base), str(path), "--id", "CAVT-001"]) == 0
     report = json.loads(capsys.readouterr().out)
     assert report["records"][0]["match_status"] == "no_declared_filename"
     assert report["unmatched_tf_files"] == ["Compact.xml"]
     assert report["counts"]["unmatched_tf_files"] == 1
-    assert {p.name: p.read_bytes() for p in base.glob("*.tf")} == before
+    assert {p.name: p.read_bytes() for p in base.glob("*.tf") if p.is_file()} == before
     assert path.read_bytes() == raw
