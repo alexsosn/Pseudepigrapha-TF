@@ -7,6 +7,7 @@ No published data version or general converter exclusion is implied.
 from __future__ import annotations
 
 import json
+from hashlib import sha256
 from html import escape
 import shutil
 import subprocess
@@ -151,6 +152,65 @@ def verify(upstream_repo: Path) -> None:
                     api.F.version_id.v(node)
                 )
         assert all(name.removesuffix(".xml") in source_books for name in standard)
+
+        # Compare the original, separately sourced clavis crosswalk to the
+        # already-built TF corpus without importing catalogue prose or data.
+        import csv
+        from pseudepigrapha_tf.catalog import catalog_lookup
+        crosswalk_path = upstream_repo / "data" / "master_crosswalk.csv"
+        assert _git(upstream_repo, "hash-object", str(crosswalk_path)) == (
+            "e1e4a6d651e6acf3132d2ec202004c94141516c4"
+        )
+        raw_crosswalk = crosswalk_path.read_bytes()
+        with crosswalk_path.open(encoding="utf-8", newline="") as stream:
+            raw_catalogue = list(csv.DictReader(stream))
+        # Independent ground truth is literal filesystem coverage, not the
+        # catalogue's declared status or the lookup implementation's index.
+        expected_matched = {
+            row["ocp_canon_id"] for row in raw_catalogue
+            if row["ocp_xml"] in standard
+        }
+        expected_missing = {
+            row["ocp_canon_id"] for row in raw_catalogue
+            if row["ocp_xml"] and not (docs / row["ocp_xml"]).is_file()
+        }
+        assert len(expected_matched) == 50
+        assert len(expected_missing) == 37
+        catalog = catalog_lookup(api, raw_crosswalk)
+        assert catalog["counts"] == {
+            "catalog_records": 299, "exact_tf_match": 50,
+            "declared_filename_not_in_tf": 37, "no_declared_filename": 212,
+            "matched_tf_files": 49, "unmatched_tf_files": 17,
+        }, catalog["counts"]
+        assert catalog["redistribution_permission"] == "not_attested"
+        by_id = {row["ocp_canon_id"]: row for row in catalog["records"]}
+        assert {key for key, row in by_id.items()
+                if row["match_status"] == "exact_tf_match"} == expected_matched
+        assert {key for key, row in by_id.items()
+                if row["match_status"] == "declared_filename_not_in_tf"} == expected_missing
+        assert set(catalog["unmatched_tf_files"]) == set(standard) - {
+            row["ocp_xml"] for row in raw_catalogue
+        }
+        assert by_id["CAVT-084"]["same_filename_catalog_ids"] == [
+            "CAVT-084", "CAVT-JH-08",
+        ]
+        assert by_id["CAVT-177"]["same_filename_catalog_ids"] == [
+            "CAVT-177", "CAVT-218",
+        ]
+        for canon_id, existing_name in (
+            ("CAVT-118", "T12P.xml"), ("CAVT-148", "ThrenSeila.xml"),
+            ("CAVT-152", "CithDavid.xml"), ("CAVT-181", "ConfEsdr.xml"),
+            ("CAVT-185", "RevEsdr.xml"), ("CAVT-213", "LivPro.xml"),
+        ):
+            assert by_id[canon_id]["tf_source_versions"] == []
+            assert existing_name in catalog["unmatched_tf_files"]
+        for row in catalog["records"]:
+            for version in row["tf_source_versions"]:
+                assert version["version_id"] in source_books[version["ocp_book"]]
+                assert version["source_sha256"] == sha256(
+                    (docs / row["ocp_xml"]).read_bytes()
+                ).hexdigest()
+
         metadata_api = WorkMetadata(api)
         assert metadata_api["5Ezra"]["author"] == "Pseudo-Ezra"
         assert metadata_api["5Ezra"]["editor"] == "Robert L. Bensly (1895)"
@@ -352,6 +412,7 @@ def verify(upstream_repo: Path) -> None:
             "real_tf_passages": passage_checks,
             "compact_parallel_aligned_units": aligned_counts,
             "source_counts": report["source"],
+            "clavis_catalogue_counts": catalog["counts"],
             "rights_evidence_counts": rights["counts"],
             "rights_review_blockers": rights["review_blockers"],
             "rights_attestation": rights["rights_attestation"],
