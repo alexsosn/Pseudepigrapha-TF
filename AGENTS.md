@@ -1,5 +1,7 @@
 # Agent instructions
 
+> **Maintainer release scope (2026-11-26):** This project ships the converter software for Agora. Agora acquires authoritative OCP data and materializes Text-Fabric locally. Do not make derived-corpus publication, third-party data redistribution clearance, or a prebuilt-corpus download prerequisites for software releases. Preserve source provenance and separate data-redistribution safeguards; existing data releases are legacy assets, not the product target. Prioritize a real installed Agora acquisition → conversion → TF query smoke.
+
 > **Autonomous-development policy:** Before selecting or inventing work, read [PRODUCT_GOALS.md](PRODUCT_GOALS.md) and [docs/agentic-development-policy.md](docs/agentic-development-policy.md). State the targeted researcher journey, observed blocker, minimal reuse-first solution and real-data/public-interface acceptance criterion. Follow proportional research → plan → TDD → test → logically independent adversarial review. Preserve all more specific source, editorial, safety and release requirements below.
 
 > **Product-goal gate:** Before selecting a task or expanding the backlog, read [PRODUCT_GOALS.md](PRODUCT_GOALS.md). Prioritize its researcher journeys and minimum usable release; require concrete evidence for infrastructure work. Keep all mandatory source, security, licensing, TDD and independent-review checks below.

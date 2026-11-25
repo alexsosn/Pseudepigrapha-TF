@@ -1,8 +1,8 @@
 # Pseudepigrapha-TF
 
-Pseudepigrapha-TF is a published [Text-Fabric](https://annotation.github.io/text-fabric/tf/) corpus derived from the [Online Critical Pseudepigrapha (OCP)](https://github.com/OnlineCriticalPseudepigrapha/Online-Critical-Pseudepigrapha), plus a small Python package for apparatus, translation, metadata, and local comparison workflows.
+Pseudepigrapha-TF is an MIT-licensed converter from the [Online Critical Pseudepigrapha (OCP)](https://github.com/OnlineCriticalPseudepigrapha/Online-Critical-Pseudepigrapha) to [Text-Fabric](https://annotation.github.io/text-fabric/tf/), with Python research helpers for apparatus, translation, metadata and local comparison.
 
-The normal researcher path is to **load the published corpus directly**. You do not need to clone OCP or run the converter. Rebuilding from OCP is a maintainer/custom-snapshot workflow documented later in this README.
+The primary distribution target is **local materialization through [Agora](docs/agora-materialization.md)**: Agora obtains OCP source files directly and runs the installed converter. The currently registered manifest still selects the older source snapshot; see [#228](https://github.com/alexsosn/Pseudepigrapha-TF/issues/228) for the expanded-source integration work. Existing published v1.1 corpus archives remain usable as a legacy option. Software releases do not depend on publishing or clearing redistribution of new data archives.
 
 The current development package requires **Python 3.12+** and Text-Fabric **13.1.x**. CI runs its full corpus/source-fidelity suite on 3.12 and independently builds and installs a wheel in a clean **Python 3.14** environment for a real Text-Fabric passage, apparatus, stock-browser and HTTP comparison smoke. Python 3.10 has reached end of life and is no longer supported. This support statement applies to code on `main`; published v1.1 dataset assets are unchanged.
 
@@ -204,7 +204,7 @@ output without independently checking the applicable rights.
 
 See [source and provenance notes](docs/source-identity-and-anomalies.md)
 and [full migration issue #228](https://github.com/alexsosn/Pseudepigrapha-TF/issues/228).
-The 2026 full-source data release remains blocked by rights and E2E gates.
+The 2026 source is being integrated into the local Agora converter path (#228); no new data publication is required for a software release.
 
 ## Local clavis and bibliography lookup (OCP 2026)
 
@@ -348,7 +348,7 @@ For exact anomaly provenance and record-specific exceptions, see [source identit
 
 ## Rebuild from OCP
 
-Rebuilding is for maintainers, reproducibility work, or researchers intentionally converting another OCP snapshot. It is **not required to use the published corpus**.
+Local conversion is the primary software workflow; Agora automates source acquisition and invokes this CLI. The legacy published corpus can also be loaded without conversion.
 
 The pinned upstream `static/docs` files use the **custom Grammateus/OCP XML** vocabulary (`book/version/div/unit/reading`), not TEI XML despite the upstream README's broader label. That pinned directory has 39 `.xml` names, including one empty `3Macc.xml`; the complete release converter processes 38 nonempty files. See [ADR-0002: Text-Fabric-Factory/source format](docs/architecture/ADR-0002-tff-source-format-boundary.md) for the primary-source evidence and migration decision.
 
