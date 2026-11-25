@@ -1,6 +1,6 @@
 # Agora local materialization
 
-Pseudepigrapha-TF can act as a locally trusted Agora materializer that rebuilds a derived Text-Fabric corpus from authoritative OCP source XML. This local materialization path is an alternative to consuming the published derived corpus; it does not redistribute OCP source XML.
+Pseudepigrapha-TF can act as a locally trusted Agora materializer that rebuilds a derived Text-Fabric corpus from authoritative OCP source XML. This is the primary product distribution path: Agora acquires source files directly and materializes data locally. Existing published corpus archives are a separate legacy option. Software releases do not require new prebuilt data artifacts or clearance to redistribute those artifacts.
 
 The repository-level [`agora.materializer.json`](../agora.materializer.json) declares:
 
@@ -25,7 +25,7 @@ This avoids mounting `.git` into the sandbox while preserving the converter's pr
 
 ## Licensing boundary
 
-This integration does not change source licensing. Pseudepigrapha-TF public releases may redistribute the derived Text-Fabric corpus under the documented OCP content-license boundary; the upstream OCP source XML itself remains in the OCP repository. Agora's materializer acquires the authoritative source revision or accepts user-local sources and produces a local derived artifact.
+This integration does not change source licensing. Historical v1.1 data releases remain subject to the documented OCP content-license boundary. The software release does not distribute OCP editions or generated TF data; the upstream source XML remains in the OCP repository. Agora's materializer acquires the authoritative source revision or accepts user-local sources and produces a local derived artifact.
 
 The Agora-produced artifact remains local unless its source and derived-data licenses independently permit redistribution.
 

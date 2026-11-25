@@ -2,7 +2,7 @@
 
 ## Users and purpose
 
-Researchers of Jewish and Christian pseudepigrapha should be able to read, compare, search and cite Online Critical Pseudepigrapha source versions, textual apparatus, witnesses and generated translations through the released Text-Fabric corpus and small documented Python helpers.
+Researchers of Jewish and Christian pseudepigrapha should be able to read, compare, search and cite Online Critical Pseudepigrapha source versions, textual apparatus, witnesses and generated translations through locally materialized Text-Fabric data and small documented Python helpers. The primary product is the MIT converter software distributed for Agora, which acquires the upstream data directly and runs the converter locally. Previously published data archives are legacy convenience assets, not a release requirement.
 
 ## Representative research journeys
 
@@ -14,7 +14,7 @@ Researchers of Jewish and Christian pseudepigrapha should be able to read, compa
 
 ## Minimum usable release
 
-The normal researcher can load an actual published corpus directly (without cloning or rebuilding OCP), perform the journeys above using documented commands/browser routes, and retrieve supporting source identities. A real clean-install/remote-download and offline-reload check must succeed. Converters, source snapshots, helper code and published data versions are distinguished honestly.
+The normal researcher installs the released converter via Agora, acquires the reviewed upstream source revision directly, materializes TF locally and performs the journeys above using documented commands/browser routes. A real clean-install, Agora acquisition/materialization, local TF reload and researcher query smoke must succeed. Software releases must not require publishing a prebuilt corpus, redistribution clearance for data that the software does not distribute, or downloading new corpus archives. Existing published data remains a separately versioned legacy option. Preserve source licensing and attribution in local output.
 
 ## Boundaries and priorities
 

@@ -4,6 +4,8 @@ Pseudepigrapha-TF distinguishes the license of this repository's converter softw
 
 ## Converter software
 
+The primary release target is the standalone converter for Agora, which acquires OCP directly and produces local TF data. The data-redistribution checks described below apply only to separately published data artifacts; they do not gate release of converter software that does not redistribute those data.
+
 The Python converter, tests, and repository-authored software are licensed under the **MIT License**. See [`LICENSE`](LICENSE) and `pyproject.toml`.
 
 ## OCP text content in the supported corpus build
