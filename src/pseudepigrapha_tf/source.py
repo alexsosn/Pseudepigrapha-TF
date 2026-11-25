@@ -81,7 +81,10 @@ def validate_source_boundary(path: str | Path) -> list[dict[str, str]]:
     """Fail when an OCP docs directory contains unreviewed source material.
 
     The converter intentionally consumes only published root-level ``*.xml``
-    documents plus the public ``intros.json`` export.  The pinned upstream tree
+    textual documents plus the public ``intros.json`` export. Derived TEI mirrors
+    and the reviewed separate ApDan morphology are inventoried, not interpreted
+    as independent editions. The returned list describes these exclusions.
+    The pinned upstream tree
     also contains explicitly reviewed editor/schema artifacts and historical
     working-copy directories.  Anything else must be reviewed before a source
     refresh can silently widen (or change) the scholarly input boundary.
