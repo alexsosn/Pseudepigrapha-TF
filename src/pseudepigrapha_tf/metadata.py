@@ -143,9 +143,11 @@ def _require_scalar(value: Any, *, location: str) -> Any:
 
 
 def _validate_xml_identities(source_dir: Path) -> set[str]:
+    from .source import is_separate_morphology
+
     filenames: set[str] = set()
     for xml_path in sorted(source_dir.glob("*.xml")):
-        if xml_path.name.startswith("."):
+        if xml_path.name.startswith(".") or is_separate_morphology(xml_path):
             continue
         filenames.add(xml_path.name)
         raw = xml_path.read_bytes()
@@ -180,10 +182,12 @@ def _validate_preparsed_xml_identities(
     metadata loader retains its own full XML validation.
     """
 
+    from .source import is_separate_morphology
+
     paths = {
         path.name: path
         for path in source_dir.glob("*.xml")
-        if not path.name.startswith(".")
+        if not path.name.startswith(".") and not is_separate_morphology(path)
     }
     seen: set[str] = set()
     for book in parsed_books:

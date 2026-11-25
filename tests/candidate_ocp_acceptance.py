@@ -1,9 +1,4 @@
-"""Real OCP 2026 candidate -> native Text-Fabric researcher acceptance.
-
-This is an intentionally partial *staging* corpus: the full upstream snapshot
-contains one namespaced TEI root file needing separate source-equivalence review.
-No published data version or general converter exclusion is implied.
-"""
+"""Unmodified OCP 2026 checkout -> local native Text-Fabric researcher acceptance."""
 from __future__ import annotations
 
 import json
@@ -21,8 +16,7 @@ from tf.fabric import Fabric
 
 UPSTREAM_SHA = "853a64b623de296d2b8532a43593607772e7c45a"
 # Six compact-dialect originals and translations are now supported; the
-# separately named TEI root remains outside this format-bound staging test.
-# No source is silently excluded from *production* conversion by this test.
+# separately named TEI root is an explicitly reported optional morphology layer.
 UNSUPPORTED_ROOT_FILES = frozenset({"ApDan_TEI.xml"})
 COMPACT_ROOT_FILES = frozenset({
     "CithDavid.xml", "Demetr.xml", "Justus.xml",
@@ -70,7 +64,7 @@ def verify(upstream_repo: Path) -> None:
     assert COMPACT_ROOT_FILES <= set(standard)
 
     # Independent, byte-hashed 2026 rights evidence on the *entire*
-    # original upstream tree before staging 66 of 67 textual roots.
+    # original upstream tree; optional data-redistribution evidence is not a software release authorization.
     # This is NOT legal clearance and must not change publication status.
     rights = build_2026_rights_evidence(upstream_repo)
     assert rights["source_commit"] == UPSTREAM_SHA

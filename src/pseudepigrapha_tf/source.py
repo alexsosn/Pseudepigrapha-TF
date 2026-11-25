@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import subprocess
+from hashlib import sha256
 from pathlib import Path
+from xml.etree import ElementTree as ET
 
 from .model import Book
 from .parser import EmptySourceError, InvalidSourceError, parse_bytes
@@ -16,7 +18,66 @@ _REVIEWED_NON_CORPUS_DIRECTORIES = frozenset({"backups", "drafts"})
 _SUPPORTED_METADATA_FILES = frozenset({"intros.json"})
 
 
-def validate_source_boundary(path: str | Path) -> None:
+_TEI = "{http://www.tei-c.org/ns/1.0}"
+_MORPHOLOGY_FILE = "ApDan_TEI.xml"
+
+
+def is_separate_morphology(path: Path) -> bool:
+    """Recognize the reviewed extra ApDan annotation, never by name alone."""
+    if path.name != _MORPHOLOGY_FILE:
+        return False
+    from .apdan_morphology import CANDIDATE_MORPH_BLOB, _git_blob_sha
+
+    base = path.with_name("ApDan.xml")
+    if (path.is_symlink() or not path.is_file() or base.is_symlink()
+            or not base.is_file() or not base.stat().st_size
+            or _git_blob_sha(path.read_bytes()) != CANDIDATE_MORPH_BLOB):
+        raise ValueError(f"{path.name}: unreviewed separate ApDan morphology source")
+    return True
+
+
+def excluded_source_layers(source_dir: Path) -> list[dict[str, str]]:
+    """Inventory known non-independent XML layers from the actual source tree."""
+    excluded: list[dict[str, str]] = []
+    morphology = source_dir / _MORPHOLOGY_FILE
+    if morphology.exists() or morphology.is_symlink():
+        if is_separate_morphology(morphology):
+            excluded.append({"path": morphology.name, "kind": "separate_morphology",
+                             "sha256": sha256(morphology.read_bytes()).hexdigest()})
+    mirrors = source_dir / "tei"
+    if mirrors.exists() or mirrors.is_symlink():
+        if mirrors.is_symlink() or not mirrors.is_dir():
+            raise ValueError("tei/: expected a regular directory of derived mirrors")
+        for mirror in sorted(mirrors.iterdir()):
+            label = f"tei/{mirror.name}"
+            original = source_dir / mirror.name
+            if (mirror.is_symlink() or not mirror.is_file()
+                    or mirror.suffix != ".xml" or mirror.name.startswith(".")
+                    or mirror.name == _MORPHOLOGY_FILE
+                    or original.is_symlink() or not original.is_file()
+                    or not original.stat().st_size):
+                raise ValueError(f"{label}: unreviewed TEI material or missing root source")
+            payload = mirror.read_bytes()
+            try:
+                root = ET.fromstring(payload)
+            except ET.ParseError as exc:
+                raise ValueError(f"{label}: invalid TEI mirror") from exc
+            responses = {
+                "".join(node.itertext()).strip()
+                for node in root.findall(
+                    f"{_TEI}teiHeader/{_TEI}fileDesc/{_TEI}titleStmt/"
+                    f"{_TEI}respStmt/{_TEI}resp"
+                )
+            }
+            if (root.tag != _TEI + "TEI"
+                    or "TEI P5 conversion from OCP Grammateus XML" not in responses):
+                raise ValueError(f"{label}: unreviewed TEI mirror declaration")
+            excluded.append({"path": label, "kind": "derived_tei_mirror",
+                             "sha256": sha256(payload).hexdigest()})
+    return excluded
+
+
+def validate_source_boundary(path: str | Path) -> list[dict[str, str]]:
     """Fail when an OCP docs directory contains unreviewed source material.
 
     The converter intentionally consumes only published root-level ``*.xml``
@@ -33,7 +94,7 @@ def validate_source_boundary(path: str | Path) -> None:
         if entry.is_symlink():
             unexpected.append(name)
         elif entry.is_dir():
-            if name not in _REVIEWED_NON_CORPUS_DIRECTORIES:
+            if name not in _REVIEWED_NON_CORPUS_DIRECTORIES and name != "tei":
                 unexpected.append(f"{name}/")
         elif entry.is_file():
             if name in _SUPPORTED_METADATA_FILES or name in _REVIEWED_NON_CORPUS_FILES:
@@ -49,16 +110,18 @@ def validate_source_boundary(path: str | Path) -> None:
             "unreviewed OCP source material in "
             f"{source_dir}: {', '.join(unexpected)}"
         )
+    return excluded_source_layers(source_dir)
 
 
 def load_source_directory(path: str | Path) -> tuple[list[Book], list[str]]:
     source_dir = Path(path)
-    validate_source_boundary(source_dir)
+    excluded = validate_source_boundary(source_dir)
+    excluded_roots = {item["path"] for item in excluded}
     books: list[Book] = []
-    warnings: list[str] = []
+    warnings = [f'excluding {item["kind"]}: {item["path"]}' for item in excluded]
     work_sources: dict[str, str] = {}
     for xml_path in sorted(source_dir.glob("*.xml")):
-        if xml_path.name.startswith("."):
+        if xml_path.name.startswith(".") or xml_path.name in excluded_roots:
             continue
         try:
             book = parse_bytes(xml_path.read_bytes(), source_path=xml_path.name)

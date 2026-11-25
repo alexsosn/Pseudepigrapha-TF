@@ -1,6 +1,6 @@
 """Verified ApDan TEI morphology as a separately licensed local TF feature module.
 
-The ordinary converter never reads ApDan_TEI.xml. Nothing here modifies
+The ordinary converter inventories ApDan_TEI.xml but never imports its annotations. Nothing here modifies
 the default CC BY corpus or asserts that its third-party linguistic data
 may be redistributed. Users must explicitly opt in to write a local
 CC BY-NC-restricted module after source/TF alignment has been proved.
