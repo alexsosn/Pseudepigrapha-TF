@@ -86,6 +86,13 @@ def _parser() -> argparse.ArgumentParser:
         "--accept-noncommercial", action="store_true",
         help="explicitly accept locally generating a restricted CC BY-NC feature module",
     )
+    catalog = sub.add_parser(
+        "catalog-lookup",
+        help="look up local OCP clavis claims against exact native TF source filenames",
+    )
+    catalog.add_argument("data", type=Path, help="existing native Text-Fabric feature directory")
+    catalog.add_argument("crosswalk", type=Path, help="local OCP data/master_crosswalk.csv")
+    catalog.add_argument("--id", dest="canon_id", help="exact canonical ID (default: all records)")
     return parser
 
 
@@ -149,6 +156,18 @@ def main(argv: list[str] | None = None) -> int:
             port=args.port,
             debug=args.debug,
         )
+    if args.command == "catalog-lookup":
+        from tf.fabric import Fabric
+        from .catalog import REQUIRED_FEATURES, catalog_lookup
+
+        api = Fabric(locations=[str(args.data)], modules=[""], silent="deep").load(
+            " ".join(REQUIRED_FEATURES), silent="deep",
+        )
+        if api is None:
+            raise ValueError("cannot load the existing native TF corpus")
+        result = catalog_lookup(api, args.crosswalk.read_bytes(), canon_id=args.canon_id)
+        print(json.dumps(result, ensure_ascii=False, sort_keys=True))
+        return 0
     if args.command == "apdan-morph":
         from tf.fabric import Fabric
         from .apdan_morphology import align_apdan_morphology, write_apdan_morphology_module
