@@ -67,3 +67,39 @@ def test_source_boundary_rejects_xml_with_case_variant_extension(tmp_path: Path)
 
     with pytest.raises(ValueError, match="Extra\\.XML"):
         validate_source_boundary(tmp_path)
+
+
+def _write_mirror(root: Path, name: str = "Demo.xml", marker: str = "TEI P5 conversion from OCP Grammateus XML") -> None:
+    directory = root / "tei"
+    directory.mkdir(exist_ok=True)
+    (directory / name).write_text(
+        '<TEI xmlns="http://www.tei-c.org/ns/1.0"><teiHeader><fileDesc>'
+        '<titleStmt><respStmt><resp>' + marker + '</resp></respStmt></titleStmt>'
+        '</fileDesc></teiHeader><text/></TEI>', encoding="utf-8"
+    )
+
+
+def test_source_boundary_accepts_declared_tei_mirror(tmp_path: Path) -> None:
+    _write_supported_layout(tmp_path)
+    _write_mirror(tmp_path)
+    validate_source_boundary(tmp_path)
+
+
+@pytest.mark.parametrize("name,marker", [
+    ("Unknown.xml", "TEI P5 conversion from OCP Grammateus XML"),
+    ("Demo.xml", "Independent edition"),
+])
+def test_source_boundary_rejects_unrecognized_tei_material(
+    tmp_path: Path, name: str, marker: str
+) -> None:
+    _write_supported_layout(tmp_path)
+    _write_mirror(tmp_path, name, marker)
+    with pytest.raises(ValueError, match="tei/"):
+        validate_source_boundary(tmp_path)
+
+
+def test_source_boundary_rejects_non_tei_payload_with_morphology_filename(tmp_path: Path) -> None:
+    _write_supported_layout(tmp_path)
+    (tmp_path / "ApDan_TEI.xml").write_text('<book filename="ApDan_TEI"/>', encoding="utf-8")
+    with pytest.raises(ValueError, match="ApDan_TEI"):
+        validate_source_boundary(tmp_path)

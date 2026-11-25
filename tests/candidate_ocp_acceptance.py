@@ -9,7 +9,6 @@ from __future__ import annotations
 import json
 from hashlib import sha256
 from html import escape
-import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -98,29 +97,10 @@ def verify(upstream_repo: Path) -> None:
             encoding="utf-8",
         )
         assert not (workdir / "rights-evidence.json").is_relative_to(workdir / "tf")
-        staged_docs = workdir / "docs"
         tf_dir = workdir / "tf"
-        staged_docs.mkdir()
-        for filename in standard:
-            shutil.copyfile(docs / filename, staged_docs / filename)
-        # The source includes 61 metadata records, now including all six
-        # compact works. Staging excludes only separate ApDan_TEI.xml.
-        original_intros = json.loads((docs / "intros.json").read_text(encoding="utf-8"))
-        metadata = original_intros["documents"]
-        assert len(metadata) == 61, len(metadata)
-        assert set(metadata) <= nonempty
-        staged_metadata = {name: value for name, value in metadata.items() if name in standard}
-        excluded_metadata = set(metadata) - set(staged_metadata)
-        assert not excluded_metadata, excluded_metadata
-        assert len(staged_metadata) == 61, len(staged_metadata)
-        staged_intros = dict(original_intros)
-        staged_intros["documents"] = staged_metadata
-        (staged_docs / "intros.json").write_text(
-            json.dumps(staged_intros, ensure_ascii=False, indent=2) + "\n",
-            encoding="utf-8",
-        )
-
-        assert cli_main(["convert", str(staged_docs), "--output", str(tf_dir)]) == 0
+        # Exercise the same unmodified directory and revision passed by Agora.
+        assert cli_main(["convert", str(docs), "--output", str(tf_dir),
+                         "--upstream-commit", UPSTREAM_SHA]) == 0
         report = json.loads((tf_dir / "conversion-report.json").read_text())
         assert report["status"] == "ok", report["failed_checks"]
         assert report["source"]["versions"] == report["graph"]["versions"]
@@ -128,8 +108,13 @@ def verify(upstream_repo: Path) -> None:
         assert report["source"]["public_metadata_documents"] == 61
         assert report["semantic_checks"]["parallel_translation_alignment"]
         assert report["source"]["public_metadata_scalars"] == report["graph"]["public_metadata_scalars"]
-        # Assembled in a temporary directory, not an attested full OCP checkout.
-        assert report["provenance"]["source_identity_status"] != "verified"
+        assert report["source"]["files"] == 66
+        assert report["provenance"]["upstream_commit"] == UPSTREAM_SHA
+        assert report["provenance"]["source_identity_status"] == "verified"
+        assert report["provenance"]["intros_sha256"] == sha256((docs / "intros.json").read_bytes()).hexdigest()
+        excluded = report["diagnostics"]["excluded_source_layers"]
+        assert {row["path"] for row in excluded} == {"ApDan_TEI.xml"} | {"tei/" + name for name in standard}
+        assert all(row["sha256"] == sha256((docs / row["path"]).read_bytes()).hexdigest() for row in excluded)
         assert report["provenance"]["content_license_status"] != "verified"
 
         from pseudepigrapha_tf import Apparatus, Translations, WorkMetadata
