@@ -206,6 +206,43 @@ See [source and provenance notes](docs/source-identity-and-anomalies.md)
 and [full migration issue #228](https://github.com/alexsosn/Pseudepigrapha-TF/issues/228).
 The 2026 full-source data release remains blocked by rights and E2E gates.
 
+## Local clavis and bibliography lookup (OCP 2026)
+
+The newer OCP repository has a 299-entry crosswalk in
+`data/master_crosswalk.csv`, separate from the XML text corpus. Use a
+local copy you are entitled to access to resolve an exact canonical ID
+against source-version nodes in a materialized Text-Fabric dataset:
+
+```bash
+pseudepigrapha-tf catalog-lookup /path/to/tf /path/to/OCP/data/master_crosswalk.csv --id CAVT-JH-01
+```
+
+Omit `--id` for a full coverage audit. Output is JSON, including literal
+upstream canonical IDs, bibliography references, declared statuses,
+crosswalk SHA-256, matching **source** TF version IDs and their source XML
+SHA-256. Generated and parallel translations are not source matches.
+Multiple catalogue IDs naming the same XML remain separate assertions.
+`match_status` distinguishes `exact_tf_match`,
+`declared_filename_not_in_tf`, and `no_declared_filename`; it does not
+infer availability from the upstream status or validate scholarly identity.
+The exact, case-sensitive filename join does not guess aliases, text
+equivalence, or crosswalk/TF revision compatibility.
+
+Python callers can use `from pseudepigrapha_tf.catalog import catalog_lookup,
+REQUIRED_FEATURES` and pass a native TF API with those features loaded,
+the CSV bytes, and optionally `canon_id="CAVT-JH-01"`.
+The upstream CSV is not bundled, nor is any generated dossier HTML,
+modern clavis prose, or new TF metadata feature. The command is read-only
+with respect to source and TF files; Text-Fabric may maintain its usual
+local load caches. Redistribution rights for the catalogue are not
+attested, and the OCP 2026 textual candidate remains unpublished.
+
+At the reviewed 2026 snapshot, 50 catalogue rows claim 49 distinct
+existing source filenames; 37 rows declare missing filenames and 212
+have no filename. Six plausible stale names (including `CithDav.xml`
+versus `CithDavid.xml`) require editorial confirmation rather than
+automatic aliases. See [research #246](https://github.com/alexsosn/Pseudepigrapha-TF/issues/246).
+
 ## Browse and compare
 
 The published corpus works with the standard Text-Fabric advanced app loaded by `tf.app.use()` above. Pseudepigrapha-TF also provides a local `/compare` view for passage-centered comparison across source versions, manuscripts, and generated translations.
