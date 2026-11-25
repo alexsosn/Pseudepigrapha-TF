@@ -207,6 +207,24 @@ def verify(tf_dir: Path) -> None:
     assert 'data-version-id="1En__Ethiopic"' in chosen
     assert 'name="browse_version" value="1En__Ethiopic"' in chosen
 
+    # Independently query the native TF section index, not the new navigator,
+    # for a fragmentary source version lacking the Ethiopic passage.
+    missing_versions = tuple(
+        version_id for version_id in source_choices
+        if api.T.nodeFromSection((version_id, "1", "2")) is None
+    )
+    assert missing_versions, "expected a fragmentary 1 Enoch source missing 1:2"
+    for version_id in missing_versions:
+        rejected = _get(
+            client, "/compare?work=1En&chapter=1&verse=2&browse_version=" + quote(version_id), 400
+        )
+        assert "not present in source version" in rejected
+        assert escape(version_id, quote=True) in rejected
+    # The old context-free request still compares the available versions.
+    assert 'data-version-id="1En__Ethiopic"' in _get(
+        client, "/compare?work=1En&chapter=1&verse=2"
+    )
+
     # Real route: ordinary passage, large witness inventory, metadata-only
     # sibling version, and Previous/Next navigation all coexist without
     # fabricating Coptic text.
