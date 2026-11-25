@@ -456,3 +456,49 @@ def test_compare_http_distinguishes_absent_from_explicitly_empty_source_selectio
     assert client.get(base + "&version=&version=").status_code == 200
     assert client.get(base + "&version=&version=Work__Greek").status_code == 200
     assert calls == [None, (), (), ("Work__Greek",)]
+
+
+def test_explicit_browse_version_cannot_fall_back_to_sibling(monkeypatch):
+    from test_comparison_navigation import navigation_api
+
+    api = navigation_api()
+    tf_app = FakeTfApp()
+    tf_app.api = api
+    flask_app = Flask(__name__)
+    calls = []
+
+    def build(*args, **kwargs):
+        calls.append(args[1:4])
+        return {"version_choices": (
+            {"id": "Work__A", "selected": True},
+            {"id": "Work__B", "selected": True},
+        )}
+
+    monkeypatch.setattr(web, "build_passage_comparison", build)
+    monkeypatch.setattr(web, "render_passage_comparison",
+                        lambda model: str(model["navigation"]))
+    web.register_comparison_route(flask_app, tf_app)
+    client = flask_app.test_client()
+    base = "/compare?work=Work&chapter=1&verse=2"
+
+    # This address occurs in A but not B. An explicit B is not a mere preference.
+    rejected = client.get(base + "&browse_version=Work__B")
+    assert rejected.status_code == 400
+    assert "Work__B" in rejected.get_data(as_text=True)
+    assert not calls
+    # Context-free lookup remains valid, as does the explicit actual source.
+    assert client.get(base).status_code == 200
+    assert client.get(base + "&browse_version=Work__A").status_code == 200
+    # Valid B address must navigate on B even if the comparison shows A.
+    response = client.get("/compare?work=Work&chapter=1&verse=1&browse_version=Work__B")
+    assert response.status_code == 200
+    assert "'context_version': 'Work__B'" in response.get_data(as_text=True)
+
+    # Error output must escape the exact invalid verse.
+    response = client.get("/compare", query_string={
+        "work": "Work", "browse_version": "Work__B", "chapter": "1",
+        "verse": '<script>alert(1)</script>',
+    })
+    assert response.status_code == 400
+    assert "&lt;script&gt;" in response.get_data(as_text=True)
+    assert "<script>" not in response.get_data(as_text=True)

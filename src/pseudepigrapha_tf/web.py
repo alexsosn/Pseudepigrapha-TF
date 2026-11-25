@@ -223,10 +223,8 @@ def register_comparison_route(flask_app: Any, tf_app: Any) -> Any:
         )
         selected_witnesses = _witness_selection(request.args)
         try:
-            if browse_version and browse_version not in navigator.source_versions(work):
-                raise ValueError(
-                    f"{browse_version!r} is not a source version of work {work!r}"
-                )
+            if browse_version:
+                navigator.require_passage(work, browse_version, chapter, verse)
             model = build_passage_comparison(
                 tf_app.api,
                 work,

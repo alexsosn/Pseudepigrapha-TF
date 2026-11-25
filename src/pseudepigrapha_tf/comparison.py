@@ -195,6 +195,25 @@ class PassageNavigator:
             )
         return verses
 
+    def require_passage(
+        self, work: object, source_version: object, chapter: object, verse: object
+    ) -> None:
+        """Require an exact, unambiguous address in the explicit source edition."""
+        version_id, book_node = self._book_for_version(work, source_version)
+        _, positions = self._sections_for_book(book_node, version_id)
+        pair = (str(chapter), str(verse))
+        matches = positions.get(pair, ())
+        if not matches:
+            raise ValueError(
+                f"passage {pair!r} is not present in source version {version_id!r}; "
+                "choose an address from that version or use comparison without "
+                "an explicit navigation version"
+            )
+        if len(matches) != 1:
+            raise ValueError(
+                f"source version {version_id!r} has duplicate TF passage address {pair!r}"
+            )
+
     def neighbors(
         self,
         work: object,
