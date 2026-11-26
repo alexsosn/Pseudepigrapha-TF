@@ -261,8 +261,12 @@ def _raw_inventory(source_dir: Path) -> dict:
                 "source_id": spec.source_id, "source_type": spec.source_type,
             })
 
+    from .source import is_separate_morphology
+
     raw_work_sources: dict[str, str] = {}
     for path in sorted(source_dir.glob("*.xml")):
+        if is_separate_morphology(path):
+            continue
         data = path.read_bytes()
         if path.name.startswith(".") or not data.strip():
             continue

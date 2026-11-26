@@ -606,7 +606,10 @@ def _parallel_translation_alignment_ok(
 def build_conversion_report(source_dir: str | Path, books: list[Book], data: TFData) -> dict:
     """Build an independent source→TF parity report, including source anomalies."""
 
+    from .source import excluded_source_layers
+
     source_dir = Path(source_dir)
+    excluded = excluded_source_layers(source_dir)
     node_index = base._node_index(data)
     raw = base._raw_inventory(source_dir)
     graph = base._graph_inventory(data, node_index)
@@ -796,6 +799,7 @@ def build_conversion_report(source_dir: str | Path, books: list[Book], data: TFD
         "failed_checks": failed,
         "semantic_checks": checks,
         "diagnostics": {
+            **({"excluded_source_layers": excluded} if excluded else {}),
             "duplicate_section_addresses": section_address_collisions,
             "excluded_generated_translation_versions": raw_excluded_translations,
             "generated_translation_mapping_failures": raw_generated_mapping_failures,

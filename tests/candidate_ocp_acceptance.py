@@ -1,29 +1,21 @@
-"""Real OCP 2026 candidate -> native Text-Fabric researcher acceptance.
-
-This is an intentionally partial *staging* corpus: the full upstream snapshot
-contains one namespaced TEI root file needing separate source-equivalence review.
-No published data version or general converter exclusion is implied.
-"""
+"""Unmodified OCP 2026 checkout -> local native Text-Fabric researcher acceptance."""
 from __future__ import annotations
 
 import json
 from hashlib import sha256
 from html import escape
-import shutil
 import subprocess
 import sys
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
 from pseudepigrapha_tf.cli import main as cli_main
-from pseudepigrapha_tf.rights_review import build_2026_rights_evidence
 from tf.fabric import Fabric
 
 
 UPSTREAM_SHA = "853a64b623de296d2b8532a43593607772e7c45a"
 # Six compact-dialect originals and translations are now supported; the
-# separately named TEI root remains outside this format-bound staging test.
-# No source is silently excluded from *production* conversion by this test.
+# separately named TEI root is an explicitly reported optional morphology layer.
 UNSUPPORTED_ROOT_FILES = frozenset({"ApDan_TEI.xml"})
 COMPACT_ROOT_FILES = frozenset({
     "CithDavid.xml", "Demetr.xml", "Justus.xml",
@@ -70,57 +62,12 @@ def verify(upstream_repo: Path) -> None:
     assert len(standard) == 66, (len(standard), standard)
     assert COMPACT_ROOT_FILES <= set(standard)
 
-    # Independent, byte-hashed 2026 rights evidence on the *entire*
-    # original upstream tree before staging 66 of 67 textual roots.
-    # This is NOT legal clearance and must not change publication status.
-    rights = build_2026_rights_evidence(upstream_repo)
-    assert rights["source_commit"] == UPSTREAM_SHA
-    assert rights["publication_allowed"] is False
-    assert rights["rights_attestation"] == "not_attested"
-    counts = rights["counts"]
-    assert counts["root_xml"] == 67
-    assert counts["core_candidate_xml"] == 66
-    assert counts["compact_editorial_english_review_required"] == 6
-    assert counts["restricted_morphology_xml"] == 1
-    assert counts["public_metadata_documents"] == 61
-    assert counts["tei_mirror_nonempty"] > 0
-    assert {name for name in standard} == {
-        entry["path"].rsplit("/", 1)[-1]
-        for entry in rights["root_documents"] if entry["core_candidate"]
-    }
-
     with TemporaryDirectory(prefix="ocp-2026-standard-") as workdir:
         workdir = Path(workdir)
-        # Ephemeral CI-only rights evidence. Do not include it in unrestricted
-        # TF features, release manifest or any distributable archive.
-        (workdir / "rights-evidence.json").write_text(
-            json.dumps(rights, ensure_ascii=False, sort_keys=True, indent=2) + "\n",
-            encoding="utf-8",
-        )
-        assert not (workdir / "rights-evidence.json").is_relative_to(workdir / "tf")
-        staged_docs = workdir / "docs"
         tf_dir = workdir / "tf"
-        staged_docs.mkdir()
-        for filename in standard:
-            shutil.copyfile(docs / filename, staged_docs / filename)
-        # The source includes 61 metadata records, now including all six
-        # compact works. Staging excludes only separate ApDan_TEI.xml.
-        original_intros = json.loads((docs / "intros.json").read_text(encoding="utf-8"))
-        metadata = original_intros["documents"]
-        assert len(metadata) == 61, len(metadata)
-        assert set(metadata) <= nonempty
-        staged_metadata = {name: value for name, value in metadata.items() if name in standard}
-        excluded_metadata = set(metadata) - set(staged_metadata)
-        assert not excluded_metadata, excluded_metadata
-        assert len(staged_metadata) == 61, len(staged_metadata)
-        staged_intros = dict(original_intros)
-        staged_intros["documents"] = staged_metadata
-        (staged_docs / "intros.json").write_text(
-            json.dumps(staged_intros, ensure_ascii=False, indent=2) + "\n",
-            encoding="utf-8",
-        )
-
-        assert cli_main(["convert", str(staged_docs), "--output", str(tf_dir)]) == 0
+        # Exercise the same unmodified directory and revision passed by Agora.
+        assert cli_main(["convert", str(docs), "--output", str(tf_dir),
+                         "--upstream-commit", UPSTREAM_SHA]) == 0
         report = json.loads((tf_dir / "conversion-report.json").read_text())
         assert report["status"] == "ok", report["failed_checks"]
         assert report["source"]["versions"] == report["graph"]["versions"]
@@ -128,8 +75,13 @@ def verify(upstream_repo: Path) -> None:
         assert report["source"]["public_metadata_documents"] == 61
         assert report["semantic_checks"]["parallel_translation_alignment"]
         assert report["source"]["public_metadata_scalars"] == report["graph"]["public_metadata_scalars"]
-        # Assembled in a temporary directory, not an attested full OCP checkout.
-        assert report["provenance"]["source_identity_status"] != "verified"
+        assert report["source"]["files"] == 66
+        assert report["provenance"]["upstream_commit"] == UPSTREAM_SHA
+        assert report["provenance"]["source_identity_status"] == "verified"
+        assert report["provenance"]["intros_sha256"] == sha256((docs / "intros.json").read_bytes()).hexdigest()
+        excluded = report["diagnostics"]["excluded_source_layers"]
+        assert {row["path"] for row in excluded} == {"ApDan_TEI.xml"} | {"tei/" + name for name in standard}
+        assert all(row["sha256"] == sha256((docs / row["path"]).read_bytes()).hexdigest() for row in excluded)
         assert report["provenance"]["content_license_status"] != "verified"
 
         from pseudepigrapha_tf import Apparatus, Translations, WorkMetadata
@@ -408,15 +360,12 @@ def verify(upstream_repo: Path) -> None:
             "candidate_sha": UPSTREAM_SHA,
             "root_xml_nonempty": len(nonempty),
             "root_xml_converted": len(standard),
-            "root_xml_excluded_for_review": sorted(UNSUPPORTED_ROOT_FILES),
+            "root_xml_separate_morphology": sorted(UNSUPPORTED_ROOT_FILES),
             "real_tf_passages": passage_checks,
             "compact_parallel_aligned_units": aligned_counts,
             "source_counts": report["source"],
             "clavis_catalogue_counts": catalog["counts"],
-            "rights_evidence_counts": rights["counts"],
-            "rights_review_blockers": rights["review_blockers"],
-            "rights_attestation": rights["rights_attestation"],
-            "publication_allowed": rights["publication_allowed"],
+            "excluded_source_layers": len(excluded),
         }, ensure_ascii=False, default=str))
 
 
