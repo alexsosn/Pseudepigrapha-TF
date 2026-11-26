@@ -14,9 +14,9 @@ from pseudepigrapha_tf.parser import parse_file
 
 ROOT = Path(__file__).resolve().parents[1]
 FIXTURES = ROOT / "tests" / "fixtures"
-EXPECTED_PACKAGE_VERSION = "1.1.0"
+EXPECTED_PACKAGE_VERSION = "1.2.0"
 EXPECTED_DATA_VERSION = "1.1"
-EXPECTED_RELEASE_TAG = "v1.1.0"
+EXPECTED_RELEASE_TAG = "v1.2.0"
 EXPECTED_TF_ASSET = "tf-1.1.zip"
 PUBLISH_WORKFLOW = ROOT / ".github" / "workflows" / "publish-corpus-release.yml"
 

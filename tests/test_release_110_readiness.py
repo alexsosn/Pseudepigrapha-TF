@@ -11,7 +11,7 @@ from pseudepigrapha_tf.release_identity import CONVERTER_VERSION, TF_DATA_VERSIO
 
 
 ROOT = Path(__file__).resolve().parents[1]
-PACKAGE_VERSION = "1.1.0"
+PACKAGE_VERSION = "1.2.0"
 DATA_VERSION = "1.1"
 RELEASE_TAG = "v1.1.0"
 
@@ -26,7 +26,7 @@ def _app_data_version() -> str:
     return match.group(1)
 
 
-def test_current_owned_release_identity_is_1_1_and_coherent() -> None:
+def test_software_1_2_and_legacy_data_1_1_identities_are_coherent() -> None:
     project = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
     materializer = json.loads((ROOT / "agora.materializer.json").read_text(encoding="utf-8"))
     args = _parser().parse_args(["convert", "source"])
@@ -41,14 +41,14 @@ def test_current_owned_release_identity_is_1_1_and_coherent() -> None:
     assert args.output == Path(f"tf/{DATA_VERSION}")
 
 
-def test_normal_full_corpus_ci_exercises_current_1_1_identity() -> None:
+def test_normal_full_corpus_ci_exercises_current_converter_and_legacy_data_identity() -> None:
     text = (ROOT / ".github" / "workflows" / "test.yml").read_text(encoding="utf-8")
 
-    assert "dist/pseudepigrapha_tf-1.1.0-py3-none-any.whl" in text
+    assert "dist/pseudepigrapha_tf-1.2.0-py3-none-any.whl" in text
     assert "/tmp/pseudepigrapha-tf/1.1" in text
-    assert "converter_version='1.1.0'" in text
+    assert "converter_version='1.2.0'" in text
     assert "data_version='1.1'" in text
-    assert "converterVersion'] == '1.1.0'" in text
+    assert "converterVersion'] == '1.2.0'" in text
     assert "version'] == '1.1'" in text
 
 
@@ -133,12 +133,13 @@ def test_primary_public_acquisition_is_not_frozen_to_previous_release() -> None:
         "## Query a passage", 1
     )[0]
 
-    assert '"alexsosn/Pseudepigrapha-TF"' in acquisition
+    assert '"alexsosn/Pseudepigrapha-TF:v1.1.0"' in acquisition
+    assert 'checkout="v1.1.0"' in acquisition
     assert '"alexsosn/Pseudepigrapha-TF:v0.2.0"' not in acquisition
     assert 'checkout="v0.2.0"' not in acquisition
     assert '"alexsosn/Pseudepigrapha-TF:v1.0.0"' not in acquisition
     assert 'checkout="v1.0.0"' not in acquisition
-    assert "latest public release" in acquisition.lower()
+    assert "legacy" in acquisition.lower()
 
 
 def test_release_ready_readme_uses_1_1_for_current_local_workflows() -> None:
