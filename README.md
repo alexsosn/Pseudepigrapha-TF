@@ -6,6 +6,30 @@ The primary distribution target is **local materialization through [Agora](docs/
 
 The current development package requires **Python 3.12+** and Text-Fabric **13.1.x**. CI runs its full corpus/source-fidelity suite on 3.12 and independently builds and installs a wheel in a clean **Python 3.14** environment for a real Text-Fabric passage, apparatus, stock-browser and HTTP comparison smoke. Python 3.10 has reached end of life and is no longer supported. This support statement applies to code on `main`; published v1.1 dataset assets are unchanged.
 
+## Local materialization
+
+Install via Agora's [materializer catalog](https://github.com/alexsosn/Agora/blob/main/registry/materializers.yaml), or use the standalone command below. No prebuilt corpus is required.
+
+```bash
+python -m pip install "git+https://github.com/alexsosn/Pseudepigrapha-TF.git@v1.2.0"
+git clone https://github.com/OnlineCriticalPseudepigrapha/Online-Critical-Pseudepigrapha.git
+git -C Online-Critical-Pseudepigrapha checkout 853a64b623de296d2b8532a43593607772e7c45a
+pseudepigrapha-tf convert Online-Critical-Pseudepigrapha/static/docs --output tf/1.1
+```
+
+Load that local output with native Text-Fabric:
+
+```python
+from tf.fabric import Fabric
+
+TF = Fabric(locations=["tf/1.1"], modules=[""], silent="deep")
+api = TF.load("ocp_book source_ref version_kind", silent="deep")
+assert api.T.nodeFromSection(("3Macc", "1", "1")) is not None
+```
+
+See the [local app guide](docs/tf-app.md) to browse and compare passages.
+The examples in the legacy acquisition section use the existing v1.1 data release instead.
+
 ## What the corpus contains
 
 The corpus preserves the parts of OCP needed for research rather than flattening it to plain text:
@@ -24,7 +48,7 @@ Public corpus releases contain the derived Text-Fabric corpus (`complete.zip` fo
 
 ## Get and load the published corpus
 
-The shortest supported path uses Text-Fabric's normal GitHub-release acquisition. For corpus access alone:
+For the existing legacy dataset, use Text-Fabric's GitHub-release acquisition. For corpus access alone:
 
 ```bash
 python -m venv .venv
@@ -156,7 +180,7 @@ reclassifying the English as a historical witness or a machine-generated
 translation. Compact `unit/@id` values are individual addressable TF verses,
 and the original XML identifiers remain in native TF features.
 
-For a candidate dataset containing these works, load the `Translations`
+For a locally materialized 2026 dataset, load the `Translations`
 helper with `Translations.PARALLEL_FEATURES` (or the full
 `Translations.REQUIRED_FEATURES` if the generated layer is also present).
 `version_kind` distinguishes `source`, `parallel_translation` and
@@ -237,7 +261,7 @@ The upstream CSV is not bundled, nor is any generated dossier HTML,
 modern clavis prose, or new TF metadata feature. The command is read-only
 with respect to source and TF files; Text-Fabric may maintain its usual
 local load caches. Redistribution rights for the catalogue are not
-attested, and the OCP 2026 textual candidate remains unpublished.
+attested; the lookup operates on a local copy.
 
 At the reviewed 2026 snapshot, 50 catalogue rows claim 49 distinct
 existing source filenames; 37 rows declare missing filenames and 212

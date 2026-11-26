@@ -1,6 +1,7 @@
 from pathlib import Path
 import json
 import tomllib
+import subprocess
 
 import yaml
 
@@ -26,7 +27,20 @@ def test_software_release_is_distinct_from_legacy_data_release():
     assert "gh release create" in commands
     assert "--latest=false" in commands
     assert "--target" in commands
-    assert "zipfile" in commands
+    integration = yaml.safe_load(text)["jobs"]["pinned-upstream-integration"]
+    assert any("zipfile" in step.get("run", "") for step in integration["steps"])
+    assert any(step.get("uses") == "actions/upload-artifact@v4" and
+               step.get("with", {}).get("name") == "tested-software-wheel"
+               for step in integration["steps"])
+    assert any(step.get("uses") == "actions/download-artifact@v4" and
+               step.get("with", {}).get("name") == "tested-software-wheel"
+               for step in job["steps"])
+    assert "python -m build" not in commands
+    for step in job["steps"]:
+        if "run" in step:
+            checked = subprocess.run(["bash", "-n"], input=step["run"], text=True,
+                                     capture_output=True, check=False)
+            assert checked.returncode == 0, checked.stderr
     assert "complete.zip" not in commands
     assert "tf-1.1.zip" not in commands
     assert "--clobber" not in commands
