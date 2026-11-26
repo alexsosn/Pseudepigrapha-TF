@@ -46,7 +46,7 @@ jobs:
         run: |
           python -m venv /tmp/pseudepigrapha-python-314-venv
           /tmp/pseudepigrapha-python-314-venv/bin/python -m pip install --upgrade pip
-          /tmp/pseudepigrapha-python-314-venv/bin/python -m pip install dist/pseudepigrapha_tf-1.1.0-py3-none-any.whl
+          /tmp/pseudepigrapha-python-314-venv/bin/python -m pip install dist/pseudepigrapha_tf-1.2.0-py3-none-any.whl
           echo "/tmp/pseudepigrapha-python-314-venv/bin" >> "$GITHUB_PATH"
       - name: Python 3.14 researcher source, apparatus, stock browser and compare HTTP smoke
         run: |
@@ -72,7 +72,7 @@ jobs:
         run: |
           python -m venv /tmp/pseudepigrapha-tf-release-venv
           /tmp/pseudepigrapha-tf-release-venv/bin/python -m pip install --upgrade pip
-          /tmp/pseudepigrapha-tf-release-venv/bin/python -m pip install dist/pseudepigrapha_tf-1.1.0-py3-none-any.whl
+          /tmp/pseudepigrapha-tf-release-venv/bin/python -m pip install dist/pseudepigrapha_tf-1.2.0-py3-none-any.whl
           echo "/tmp/pseudepigrapha-tf-release-venv/bin" >> "$GITHUB_PATH"
       - name: Verify installed release contract
         run: |
@@ -84,8 +84,8 @@ jobs:
           import pseudepigrapha_tf
           from pseudepigrapha_tf.classifications import load_historical_classifications
 
-          assert version('pseudepigrapha-tf') == '1.1.0'
-          assert pseudepigrapha_tf.__version__ == '1.1.0'
+          assert version('pseudepigrapha-tf') == '1.2.0'
+          assert pseudepigrapha_tf.__version__ == '1.2.0'
           installed = Path(pseudepigrapha_tf.__file__).resolve()
           assert '/tmp/pseudepigrapha-tf-release-venv/' in str(installed), installed
           classifications = load_historical_classifications()
@@ -186,7 +186,7 @@ jobs:
           PY
       - name: Stage, verify, extract, and reload canonical release candidate
         env:
-          CANDIDATE_RELEASE_TAG: v1.1.0-ci
+          CANDIDATE_RELEASE_TAG: v1.2.0-ci
         run: |
           python - <<'PY'
           import json
@@ -213,7 +213,7 @@ jobs:
               destination,
               release_tag=os.environ['CANDIDATE_RELEASE_TAG'],
               release_commit=os.environ['GITHUB_SHA'],
-              converter_version='1.1.0',
+              converter_version='1.2.0',
               data_version='1.1',
               app_directory=Path('app'),
           )
@@ -228,7 +228,7 @@ jobs:
               app_directory=Path('app'),
               expected_release_tag=os.environ['CANDIDATE_RELEASE_TAG'],
               expected_release_commit=os.environ['GITHUB_SHA'],
-              expected_converter_version='1.1.0',
+              expected_converter_version='1.2.0',
               expected_data_version='1.1',
           )
           assert manifest['text_fabric']['feature_count'] == 96
@@ -244,7 +244,7 @@ jobs:
           assert api is not None
           assert api.F.otype.maxSlot == 922922
           generic = api.TF.features['otype'].metaData
-          assert generic['converterVersion'] == '1.1.0'
+          assert generic['converterVersion'] == '1.2.0'
           assert generic['upstreamCommit'] == 'c939dcbacad78c5d18d2c4282cad23c47e19ac07'
           assert generic['sourceIdentityStatus'] == 'verified'
           assert generic['contentLicenseStatus'] == 'verified'
@@ -277,7 +277,7 @@ jobs:
               raise SystemExit('stock Text-Fabric failed to load complete.zip cache')
           generic = app.api.TF.features['otype'].metaData
           assert generic['version'] == '1.1'
-          assert generic['converterVersion'] == '1.1.0'
+          assert generic['converterVersion'] == '1.2.0'
           assert generic['upstreamCommit'] == 'c939dcbacad78c5d18d2c4282cad23c47e19ac07'
           assert generic['sourceIdentityStatus'] == 'verified'
           assert generic['contentLicenseStatus'] == 'verified'
@@ -547,3 +547,95 @@ jobs:
           path: /tmp/pseudepigrapha-tf-matched-comparison.json
           if-no-files-found: error
           retention-days: 30
+
+  publish-software-1-2:
+    # One-time software-only release; never publish generated corpus assets.
+    needs: [unit-and-tf, python-314-installed-wheel-smoke, pinned-upstream-integration]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && github.repository == 'alexsosn/Pseudepigrapha-TF'
+    permissions:
+      contents: write
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      GH_TOKEN: ${{ github.token }}
+      RELEASE_TAG: v1.2.0
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Confirm exact software identity and current main
+        id: release
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          test "$(git ls-remote origin refs/heads/main | cut -f1)" = "$GITHUB_SHA"
+          python - <<'PY'
+          import json, os, tomllib
+          from pathlib import Path
+          project = tomllib.loads(Path("pyproject.toml").read_text())["project"]
+          manifest = json.loads(Path("agora.materializer.json").read_text())
+          assert "v" + project["version"] == os.environ["RELEASE_TAG"]
+          assert project["version"] == manifest["plugin"]["version"]
+          PY
+          if gh release view "$RELEASE_TAG" --json isDraft,isPrerelease,assets > /tmp/software-release.json; then
+            python - <<'PY'
+          import json
+          from pathlib import Path
+          release = json.loads(Path("/tmp/software-release.json").read_text())
+          assert not release["isDraft"] and not release["isPrerelease"]
+          assert {asset["name"] for asset in release["assets"]} == {"pseudepigrapha_tf-1.2.0-py3-none-any.whl"}
+          PY
+            echo "publish=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "publish=true" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Build and inspect software-only wheel
+        if: steps.release.outputs.publish == 'true'
+        run: |
+          set -euo pipefail
+          python -m pip install build
+          python -m build --wheel
+          python - <<'PY'
+          import zipfile
+          from pathlib import Path
+          wheel, = Path("dist").glob("*.whl")
+          assert wheel.name == "pseudepigrapha_tf-1.2.0-py3-none-any.whl"
+          with zipfile.ZipFile(wheel) as archive:
+              names = archive.namelist()
+              assert archive.testzip() is None
+              assert "pseudepigrapha_tf/cli.py" in names
+              for name in names:
+                  if name.startswith("pseudepigrapha_tf/"):
+                      assert name.endswith(".py") or name == "pseudepigrapha_tf/data/ocp_classifications_2017.json", name
+                  else:
+                      assert name.startswith("pseudepigrapha_tf-1.2.0.dist-info/"), name
+          PY
+      - name: Publish immutable software release only
+        if: steps.release.outputs.publish == 'true'
+        run: |
+          set -euo pipefail
+          test "$(git ls-remote origin refs/heads/main | cut -f1)" = "$GITHUB_SHA"
+          tag_commit="$(git ls-remote origin "refs/tags/$RELEASE_TAG" | cut -f1)"
+          if [[ -z "$tag_commit" ]]; then
+            git tag "$RELEASE_TAG" "$GITHUB_SHA"
+            git push origin "refs/tags/$RELEASE_TAG"
+          else
+            test "$tag_commit" = "$GITHUB_SHA"
+          fi
+          test "$(git ls-remote origin "refs/tags/$RELEASE_TAG" | cut -f1)" = "$GITHUB_SHA"
+          gh release create "$RELEASE_TAG" dist/pseudepigrapha_tf-1.2.0-py3-none-any.whl \
+            --verify-tag --target "$GITHUB_SHA" --draft --latest=false \
+            --title "Pseudepigrapha-TF 1.2.0 (converter software)" \
+            --notes-file docs/software-release-1.2.md
+          gh release view "$RELEASE_TAG" --json isDraft,isPrerelease,assets > /tmp/software-draft.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          release = json.loads(Path("/tmp/software-draft.json").read_text())
+          assert release["isDraft"] and not release["isPrerelease"]
+          assert {asset["name"] for asset in release["assets"]} == {"pseudepigrapha_tf-1.2.0-py3-none-any.whl"}
+          PY
+          gh release edit "$RELEASE_TAG" --draft=false --latest=false

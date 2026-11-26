@@ -3,7 +3,7 @@
   "plugin": {
     "id": "pseudepigrapha-tf",
     "name": "Pseudepigrapha-TF",
-    "version": "1.1.0",
+    "version": "1.2.0",
     "repository": "alexsosn/Pseudepigrapha-TF"
   },
   "materializers": [
@@ -14,7 +14,7 @@
         {
           "type": "git",
           "url": "https://github.com/OnlineCriticalPseudepigrapha/Online-Critical-Pseudepigrapha.git",
-          "ref": "c939dcbacad78c5d18d2c4282cad23c47e19ac07",
+          "ref": "853a64b623de296d2b8532a43593607772e7c45a",
           "subpath": "static/docs"
         },
         {

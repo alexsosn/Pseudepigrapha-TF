@@ -2,7 +2,7 @@
 
 Pseudepigrapha-TF is an MIT-licensed converter from the [Online Critical Pseudepigrapha (OCP)](https://github.com/OnlineCriticalPseudepigrapha/Online-Critical-Pseudepigrapha) to [Text-Fabric](https://annotation.github.io/text-fabric/tf/), with Python research helpers for apparatus, translation, metadata and local comparison.
 
-The primary distribution target is **local materialization through [Agora](docs/agora-materialization.md)**: Agora obtains OCP source files directly and runs the installed converter. The currently registered manifest still selects the older source snapshot; see [#228](https://github.com/alexsosn/Pseudepigrapha-TF/issues/228) for the expanded-source integration work. Existing published v1.1 corpus archives remain usable as a legacy option. Software releases do not depend on publishing or clearing redistribution of new data archives.
+The primary distribution target is **local materialization through [Agora](docs/agora-materialization.md)**: Agora obtains OCP source files directly and runs the installed converter. The v1.2.0 materializer manifest selects OCP commit `853a64b623de296d2b8532a43593607772e7c45a`. It converts the upstream checkout directly; the Agora registry updates independently. Existing published v1.1 corpus archives remain usable as a legacy option. Software releases do not depend on publishing or clearing redistribution of new data archives.
 
 The current development package requires **Python 3.12+** and Text-Fabric **13.1.x**. CI runs its full corpus/source-fidelity suite on 3.12 and independently builds and installs a wheel in a clean **Python 3.14** environment for a real Text-Fabric passage, apparatus, stock-browser and HTTP comparison smoke. Python 3.10 has reached end of life and is no longer supported. This support statement applies to code on `main`; published v1.1 dataset assets are unchanged.
 
@@ -32,19 +32,20 @@ source .venv/bin/activate        # Windows: .venv\Scripts\activate
 python -m pip install "text-fabric[github]>=13.1,<14"
 ```
 
-Then load the latest public release:
+For the legacy published dataset, load its explicit data release (software tags do not contain a corpus):
 
 ```python
 from tf.app import use
 
 app = use(
-    "alexsosn/Pseudepigrapha-TF",
+    "alexsosn/Pseudepigrapha-TF:v1.1.0",
+    checkout="v1.1.0",
     silent="deep",
 )
 api = app.api
 ```
 
-The first call resolves the latest public release, obtains its stock Text-Fabric `complete.zip`, and populates the Text-Fabric cache. After that acquisition, an offline/local reload is:
+The first call selects the historical v1.1.0 corpus and populates the Text-Fabric cache. After that acquisition, an offline/local reload is:
 
 ```python
 from tf.app import use
@@ -57,7 +58,7 @@ app = use(
 api = app.api
 ```
 
-Both the fresh latest-release acquisition and a network-blocked `checkout="local"` reload are exercised by the repository's published-release verification workflow.
+The historical data-release acquisition and a network-blocked `checkout="local"` reload are exercised by the repository's published-release verification workflow.
 
 For the Pseudepigrapha-TF helper APIs used below, install the current package as well:
 
@@ -146,7 +147,7 @@ aligned[0]["translation_text"]
 
 The synthetic `OCP-Trans` witness remains provenance for the generated layer but is excluded from historical manuscript/apparatus semantics. A genuine scholarly English source version, such as pinned `4Q548`, is therefore not reclassified merely because it is English.
 
-## OCP 2026 compact editions (development candidate)
+## OCP 2026 compact editions
 
 The newer OCP snapshot has six additional compact-dialect works: CithDavid,
 Demetr, Justus, OrMois, ThrenSeila and VisKenaz. The converter preserves the
@@ -162,9 +163,10 @@ helper with `Translations.PARALLEL_FEATURES` (or the full
 `generated_translation`. Explicit `translation_of` and
 `translation_unit_of` edges retain source-unit identity.
 
-**Not yet published in the 1.1 corpus:** the 2026 snapshot still needs
-the independent `ApDan_TEI.xml` and generated `tei/` format review,
-whole-source provenance and licensing checks, and release smoke tests.
+The v1.2 converter accepts the unmodified snapshot, including the reviewed
+separate ApDan morphology source and derived TEI mirrors as explicit exclusions
+from the independent textual editions. The older v1.1 published dataset does not
+contain these additions.
 See [the source and fidelity notes](docs/source-identity-and-anomalies.md).
 
 ## Optional ApDan TEI morphology (local CC BY-NC module)
@@ -204,7 +206,7 @@ output without independently checking the applicable rights.
 
 See [source and provenance notes](docs/source-identity-and-anomalies.md)
 and [full migration issue #228](https://github.com/alexsosn/Pseudepigrapha-TF/issues/228).
-The 2026 source is being integrated into the local Agora converter path (#228); no new data publication is required for a software release.
+The v1.2 converter directly supports the 2026 source through its local materializer; no new data publication is required.
 
 ## Local clavis and bibliography lookup (OCP 2026)
 
@@ -350,9 +352,17 @@ For exact anomaly provenance and record-specific exceptions, see [source identit
 
 Local conversion is the primary software workflow; Agora automates source acquisition and invokes this CLI. The legacy published corpus can also be loaded without conversion.
 
-The pinned upstream `static/docs` files use the **custom Grammateus/OCP XML** vocabulary (`book/version/div/unit/reading`), not TEI XML despite the upstream README's broader label. That pinned directory has 39 `.xml` names, including one empty `3Macc.xml`; the complete release converter processes 38 nonempty files. See [ADR-0002: Text-Fabric-Factory/source format](docs/architecture/ADR-0002-tff-source-format-boundary.md) for the primary-source evidence and migration decision.
+The legacy v1.1 pinned upstream `static/docs` files use the **custom Grammateus/OCP XML** vocabulary (`book/version/div/unit/reading`), not TEI XML despite the upstream README's broader label. That pinned directory has 39 `.xml` names, including one empty `3Macc.xml`; the complete release converter processes 38 nonempty files. See [ADR-0002: Text-Fabric-Factory/source format](docs/architecture/ADR-0002-tff-source-format-boundary.md) for the primary-source evidence and migration decision.
 
-For the release-pinned source used by the full integration gate:
+For the current Agora source (also tested directly in CI):
+
+```bash
+git clone https://github.com/OnlineCriticalPseudepigrapha/Online-Critical-Pseudepigrapha.git
+git -C Online-Critical-Pseudepigrapha checkout 853a64b623de296d2b8532a43593607772e7c45a
+pseudepigrapha-tf convert Online-Critical-Pseudepigrapha/static/docs --output tf/1.1
+```
+
+For historical v1.1 source reproducibility, use the older pin instead:
 
 ```bash
 git clone https://github.com/OnlineCriticalPseudepigrapha/Online-Critical-Pseudepigrapha.git
@@ -378,7 +388,7 @@ python -m pip install -e '.[dev]'
 pytest
 ```
 
-The full CI additionally converts/audits the pinned OCP corpus and reloads it through real Text-Fabric, including stock `complete.zip`, advanced-app, apparatus, translation, metadata, classification, and comparison acceptance. The separate Python 3.14 job tests a clean installed wheel (not an editable checkout). The grouped new-OCP candidate stage exercises all 66 supported source files and a real stock Text-Fabric Flask browser with `/compare` requests for the newly added compact Greek/Latin originals and their source-declared parallel English translations. That candidate remains **unpublished** pending source-specific rights and release checks.
+The full CI additionally converts/audits the pinned OCP corpus and reloads it through real Text-Fabric, including stock `complete.zip`, advanced-app, apparatus, translation, metadata, classification, and comparison acceptance. The separate Python 3.14 job tests a clean installed wheel (not an editable checkout). The grouped new-OCP candidate stage exercises all 66 supported source files and a real stock Text-Fabric Flask browser with `/compare` requests for the newly added compact Greek/Latin originals and their source-declared parallel English translations. This acceptance tests local materialization; it is not a publication of corpus data.
 
 ### Contributor and implementation reference
 

@@ -21,6 +21,7 @@ jobs:
       github.event.workflow_run.conclusion == 'success' &&
       github.event.workflow_run.event == 'push' &&
       github.event.workflow_run.head_branch == 'main' &&
+      github.event.workflow_run.head_sha == '39bd9fb895d1201e9cd9260170512fd8c399a3ac' &&
       github.event.workflow_run.head_repository.full_name == github.repository &&
       github.repository == 'alexsosn/Pseudepigrapha-TF'
     runs-on: ubuntu-latest
