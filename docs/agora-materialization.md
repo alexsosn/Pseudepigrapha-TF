@@ -5,13 +5,15 @@ Pseudepigrapha-TF can act as a locally trusted Agora materializer that rebuilds 
 The repository-level [`agora.materializer.json`](../agora.materializer.json) declares:
 
 - materializer id `ocp-text-fabric`;
-- automatic source: the official Online Critical Pseudepigrapha Git repository pinned to commit `c939dcbacad78c5d18d2c4282cad23c47e19ac07`, using `static/docs` as input;
+- automatic source: the official Online Critical Pseudepigrapha Git repository pinned to commit `853a64b623de296d2b8532a43593607772e7c45a`, using `static/docs` as input;
 - fallback source mode: a user-provided local `static/docs` directory;
 - required direct `*.xml` input with symlinks disallowed by the host contract;
 - execution through the existing `pseudepigrapha_tf.cli convert` command;
 - immutable source revision propagation through the converter's existing `--upstream-commit` option;
 - network denied while conversion runs;
 - Text-Fabric output with `otype.tf`, `oslots.tf`, and `conversion-report.json` required.
+
+The v1.2.0 software release supports 66 independent root XML files from this source, retains 61 metadata documents, reports 66 derived TEI mirrors and the separate ApDan morphology file without counting them as editions. Existing v1.1.0 published data archives remain unchanged.
 
 The converter still works standalone:
 

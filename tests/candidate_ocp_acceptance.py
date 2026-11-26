@@ -65,9 +65,17 @@ def verify(upstream_repo: Path) -> None:
     with TemporaryDirectory(prefix="ocp-2026-standard-") as workdir:
         workdir = Path(workdir)
         tf_dir = workdir / "tf"
-        # Exercise the same unmodified directory and revision passed by Agora.
-        assert cli_main(["convert", str(docs), "--output", str(tf_dir),
-                         "--upstream-commit", UPSTREAM_SHA]) == 0
+        # Exercise the checked-in Agora invocation using the actual checkout.
+        manifest = json.loads((Path(__file__).resolve().parents[1] /
+                               "agora.materializer.json").read_text())
+        materializer, = manifest["materializers"]
+        git_source, = (a for a in materializer["acquisition"] if a["type"] == "git")
+        assert git_source["ref"] == UPSTREAM_SHA
+        assert git_source["subpath"] == "static/docs"
+        assert materializer["execution"]["module"] == "pseudepigrapha_tf.cli"
+        args = [arg.format(source=docs, output=tf_dir, source_revision=UPSTREAM_SHA)
+                for arg in materializer["execution"]["args"]]
+        assert cli_main(args) == 0
         report = json.loads((tf_dir / "conversion-report.json").read_text())
         assert report["status"] == "ok", report["failed_checks"]
         assert report["source"]["versions"] == report["graph"]["versions"]

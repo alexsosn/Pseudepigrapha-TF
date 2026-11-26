@@ -24,10 +24,9 @@ Missing or contradictory source-version languages still fail validation.
 The language continues to be recorded on the source version's native TF
 features; there is no inferred book-level language when editions disagree.
 
-This compatibility path is included in the **unreleased 2026 candidate**.
-It does **not** mean the new OCP snapshot has been published or its rights
-independently verified. See issue #228 for remaining per-edition licensing,
-public release, and external acquisition gates. The distinct `ApDan_TEI.xml`
+This compatibility path is supported by the v1.2 converter's local materialization.
+The 2026 source is not published as a new prebuilt dataset. See issue #228
+for software release and Agora integration checks. The distinct `ApDan_TEI.xml`
 is source-declared CC BY-NC and is available only as a separately licensed,
 local opt-in morphology module; the six compact editions are parsed by
 their own strict vocabulary and preserve editorial English separately.
@@ -50,15 +49,15 @@ before constructing `WorkMetadata(api)`, then `M["5Ezra"]["author"]`
 can return the newly supplied source value. Do not request the optional
 features from the older published corpus.
 
-The in-repository 2026 candidate acceptance stages **66 of 67 nonempty**
+The in-repository 2026 acceptance converts **66 of 67 nonempty**
 root-level XMLs, including all six compact original/English pairs, plus
 all **61 public metadata records**. The 67th `ApDan_TEI.xml` supplies
 a restricted and aligned morphology layer rather than an independent
 textual edition, and is not bundled with the candidate core. The generated
 `tei/` source mirrors are audited separately as derived representations.
-CI also creates an **ephemeral source-by-source rights-evidence inventory**
-with SHA-256 and Git blob hashes under issue #240; no rights evidence alone
-authorizes a new data release. The published dataset remains v1.1.
+The conversion report inventories excluded layers with SHA-256 hashes, and
+acceptance verifies those hashes against the unmodified upstream checkout.
+The published legacy dataset remains v1.1.
 
 ## Mixed-depth T12P textual loci
 
@@ -108,13 +107,11 @@ remain available and the projected verse has its own exact unit
 `source_ref`. These TF verse nodes do not pretend that OCP contains
 additional XML divisions.
 
-The full 2026 candidate is still **not a released corpus**. PR #233
-audited a 60-work subset, and the grouped #234 gate advances that
-temporary candidate to 66 nonempty root Grammateus/compact documents
-with all 61 public work metadata records. The separate
-`ApDan_TEI.xml` and generated `tei/` mirrors require their own
-source-equivalence and license analysis before whole-source attestation
-or publication.
+PR #233 audited a 60-work subset, and #249 completed direct conversion
+of all 66 independent root Grammateus/compact documents from the original
+checkout, retaining all 61 public metadata records. The separate
+`ApDan_TEI.xml` and generated `tei/` mirrors are explicitly reported as
+non-independent layers, not silently counted as additional editions.
 
 ## Blank attributes
 
